@@ -1,0 +1,26 @@
+# Build output
+bin/
+out/
+*.test
+*.exe
+
+# Test & CI reports
+coverage.out
+cover.out
+coverage.html
+junit-report.xml
+gosec-report.json
+
+# Dependencies
+vendor/
+
+# IDE
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# Local working dirs
+scratch/
+roadmap/
