@@ -30,7 +30,7 @@ func Load(root string) (*Project, error) {
 	gradleProperties := loadGradleProperties(filepath.Join(abs, "gradle.properties"))
 	settingsModel := parseSettingsKTSWithProperties(string(settingsData), gradleProperties)
 	repositories := append([]Repository(nil), settingsModel.Repositories...)
-	repositories = append(repositories, collectProjectRepositories(string(rootBuildData), gradleProperties)...)
+	repositories = append(repositories, collectProjectRepositoriesWithOrigin(string(rootBuildData), gradleProperties, "root-build")...)
 
 	prj := &Project{
 		Name:               settingsModel.Name,
@@ -62,12 +62,13 @@ func Load(root string) (*Project, error) {
 			if err != nil {
 				return nil, err
 			}
-			prj.Repositories = append(prj.Repositories, collectProjectRepositories(string(data), prj.GradleProperties)...)
+			prj.Repositories = append(prj.Repositories, collectProjectRepositoriesWithOrigin(string(data), prj.GradleProperties, "module-build")...)
 		}
 		if mod.Type != "" {
 			prj.Modules = append(prj.Modules, *mod)
 		}
 	}
+	prj.Repositories = annotateRepositories(prj.Repositories, "", 0)
 	prj.Repositories = dedupeRepositories(prj.Repositories)
 
 	sort.Slice(prj.Modules, func(i, j int) bool { return prj.Modules[i].Path < prj.Modules[j].Path })

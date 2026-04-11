@@ -63,10 +63,14 @@ func collectRepositories(body string, gradleProperties map[string]string) []Repo
 	if block, ok := extractNestedBlock(body, "pluginManagement", "repositories"); ok {
 		repos = append(repos, parseRepositoriesBlock(block, "plugin", gradleProperties)...)
 	}
-	return dedupeRepositories(repos)
+	return annotateRepositories(dedupeRepositories(repos), "settings", 0)
 }
 
 func collectProjectRepositories(body string, gradleProperties map[string]string) []Repository {
+	return collectProjectRepositoriesWithOrigin(body, gradleProperties, "build-file")
+}
+
+func collectProjectRepositoriesWithOrigin(body string, gradleProperties map[string]string, origin string) []Repository {
 	var repos []Repository
 	repositoriesRe := regexp.MustCompile(`(?ms)repositories\s*\{`)
 	for _, idx := range repositoriesRe.FindAllStringIndex(body, -1) {
@@ -77,7 +81,7 @@ func collectProjectRepositories(body string, gradleProperties map[string]string)
 		}
 		repos = append(repos, parseRepositoriesBlock(block, "dependency", gradleProperties)...)
 	}
-	return dedupeRepositories(repos)
+	return annotateRepositories(dedupeRepositories(repos), origin, 0)
 }
 
 func extractNestedBlock(body string, names ...string) (string, bool) {
@@ -257,6 +261,13 @@ func dedupeRepositories(repos []Repository) []Repository {
 		if idx, ok := seen[key]; ok {
 			existing := out[idx]
 			existing.Exclusive = existing.Exclusive || repo.Exclusive
+			if repo.Priority < existing.Priority {
+				existing.Priority = repo.Priority
+			}
+			if existing.Origin == "" {
+				existing.Origin = repo.Origin
+			}
+			existing.OfflineAllowed = existing.OfflineAllowed || repo.OfflineAllowed
 			existing.IncludeGroups = mergeStrings(existing.IncludeGroups, repo.IncludeGroups)
 			existing.IncludeGroupRegex = mergeStrings(existing.IncludeGroupRegex, repo.IncludeGroupRegex)
 			existing.ExcludeGroups = mergeStrings(existing.ExcludeGroups, repo.ExcludeGroups)
@@ -270,6 +281,32 @@ func dedupeRepositories(repos []Repository) []Repository {
 		out = append(out, repo)
 	}
 	return out
+}
+
+func annotateRepositories(repos []Repository, origin string, startPriority int) []Repository {
+	if len(repos) == 0 {
+		return nil
+	}
+	out := make([]Repository, 0, len(repos))
+	for i, repo := range repos {
+		repo.Priority = startPriority + i
+		if origin != "" {
+			repo.Origin = origin
+		}
+		repo.OfflineAllowed = repo.OfflineAllowed || repositoryOfflineAllowed(repo)
+		out = append(out, repo)
+	}
+	return out
+}
+
+func repositoryOfflineAllowed(repo Repository) bool {
+	if repo.Kind == "mavenLocal" {
+		return true
+	}
+	if strings.HasPrefix(repo.URL, "file:") || strings.HasPrefix(repo.URL, "file://") {
+		return true
+	}
+	return false
 }
 
 func mergeStrings(a, b []string) []string {

@@ -68,7 +68,13 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 			right := batch[indexes[j]]
 			lp := probePriority(left.ProbeHint)
 			rp := probePriority(right.ProbeHint)
-			return lp < rp
+			if lp != rp {
+				return lp < rp
+			}
+			if left.ResourceCost != right.ResourceCost {
+				return left.ResourceCost > right.ResourceCost
+			}
+			return false
 		})
 		limit := 1
 		if len(indexes) > 0 && batch[indexes[0]].MaxParallelism > 0 {

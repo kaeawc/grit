@@ -219,8 +219,18 @@ func classifyDiagnostic(tool, severity, message string) (string, string) {
 		switch {
 		case strings.Contains(lower, "failed linking references"):
 			return "aapt2_link_failed", "resource-linking"
+		case strings.Contains(lower, "failed to compile file"),
+			strings.Contains(lower, "failed compiling"),
+			strings.Contains(lower, "resource compilation failed"):
+			return "aapt2_compile_failed", "resource-compilation"
 		case strings.Contains(lower, "duplicate resource"):
 			return "aapt2_duplicate_resource", "resources"
+		case strings.Contains(lower, "failed parsing xml"),
+			strings.Contains(lower, "xml file line") && strings.Contains(lower, "error"):
+			return "aapt2_xml_parse_failed", "resources"
+		case strings.Contains(lower, "resource entry") && strings.Contains(lower, "invalid character"),
+			strings.Contains(lower, "is not a valid resource name"):
+			return "aapt2_invalid_resource_name", "resources"
 		case strings.Contains(lower, "resource ") && strings.Contains(lower, " not found"):
 			return "aapt2_missing_resource", "resources"
 		}

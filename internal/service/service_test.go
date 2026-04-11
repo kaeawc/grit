@@ -754,6 +754,60 @@ func TestExecuteBatchPrioritizesReusableProbeHints(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchPrioritizesHigherResourceCostWithinWorkerClass(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	model := &configmodel.Model{}
+	batch := []configmodel.ActionScheduleStep{
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:light"),
+				Name: "assembleLight",
+				Attributes: map[string]string{
+					"operation":   "assemble",
+					"modulePath":  ":app",
+					"variantName": "release",
+				},
+			},
+			WorkerClass:    "android-package",
+			ResourceClass:  "android-tools",
+			ResourceCost:   1,
+			MaxParallelism: 1,
+		},
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:heavy"),
+				Name: "assembleHeavy",
+				Attributes: map[string]string{
+					"operation":   "assemble",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "android-package",
+			ResourceClass:  "android-tools",
+			ResourceCost:   5,
+			MaxParallelism: 1,
+		},
+	}
+	_, err := svc.executeBatch(context.Background(), prj, mod, model, graph.New(), BuildRequest{Command: "assemble"}, 0, batch, os.Stdout, os.Stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := fake.CallsSnapshot()
+	if len(calls) != 2 {
+		t.Fatalf("expected two compiler calls, got %#v", calls)
+	}
+	if calls[0] != "assemble::app:debug" || calls[1] != "assemble::app:release" {
+		t.Fatalf("unexpected compiler calls: %#v", calls)
+	}
+}
+
 type blockingCompiler struct {
 	started chan struct{}
 	release chan struct{}

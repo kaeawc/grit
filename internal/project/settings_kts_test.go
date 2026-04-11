@@ -63,19 +63,23 @@ include(":app", ":lib")
 	foundCustom := false
 	foundJCenter := false
 	foundBlockMaven := false
+	foundMavenLocal := false
 	for _, repo := range model.Repositories {
 		if repo.Scope == "plugin" && repo.Name == "google" {
 			foundGoogle = true
 			googleRepo = repo
 		}
+		if repo.Scope == "dependency" && repo.Kind == "mavenLocal" {
+			foundMavenLocal = repo.Priority == 3 && repo.Origin == "settings" && repo.OfflineAllowed
+		}
 		if repo.Scope == "dependency" && repo.Name == "ExampleRepo" && repo.URL == "https://example.com/maven/" {
-			foundCustom = true
+			foundCustom = repo.Priority == 7 && repo.Origin == "settings" && !repo.OfflineAllowed
 		}
 		if repo.Scope == "dependency" && repo.Name == "jcenter" && repo.URL == "https://jcenter.bintray.com/" {
-			foundJCenter = len(repo.IncludeGroups) == 1 && repo.IncludeGroups[0] == "legacy.example"
+			foundJCenter = len(repo.IncludeGroups) == 1 && repo.IncludeGroups[0] == "legacy.example" && repo.Priority == 6 && repo.Origin == "settings"
 		}
 		if repo.Scope == "dependency" && repo.Name == "https://plugins.example.com/releases/" && repo.URL == "https://plugins.example.com/releases/" {
-			foundBlockMaven = len(repo.IncludeGroupRegex) == 1 && strings.Contains(repo.IncludeGroupRegex[0], "com") && strings.Contains(repo.IncludeGroupRegex[0], "example")
+			foundBlockMaven = len(repo.IncludeGroupRegex) == 1 && strings.Contains(repo.IncludeGroupRegex[0], "com") && strings.Contains(repo.IncludeGroupRegex[0], "example") && repo.Priority == 8 && repo.Origin == "settings"
 		}
 	}
 	if !foundGoogle {
@@ -92,6 +96,9 @@ include(":app", ":lib")
 	}
 	if !foundBlockMaven {
 		t.Fatalf("expected block-style maven repository in %#v", model.Repositories)
+	}
+	if !foundMavenLocal {
+		t.Fatalf("expected mavenLocal repository metadata in %#v", model.Repositories)
 	}
 }
 
@@ -172,6 +179,78 @@ android {
 	for url, found := range want {
 		if !found {
 			t.Fatalf("expected repository %s in %#v", url, prj.Repositories)
+		}
+	}
+}
+
+func TestLoadPreservesRepositoryOrderOriginAndOfflineAllowance(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, root, "settings.gradle.kts", `
+rootProject.name = "RepoOrder"
+dependencyResolutionManagement {
+  repositories {
+    mavenLocal()
+    google()
+  }
+}
+include(":app")
+`)
+	testutil.WriteFile(t, root, "build.gradle.kts", `
+plugins {}
+
+allprojects {
+  repositories {
+    maven {
+      url = uri("https://root.example.com/maven")
+    }
+  }
+}
+`)
+	testutil.WriteFile(t, root, "app/build.gradle.kts", `
+plugins {}
+
+repositories {
+  maven {
+    url = uri("file:///tmp/module-repo")
+  }
+}
+`)
+
+	prj, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prj.Repositories) != 4 {
+		t.Fatalf("expected 4 repositories, got %d: %#v", len(prj.Repositories), prj.Repositories)
+	}
+	checks := []struct {
+		idx     int
+		name    string
+		url     string
+		origin  string
+		offline bool
+	}{
+		{idx: 0, name: "mavenLocal", origin: "settings", offline: true},
+		{idx: 1, name: "google", origin: "settings", offline: false},
+		{idx: 2, name: "https://root.example.com/maven", url: "https://root.example.com/maven/", origin: "root-build", offline: false},
+		{idx: 3, name: "file:///tmp/module-repo", url: "file:///tmp/module-repo/", origin: "module-build", offline: true},
+	}
+	for _, check := range checks {
+		repo := prj.Repositories[check.idx]
+		if repo.Name != check.name {
+			t.Fatalf("repo[%d] name = %q, want %q", check.idx, repo.Name, check.name)
+		}
+		if check.url != "" && repo.URL != check.url {
+			t.Fatalf("repo[%d] url = %q, want %q", check.idx, repo.URL, check.url)
+		}
+		if repo.Priority != check.idx {
+			t.Fatalf("repo[%d] priority = %d, want %d", check.idx, repo.Priority, check.idx)
+		}
+		if repo.Origin != check.origin {
+			t.Fatalf("repo[%d] origin = %q, want %q", check.idx, repo.Origin, check.origin)
+		}
+		if repo.OfflineAllowed != check.offline {
+			t.Fatalf("repo[%d] offlineAllowed = %v, want %v", check.idx, repo.OfflineAllowed, check.offline)
 		}
 	}
 }

@@ -50,7 +50,7 @@ func parseSettingsKTSWithProperties(body string, gradleProperties map[string]str
 			}
 		}
 	}
-	model.Repositories = dedupeRepositories(model.Repositories)
+	model.Repositories = annotateRepositories(dedupeRepositories(model.Repositories), "settings", 0)
 	model.Includes = mergeStrings(nil, model.Includes)
 	model.ModuleDirs = parseProjectDirAssignments(body)
 	return model
@@ -110,7 +110,7 @@ func parseRepositoriesStatements(statements *sitter.Node, src []byte, scope stri
 			}
 		}
 	}
-	return dedupeRepositories(repos)
+	return annotateRepositories(dedupeRepositories(repos), "settings", 0)
 }
 
 func parseExclusiveContent(node *sitter.Node, src []byte, scope string, gradleProperties map[string]string) (Repository, bool) {

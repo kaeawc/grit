@@ -46,6 +46,26 @@ TRACE aapt2 link args:
 	}
 }
 
+func TestParseToolDiagnosticsClassifiesAAPT2CompileAndXMLFailures(t *testing.T) {
+	records := parseToolDiagnostics("aapt2", "stderr", `
+error: failed to compile file /repo/app/src/main/res/drawable/icon.xml
+error: resource entry bad$name has invalid character '$'
+error: failed parsing XML in /repo/app/src/main/res/values/strings.xml
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %#v", records)
+	}
+	if records[0].Code != "aapt2_compile_failed" || records[0].Category != "resource-compilation" {
+		t.Fatalf("unexpected aapt2 compile diagnostic: %#v", records[0])
+	}
+	if records[1].Code != "aapt2_invalid_resource_name" || records[1].Category != "resources" {
+		t.Fatalf("unexpected aapt2 invalid-name diagnostic: %#v", records[1])
+	}
+	if records[2].Code != "aapt2_xml_parse_failed" || records[2].Category != "resources" {
+		t.Fatalf("unexpected aapt2 xml diagnostic: %#v", records[2])
+	}
+}
+
 func TestParseToolDiagnosticsExtractsRelatedDependency(t *testing.T) {
 	records := parseToolDiagnostics("r8", "stderr", `
 error: Missing class com.example.Foo referenced from com.squareup.okhttp3:okhttp:4.12.0
@@ -187,5 +207,27 @@ WARNING: signer #1 entry META-INF/MANIFEST.MF not protected by this signature.
 	}
 	if records[1].Stream != "stdout" || records[1].Code != "apksigner_unprotected_entry" || records[1].Category != "signing" {
 		t.Fatalf("unexpected collected apksigner warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesAAPT2DiagnosticsAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "aapt2", `
+error: failed to compile file /repo/app/src/main/res/drawable/icon.xml
+`, `
+error: resource entry bad$name has invalid character '$'
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected aapt2 diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "aapt2_compile_failed" || records[0].Category != "resource-compilation" {
+		t.Fatalf("unexpected collected aapt2 compile diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "aapt2_invalid_resource_name" || records[1].Category != "resources" {
+		t.Fatalf("unexpected collected aapt2 invalid-name diagnostic: %#v", records[1])
 	}
 }

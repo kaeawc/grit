@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/kaeawc/grit/internal/catalog"
@@ -165,15 +164,246 @@ func (r *Resolver) findCachedVersion(group, module string) string {
 	if err != nil {
 		return ""
 	}
-	var versions []string
+	var best string
 	for _, entry := range entries {
 		if entry.IsDir() {
-			versions = append(versions, entry.Name())
+			version := entry.Name()
+			if best == "" || compareVersionStrings(version, best) > 0 {
+				best = version
+			}
 		}
 	}
-	sort.Strings(versions)
-	if len(versions) == 0 {
-		return ""
+	return best
+}
+
+func compareVersionStrings(a, b string) int {
+	at := tokenizeVersion(a)
+	bt := tokenizeVersion(b)
+	for i := 0; i < len(at) || i < len(bt); i++ {
+		if i >= len(at) {
+			switch bt[i].kind {
+			case versionTokenNumeric:
+				if bt[i].numericIsZero() {
+					continue
+				}
+				return -1
+			case versionTokenQualifier:
+				switch cmp := compareMissingWithQualifier(bt[i]); cmp {
+				case 0:
+					continue
+				default:
+					return cmp
+				}
+			}
+		}
+		if i >= len(bt) {
+			switch at[i].kind {
+			case versionTokenNumeric:
+				if at[i].numericIsZero() {
+					continue
+				}
+				return 1
+			case versionTokenQualifier:
+				switch cmp := compareMissingWithQualifier(at[i]); cmp {
+				case 0:
+					continue
+				default:
+					return -cmp
+				}
+			}
+		}
+		if cmp := compareVersionToken(at[i], bt[i]); cmp != 0 {
+			return cmp
+		}
 	}
-	return versions[len(versions)-1]
+	if a == b {
+		return 0
+	}
+	if len(a) != len(b) {
+		if len(a) < len(b) {
+			return 1
+		}
+		return -1
+	}
+	if a < b {
+		return -1
+	}
+	return 1
+}
+
+type versionTokenKind int
+
+const (
+	versionTokenNumeric versionTokenKind = iota
+	versionTokenQualifier
+)
+
+type versionToken struct {
+	kind      versionTokenKind
+	numeric   string
+	qualifier string
+	suffix    string
+}
+
+func (t versionToken) numericIsZero() bool {
+	return strings.TrimLeft(t.numeric, "0") == ""
+}
+
+func tokenizeVersion(v string) []versionToken {
+	v = strings.TrimSpace(strings.ToLower(v))
+	if v == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(v, func(r rune) bool {
+		return r == '.' || r == '-' || r == '_'
+	})
+	tokens := make([]versionToken, 0, len(parts))
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if isDigits(part) {
+			tokens = append(tokens, versionToken{kind: versionTokenNumeric, numeric: part})
+			continue
+		}
+		prefix, suffix, ok := splitQualifierSuffix(part)
+		if !ok {
+			tokens = append(tokens, versionToken{kind: versionTokenQualifier, qualifier: part})
+			continue
+		}
+		tokens = append(tokens, versionToken{kind: versionTokenQualifier, qualifier: prefix, suffix: suffix})
+	}
+	return tokens
+}
+
+func compareVersionToken(a, b versionToken) int {
+	if a.kind != b.kind {
+		if a.kind == versionTokenNumeric {
+			return 1
+		}
+		return -1
+	}
+	switch a.kind {
+	case versionTokenNumeric:
+		return compareNumericStrings(a.numeric, b.numeric)
+	case versionTokenQualifier:
+		ar := qualifierRank(a.qualifier)
+		br := qualifierRank(b.qualifier)
+		if ar != br {
+			if ar < br {
+				return -1
+			}
+			return 1
+		}
+		if cmp := compareNumericStrings(a.suffix, b.suffix); cmp != 0 {
+			return cmp
+		}
+		if a.qualifier == b.qualifier {
+			return 0
+		}
+		if a.qualifier < b.qualifier {
+			return -1
+		}
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareMissingWithQualifier(tok versionToken) int {
+	if tok.kind != versionTokenQualifier {
+		return 0
+	}
+	rank := qualifierRank(tok.qualifier)
+	switch {
+	case rank < 60:
+		return 1
+	case rank > 60:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func compareNumericStrings(a, b string) int {
+	a = strings.TrimLeft(a, "0")
+	b = strings.TrimLeft(b, "0")
+	if a == "" {
+		a = "0"
+	}
+	if b == "" {
+		b = "0"
+	}
+	if len(a) != len(b) {
+		if len(a) < len(b) {
+			return -1
+		}
+		return 1
+	}
+	if a == b {
+		return 0
+	}
+	if a < b {
+		return -1
+	}
+	return 1
+}
+
+func qualifierRank(q string) int {
+	switch q {
+	case "", "ga", "final", "release":
+		return 60
+	case "alpha", "a":
+		return 10
+	case "beta", "b":
+		return 20
+	case "milestone", "m":
+		return 30
+	case "cr", "rc":
+		return 40
+	case "snapshot":
+		return 50
+	case "sp":
+		return 70
+	default:
+		return 55
+	}
+}
+
+func splitQualifierSuffix(part string) (string, string, bool) {
+	i := 0
+	for i < len(part) && isAlpha(part[i]) {
+		i++
+	}
+	if i == 0 || i == len(part) {
+		return "", "", false
+	}
+	j := i
+	for j < len(part) && isDigit(part[j]) {
+		j++
+	}
+	if j != len(part) {
+		return "", "", false
+	}
+	return part[:i], part[i:], true
+}
+
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if !isDigit(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlpha(b byte) bool {
+	return b >= 'a' && b <= 'z'
+}
+
+func isDigit(b byte) bool {
+	return b >= '0' && b <= '9'
 }
