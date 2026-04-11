@@ -90,6 +90,50 @@ func TestGetProbesUpstreamAndPromotes(t *testing.T) {
 	}
 }
 
+func TestGetWithProbeRecordsReturnsOrderedTimeline(t *testing.T) {
+	primary := cas.NewFilesystemStore(t.TempDir())
+	upstream := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+
+	payload := []byte("probe trace")
+	info, err := upstream.PutBytes(ctx, payload, cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "seed"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := New(primary, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, records, err := s.GetWithProbeRecords(ctx, info.Hash)
+	if err != nil {
+		t.Fatalf("GetWithProbeRecords: %v", err)
+	}
+	got, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("GetWithProbeRecords returned wrong content")
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected two probe records, got %#v", records)
+	}
+	if records[0].Tier != 0 || records[0].Outcome != ProbeOutcomeMiss {
+		t.Fatalf("unexpected primary probe record: %#v", records[0])
+	}
+	if records[1].Tier != 1 || records[1].Outcome != ProbeOutcomeHit || !records[1].Promoted {
+		t.Fatalf("unexpected upstream probe record: %#v", records[1])
+	}
+	if len(records[1].PromotionTargets) != 1 || records[1].PromotionTargets[0] != 0 {
+		t.Fatalf("unexpected promotion targets: %#v", records[1])
+	}
+	if has, _ := primary.Has(ctx, info.Hash); !has {
+		t.Fatalf("primary did not receive promoted blob")
+	}
+}
+
 func TestGetPromotesAcrossMultipleTiers(t *testing.T) {
 	primary := cas.NewFilesystemStore(t.TempDir())
 	middle := cas.NewFilesystemStore(t.TempDir())
@@ -231,6 +275,55 @@ func TestActionResultProbesAndPromotes(t *testing.T) {
 	}
 
 	// After the read, the primary tier should hold the promoted result.
+	primaryResult, err := primary.GetActionResult(ctx, actionHash)
+	if err != nil {
+		t.Fatalf("primary GetActionResult after promote: %v", err)
+	}
+	if primaryResult.ActionHash != actionHash {
+		t.Fatalf("primary action hash after promote mismatch")
+	}
+}
+
+func TestGetActionResultWithProbeRecordsReturnsOrderedTimeline(t *testing.T) {
+	primary := cas.NewFilesystemStore(t.TempDir())
+	upstream := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+
+	actionHash := cas.HashBytes([]byte("action-records"))
+	result := cas.ActionResult{
+		ActionHash: actionHash,
+		Outputs: []cas.NamedOutput{
+			{Role: "out", Blob: cas.BlobInfo{Hash: cas.HashBytes([]byte("output")), Size: 6}},
+		},
+	}
+	if err := upstream.PutActionResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := New(primary, upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, records, err := s.GetActionResultWithProbeRecords(ctx, actionHash)
+	if err != nil {
+		t.Fatalf("GetActionResultWithProbeRecords: %v", err)
+	}
+	if loaded.ActionHash != actionHash {
+		t.Fatalf("action hash mismatch")
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected two probe records, got %#v", records)
+	}
+	if records[0].Tier != 0 || records[0].Outcome != ProbeOutcomeMiss {
+		t.Fatalf("unexpected primary probe record: %#v", records[0])
+	}
+	if records[1].Tier != 1 || records[1].Outcome != ProbeOutcomeHit || !records[1].Promoted {
+		t.Fatalf("unexpected upstream probe record: %#v", records[1])
+	}
+	if len(records[1].PromotionTargets) != 1 || records[1].PromotionTargets[0] != 0 {
+		t.Fatalf("unexpected action promotion targets: %#v", records[1])
+	}
 	primaryResult, err := primary.GetActionResult(ctx, actionHash)
 	if err != nil {
 		t.Fatalf("primary GetActionResult after promote: %v", err)

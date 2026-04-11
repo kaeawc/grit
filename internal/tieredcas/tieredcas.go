@@ -29,6 +29,36 @@ import (
 	"github.com/kaeawc/grit/internal/cas"
 )
 
+type ProbeOperation string
+
+const (
+	ProbeOperationGet             ProbeOperation = "get"
+	ProbeOperationGetActionResult ProbeOperation = "getActionResult"
+)
+
+type ProbeOutcome string
+
+const (
+	ProbeOutcomeHit   ProbeOutcome = "hit"
+	ProbeOutcomeMiss  ProbeOutcome = "miss"
+	ProbeOutcomeError ProbeOutcome = "error"
+)
+
+// ProbeRecord describes one tier probe in order.
+//
+// Records are returned in deterministic probe order for a single
+// operation. A hit record may mark Promoted and name the closer tiers
+// that received the promotion write in the same deterministic order the
+// promotion path used.
+type ProbeRecord struct {
+	Operation        ProbeOperation `json:"operation"`
+	Tier             int            `json:"tier"`
+	Outcome          ProbeOutcome   `json:"outcome"`
+	Promoted         bool           `json:"promoted,omitempty"`
+	PromotionTargets []int          `json:"promotionTargets,omitempty"`
+	Error            string         `json:"error,omitempty"`
+}
+
 // Store composes an ordered chain of cas.Store tiers.
 //
 // The tier at index 0 is the primary tier: every Put/PutBytes/PutExpected
@@ -76,6 +106,60 @@ func (s *Store) PutBytesExpected(ctx context.Context, data []byte, expected cas.
 	return s.tiers[0].PutBytesExpected(ctx, data, expected, prov)
 }
 
+// GetWithProbeRecords probes tiers in order and returns the bytes plus
+// a deterministic probe timeline. The timeline contains one record per
+// tier probe, with the hit record marked when promotion occurred.
+func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadCloser, []ProbeRecord, error) {
+	var records []ProbeRecord
+	for i, tier := range s.tiers {
+		rc, err := tier.Get(ctx, h)
+		if err == nil {
+			if i == 0 {
+				records = append(records, ProbeRecord{
+					Operation: ProbeOperationGet,
+					Tier:      i,
+					Outcome:   ProbeOutcomeHit,
+				})
+				return rc, records, nil
+			}
+			data, readErr := io.ReadAll(rc)
+			_ = rc.Close()
+			if readErr != nil {
+				return nil, append(records, ProbeRecord{
+					Operation: ProbeOperationGet,
+					Tier:      i,
+					Outcome:   ProbeOutcomeError,
+					Error:     readErr.Error(),
+				}), readErr
+			}
+			targets := promotionTargets(i)
+			records = append(records, ProbeRecord{
+				Operation:        ProbeOperationGet,
+				Tier:             i,
+				Outcome:          ProbeOutcomeHit,
+				Promoted:         len(targets) > 0,
+				PromotionTargets: targets,
+			})
+			s.promote(ctx, h, data, i)
+			return io.NopCloser(bytes.NewReader(data)), records, nil
+		}
+		if !errors.Is(err, cas.ErrNotFound) {
+			return nil, append(records, ProbeRecord{
+				Operation: ProbeOperationGet,
+				Tier:      i,
+				Outcome:   ProbeOutcomeError,
+				Error:     err.Error(),
+			}), fmt.Errorf("tieredcas: tier %d Get: %w", i, err)
+		}
+		records = append(records, ProbeRecord{
+			Operation: ProbeOperationGet,
+			Tier:      i,
+			Outcome:   ProbeOutcomeMiss,
+		})
+	}
+	return nil, records, cas.ErrNotFound
+}
+
 // Get probes tiers in order. On a hit at tier N > 0 the bytes are
 // promoted to every closer tier (tiers with lower indices) before being
 // returned to the caller. Promotion uses PutBytesExpected so the content
@@ -86,25 +170,8 @@ func (s *Store) PutBytesExpected(ctx context.Context, data []byte, expected cas.
 // tiers typically don't track it and the extra round trip is not
 // worthwhile for a promotion step.
 func (s *Store) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
-	for i, tier := range s.tiers {
-		rc, err := tier.Get(ctx, h)
-		if err == nil {
-			if i == 0 {
-				return rc, nil
-			}
-			data, readErr := io.ReadAll(rc)
-			_ = rc.Close()
-			if readErr != nil {
-				return nil, readErr
-			}
-			s.promote(ctx, h, data, i)
-			return io.NopCloser(bytes.NewReader(data)), nil
-		}
-		if !errors.Is(err, cas.ErrNotFound) {
-			return nil, fmt.Errorf("tieredcas: tier %d Get: %w", i, err)
-		}
-	}
-	return nil, cas.ErrNotFound
+	rc, _, err := s.GetWithProbeRecords(ctx, h)
+	return rc, err
 }
 
 // Stat returns the first found blob info, probing tiers in order. It
@@ -152,19 +219,45 @@ func (s *Store) PutActionResult(ctx context.Context, result cas.ActionResult) er
 // result is promoted to the primary tier before returning so subsequent
 // lookups are served locally.
 func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, error) {
+	result, _, err := s.GetActionResultWithProbeRecords(ctx, actionHash)
+	return result, err
+}
+
+// GetActionResultWithProbeRecords probes tiers in order and returns the
+// cached action result plus a deterministic probe timeline.
+func (s *Store) GetActionResultWithProbeRecords(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, []ProbeRecord, error) {
+	var records []ProbeRecord
 	for i, tier := range s.tiers {
 		result, err := tier.GetActionResult(ctx, actionHash)
 		if err == nil {
+			record := ProbeRecord{
+				Operation: ProbeOperationGetActionResult,
+				Tier:      i,
+				Outcome:   ProbeOutcomeHit,
+			}
 			if i > 0 {
+				record.Promoted = true
+				record.PromotionTargets = []int{0}
 				_ = s.tiers[0].PutActionResult(ctx, result)
 			}
-			return result, nil
+			records = append(records, record)
+			return result, records, nil
 		}
 		if !errors.Is(err, cas.ErrNotFound) {
-			return cas.ActionResult{}, fmt.Errorf("tieredcas: tier %d GetActionResult: %w", i, err)
+			return cas.ActionResult{}, append(records, ProbeRecord{
+				Operation: ProbeOperationGetActionResult,
+				Tier:      i,
+				Outcome:   ProbeOutcomeError,
+				Error:     err.Error(),
+			}), fmt.Errorf("tieredcas: tier %d GetActionResult: %w", i, err)
 		}
+		records = append(records, ProbeRecord{
+			Operation: ProbeOperationGetActionResult,
+			Tier:      i,
+			Outcome:   ProbeOutcomeMiss,
+		})
 	}
-	return cas.ActionResult{}, cas.ErrNotFound
+	return cas.ActionResult{}, records, cas.ErrNotFound
 }
 
 // promote writes data to every tier closer than sourceTier (i.e. indices
@@ -183,6 +276,17 @@ func (s *Store) promote(ctx context.Context, h cas.Hash, data []byte, sourceTier
 	for j := sourceTier - 1; j >= 0; j-- {
 		_, _ = s.tiers[j].PutBytesExpected(ctx, data, h, prov)
 	}
+}
+
+func promotionTargets(sourceTier int) []int {
+	if sourceTier <= 0 {
+		return nil
+	}
+	targets := make([]int, 0, sourceTier)
+	for j := sourceTier - 1; j >= 0; j-- {
+		targets = append(targets, j)
+	}
+	return targets
 }
 
 // Compile-time assertion that *Store satisfies cas.Store.

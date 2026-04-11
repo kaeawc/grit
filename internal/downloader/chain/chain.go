@@ -43,6 +43,23 @@ type Downloader struct {
 // Option configures a Downloader at construction.
 type Option func(*Downloader)
 
+// FetchOutcome describes the result of one source attempt in a chain fetch.
+type FetchOutcome string
+
+const (
+	FetchOutcomeSuccess  FetchOutcome = "success"
+	FetchOutcomeNotFound FetchOutcome = "not_found"
+	FetchOutcomeError    FetchOutcome = "error"
+)
+
+// FetchRecord captures one source attempt in a chain fetch.
+type FetchRecord struct {
+	Order    int          `json:"order"`
+	SourceID string       `json:"sourceId"`
+	Outcome  FetchOutcome `json:"outcome"`
+	Error    string       `json:"error,omitempty"`
+}
+
 // WithID overrides the chain identifier recorded in log messages and
 // downstream consumers. The default is DefaultID.
 func WithID(id string) Option {
@@ -79,6 +96,45 @@ func (c *Downloader) Sources() []downloader.Downloader {
 	return append([]downloader.Downloader(nil), c.sources...)
 }
 
+// FetchWithRecords behaves like Fetch but also returns a structured trace
+// of the source attempts made in priority order.
+func (c *Downloader) FetchWithRecords(ctx context.Context, pin lockfile.Pin, store cas.Store) ([]FetchRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	records := make([]FetchRecord, 0, len(c.sources))
+	var lastNotFound error
+	for i, src := range c.sources {
+		err := src.Fetch(ctx, pin, store)
+		record := FetchRecord{
+			Order:    i,
+			SourceID: src.ID(),
+		}
+		if err == nil {
+			record.Outcome = FetchOutcomeSuccess
+			records = append(records, record)
+			return records, nil
+		}
+		if errors.Is(err, downloader.ErrNotFound) {
+			record.Outcome = FetchOutcomeNotFound
+			record.Error = err.Error()
+			records = append(records, record)
+			lastNotFound = err
+			continue
+		}
+		record.Outcome = FetchOutcomeError
+		record.Error = err.Error()
+		records = append(records, record)
+		return records, fmt.Errorf("chain: source %s: %w", src.ID(), err)
+	}
+	if lastNotFound != nil {
+		return records, fmt.Errorf("chain: no source provided %s: %w", pin.Coordinate, lastNotFound)
+	}
+	// Unreachable: New guarantees len(sources) >= 1 and every source
+	// either succeeds, returns ErrNotFound, or returns a hard error.
+	return records, fmt.Errorf("chain: no sources available for %s", pin.Coordinate)
+}
+
 // Fetch tries each source in order. For each source:
 //
 //   - nil error → the chain is done, return nil
@@ -99,27 +155,8 @@ func (c *Downloader) Sources() []downloader.Downloader {
 // guarantees the already-stored blobs are the same bytes the next
 // source would have fetched anyway.
 func (c *Downloader) Fetch(ctx context.Context, pin lockfile.Pin, store cas.Store) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	var lastNotFound error
-	for _, src := range c.sources {
-		err := src.Fetch(ctx, pin, store)
-		if err == nil {
-			return nil
-		}
-		if errors.Is(err, downloader.ErrNotFound) {
-			lastNotFound = err
-			continue
-		}
-		return fmt.Errorf("chain: source %s: %w", src.ID(), err)
-	}
-	if lastNotFound != nil {
-		return fmt.Errorf("chain: no source provided %s: %w", pin.Coordinate, lastNotFound)
-	}
-	// Unreachable: New guarantees len(sources) >= 1 and every source
-	// either succeeds, returns ErrNotFound, or returns a hard error.
-	return fmt.Errorf("chain: no sources available for %s", pin.Coordinate)
+	_, err := c.FetchWithRecords(ctx, pin, store)
+	return err
 }
 
 // Compile-time assertion that *Downloader satisfies downloader.Downloader.

@@ -104,8 +104,12 @@ func TestFetchFirstSourceWins(t *testing.T) {
 	store := cas.NewFilesystemStore(t.TempDir())
 	pin := testPin(hash)
 
-	if err := c.Fetch(ctx, pin, store); err != nil {
+	records, err := c.FetchWithRecords(ctx, pin, store)
+	if err != nil {
 		t.Fatalf("Fetch: %v", err)
+	}
+	if len(records) != 1 || records[0].Order != 0 || records[0].SourceID != "first" || records[0].Outcome != FetchOutcomeSuccess {
+		t.Fatalf("unexpected fetch records: %#v", records)
 	}
 	if first.callCount() != 1 {
 		t.Fatalf("first source call count: %d", first.callCount())
@@ -129,8 +133,12 @@ func TestFetchFallsThroughOnNotFound(t *testing.T) {
 	c, _ := New([]downloader.Downloader{empty, stocked})
 	store := cas.NewFilesystemStore(t.TempDir())
 
-	if err := c.Fetch(ctx, testPin(hash), store); err != nil {
+	records, err := c.FetchWithRecords(ctx, testPin(hash), store)
+	if err != nil {
 		t.Fatalf("Fetch: %v", err)
+	}
+	if len(records) != 2 || records[0].SourceID != "empty" || records[0].Outcome != FetchOutcomeNotFound || records[1].SourceID != "stocked" || records[1].Outcome != FetchOutcomeSuccess {
+		t.Fatalf("unexpected fetch records: %#v", records)
 	}
 	if empty.callCount() != 1 || stocked.callCount() != 1 {
 		t.Fatalf("unexpected call counts: empty=%d stocked=%d", empty.callCount(), stocked.callCount())
@@ -148,12 +156,15 @@ func TestFetchReturnsNotFoundAfterAllSourcesExhausted(t *testing.T) {
 	b := newStub("b")
 	c, _ := New([]downloader.Downloader{a, b})
 
-	err := c.Fetch(ctx, testPin(hash), cas.NewFilesystemStore(t.TempDir()))
+	records, err := c.FetchWithRecords(ctx, testPin(hash), cas.NewFilesystemStore(t.TempDir()))
 	if err == nil {
 		t.Fatalf("expected error")
 	}
 	if !errors.Is(err, downloader.ErrNotFound) {
 		t.Fatalf("expected wrapped downloader.ErrNotFound, got %v", err)
+	}
+	if len(records) != 2 || records[0].SourceID != "a" || records[0].Outcome != FetchOutcomeNotFound || records[1].SourceID != "b" || records[1].Outcome != FetchOutcomeNotFound {
+		t.Fatalf("unexpected fetch records: %#v", records)
 	}
 }
 
@@ -167,12 +178,15 @@ func TestFetchDoesNotFallThroughOnHardError(t *testing.T) {
 	c, _ := New([]downloader.Downloader{hard, fallback})
 	pin := testPin(cas.HashBytes([]byte("would have worked")))
 
-	err := c.Fetch(ctx, pin, cas.NewFilesystemStore(t.TempDir()))
+	records, err := c.FetchWithRecords(ctx, pin, cas.NewFilesystemStore(t.TempDir()))
 	if err == nil {
 		t.Fatalf("expected hard error to surface")
 	}
 	if errors.Is(err, downloader.ErrNotFound) {
 		t.Fatalf("hard error must not be reported as ErrNotFound")
+	}
+	if len(records) != 1 || records[0].SourceID != "hard" || records[0].Outcome != FetchOutcomeError {
+		t.Fatalf("unexpected fetch records: %#v", records)
 	}
 	if fallback.callCount() != 0 {
 		t.Fatalf("fallback should not be called after hard error, got %d calls", fallback.callCount())
@@ -207,8 +221,12 @@ func TestFetchPartialPopulationAcceptedByNextSource(t *testing.T) {
 		},
 	}
 
-	if err := c.Fetch(ctx, pin, store); err != nil {
+	records, err := c.FetchWithRecords(ctx, pin, store)
+	if err != nil {
 		t.Fatalf("Fetch: %v", err)
+	}
+	if len(records) != 2 || records[0].SourceID != "first-partial" || records[0].Outcome != FetchOutcomeNotFound || records[1].SourceID != "second-full" || records[1].Outcome != FetchOutcomeSuccess {
+		t.Fatalf("unexpected fetch records: %#v", records)
 	}
 
 	// Both files must be in the store.
