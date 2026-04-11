@@ -88,6 +88,12 @@ func (p *Publisher) PublishPin(ctx context.Context, pin lockfile.Pin, store cas.
 			return fmt.Errorf("mavenlocal publish %s: %w", pin.Coordinate, err)
 		}
 	}
+	if err := p.publishGeneratedPom(pin); err != nil {
+		return fmt.Errorf("mavenlocal publish pom %s: %w", pin.Coordinate, err)
+	}
+	if err := p.publishGeneratedModule(pin); err != nil {
+		return fmt.Errorf("mavenlocal publish gradle module %s: %w", pin.Coordinate, err)
+	}
 	if err := p.publishArtifactMetadata(pin.Coordinate); err != nil {
 		return fmt.Errorf("mavenlocal publish metadata %s: %w", pin.Coordinate, err)
 	}

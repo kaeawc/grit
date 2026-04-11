@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -61,6 +62,7 @@ func TestPublishPinWritesMavenLayout(t *testing.T) {
 	artifactDir := filepath.Join(root, "org", "jetbrains", "kotlin", "kotlin-stdlib")
 	jarPath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.jar")
 	pomPath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.pom")
+	modulePath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.module")
 	metadataPath := filepath.Join(artifactDir, "maven-metadata-local.xml")
 
 	if got, err := os.ReadFile(jarPath); err != nil || string(got) != string(jarBytes) {
@@ -69,10 +71,25 @@ func TestPublishPinWritesMavenLayout(t *testing.T) {
 	if got, err := os.ReadFile(pomPath); err != nil || string(got) != string(pomBytes) {
 		t.Fatalf("pom at %s: err=%v got=%q", pomPath, err, got)
 	}
+	modulePayload, err := os.ReadFile(modulePath)
+	if err != nil {
+		t.Fatalf("module at %s: %v", modulePath, err)
+	}
 
 	// SHA-1 and MD5 sidecars must match the published bytes.
 	assertSidecar(t, jarPath, jarBytes)
 	assertSidecar(t, pomPath, pomBytes)
+	assertSidecar(t, modulePath, modulePayload)
+	var gradleModule gradleModuleMetadata
+	if err := json.Unmarshal(modulePayload, &gradleModule); err != nil {
+		t.Fatalf("json.Unmarshal module: %v", err)
+	}
+	if gradleModule.Component.Group != "org.jetbrains.kotlin" || gradleModule.Component.Module != "kotlin-stdlib" || gradleModule.Component.Version != "2.0.0" {
+		t.Fatalf("unexpected module component: %#v", gradleModule.Component)
+	}
+	if len(gradleModule.Variants) != 1 || gradleModule.Variants[0].Attributes["org.gradle.usage"] != "java-runtime" {
+		t.Fatalf("unexpected generated module variants: %#v", gradleModule.Variants)
+	}
 	metadataPayload, err := os.ReadFile(metadataPath)
 	if err != nil {
 		t.Fatalf("metadata at %s: %v", metadataPath, err)
