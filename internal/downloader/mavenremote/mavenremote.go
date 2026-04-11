@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/kaeawc/grit/internal/cas"
@@ -61,7 +62,13 @@ type Downloader struct {
 	httpClient *http.Client
 	id         string
 	headers    map[string]string
+	envHeaders []headerEnv
 	offline    bool
+}
+
+type headerEnv struct {
+	header string
+	envVar string
 }
 
 // Option configures a Downloader at construction.
@@ -105,6 +112,19 @@ func WithHeaders(headers map[string]string) Option {
 			out[k] = v
 		}
 		d.headers = out
+	}
+}
+
+// WithEnvHeader adds a request header whose value is read from an
+// environment variable at Fetch time. This keeps credential wiring
+// additive and deterministic while allowing private repositories to
+// source auth tokens from the process environment.
+func WithEnvHeader(header, envVar string) Option {
+	return func(d *Downloader) {
+		if header == "" || envVar == "" {
+			return
+		}
+		d.envHeaders = append(d.envHeaders, headerEnv{header: header, envVar: envVar})
 	}
 }
 
@@ -188,10 +208,7 @@ func (d *Downloader) fetchFile(ctx context.Context, pin lockfile.Pin, file lockf
 	if err != nil {
 		return fmt.Errorf("mavenremote: build request: %w", err)
 	}
-	req.Header.Set("User-Agent", userAgent)
-	for k, v := range d.headers {
-		req.Header.Set(k, v)
-	}
+	d.applyRequestHeaders(req.Header)
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
@@ -226,6 +243,18 @@ func (d *Downloader) fetchFile(ctx context.Context, pin lockfile.Pin, file lockf
 		return fmt.Errorf("mavenremote: ingest %s: %w", target, err)
 	}
 	return nil
+}
+
+func (d *Downloader) applyRequestHeaders(headers http.Header) {
+	headers.Set("User-Agent", userAgent)
+	for _, binding := range d.envHeaders {
+		if value, ok := os.LookupEnv(binding.envVar); ok && value != "" {
+			headers.Set(binding.header, value)
+		}
+	}
+	for k, v := range d.headers {
+		headers.Set(k, v)
+	}
 }
 
 // targetURL returns the URL the downloader will GET for this file. If

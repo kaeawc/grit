@@ -380,6 +380,51 @@ func TestFetchSendsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestFetchSendsEnvBackedHeaders(t *testing.T) {
+	fake := newFakeMaven()
+	ts := httptest.NewServer(fake.handler())
+	defer ts.Close()
+
+	payload := []byte("env auth payload")
+	hash := cas.HashBytes(payload)
+	fake.set("/org/example/alpha/1.0/alpha-1.0.jar", payload)
+
+	t.Setenv("GRIT_MAVEN_AUTHORIZATION", "Bearer initial")
+	d, err := New(ts.URL+"/", WithEnvHeader("Authorization", "GRIT_MAVEN_AUTHORIZATION"), WithHeaders(map[string]string{
+		"X-Custom": "value",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GRIT_MAVEN_AUTHORIZATION", "Bearer rotated")
+
+	pin := lockfile.Pin{
+		Coordinate: lockfile.Coordinate{Group: "org.example", Artifact: "alpha", Version: "1.0"},
+		Files: []lockfile.PinFile{
+			{Kind: lockfile.FileKindPrimary, Name: "alpha-1.0.jar", Hash: hash},
+		},
+	}
+	if err := d.Fetch(context.Background(), pin, cas.NewFilesystemStore(t.TempDir())); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	fake.mu.Lock()
+	req := fake.lastReq
+	fake.mu.Unlock()
+	if req == nil {
+		t.Fatalf("no request captured")
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer rotated" {
+		t.Fatalf("Authorization header: got %q want %q", got, "Bearer rotated")
+	}
+	if got := req.Header.Get("X-Custom"); got != "value" {
+		t.Fatalf("X-Custom header: got %q", got)
+	}
+	if got := req.Header.Get("User-Agent"); got != userAgent {
+		t.Fatalf("User-Agent header: got %q want %q", got, userAgent)
+	}
+}
+
 func TestFetchCustomHeadersAreCopied(t *testing.T) {
 	// Mutating the caller's map after construction must not affect the
 	// downloader.
