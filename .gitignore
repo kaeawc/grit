@@ -24,3 +24,16 @@ vendor/
 # Local working dirs
 scratch/
 roadmap/
+.tmpcheck/
+
+# Stray local artifact caches at the repo root.
+# grit's resolver should write these under ~/.grit/caches/, not into the repo.
+# These patterns are belt-and-braces for when something misconfigures CacheRoot.
+/androidx.*/
+/com.*/
+/info.*/
+/io.*/
+/javax.*/
+/junit/
+/net.*/
+/org.*/

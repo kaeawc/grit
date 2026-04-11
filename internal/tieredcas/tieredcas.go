@@ -1,0 +1,189 @@
+// Package tieredcas composes multiple cas.Store tiers into a single
+// probe chain with promote-on-hit semantics.
+//
+// The tier order matches the architectural intent from
+// roadmap/planning/dependency-cache-architecture.md:
+//
+//  1. Worktree overlay (closest, most specific)
+//  2. Shared-local CAS (machine-scoped)
+//  3. Remote cache (team-scoped)
+//
+// Reads probe tiers in order; a hit at tier N promotes the content to
+// every closer tier on the way down so subsequent reads are served from
+// the cheapest tier. Writes land in the primary (index 0) tier only:
+// upload to upstream tiers is a separate, deliberate operation, not an
+// implicit side effect of every local build action.
+//
+// A Store composed through tieredcas satisfies cas.Store so higher
+// layers (downloaders, transforms, publishers) see it as a single store
+// and do not need to know about tier composition.
+package tieredcas
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/kaeawc/grit/internal/cas"
+)
+
+// Store composes an ordered chain of cas.Store tiers.
+//
+// The tier at index 0 is the primary tier: every Put/PutBytes/PutExpected
+// call writes there and only there. Tiers at higher indices are probed
+// on reads and misses at lower tiers.
+type Store struct {
+	tiers []cas.Store
+}
+
+// New returns a Store composing the given tiers in probe order. The
+// first tier is the primary and must be writable. Subsequent tiers are
+// fallbacks; they may be read-only.
+//
+// Returns an error if no tiers are given.
+func New(tiers ...cas.Store) (*Store, error) {
+	if len(tiers) == 0 {
+		return nil, errors.New("tieredcas: at least one tier required")
+	}
+	return &Store{tiers: append([]cas.Store(nil), tiers...)}, nil
+}
+
+// Tiers returns the configured tier chain in probe order. The returned
+// slice is a copy; callers may not mutate the Store by modifying it.
+func (s *Store) Tiers() []cas.Store {
+	return append([]cas.Store(nil), s.tiers...)
+}
+
+// Put writes to the primary tier only.
+func (s *Store) Put(ctx context.Context, r io.Reader, prov cas.Provenance) (cas.BlobInfo, error) {
+	return s.tiers[0].Put(ctx, r, prov)
+}
+
+// PutBytes writes to the primary tier only.
+func (s *Store) PutBytes(ctx context.Context, data []byte, prov cas.Provenance) (cas.BlobInfo, error) {
+	return s.tiers[0].PutBytes(ctx, data, prov)
+}
+
+// PutExpected writes to the primary tier only, verifying hash first.
+func (s *Store) PutExpected(ctx context.Context, r io.Reader, expected cas.Hash, prov cas.Provenance) (cas.BlobInfo, error) {
+	return s.tiers[0].PutExpected(ctx, r, expected, prov)
+}
+
+// PutBytesExpected writes to the primary tier only, verifying hash first.
+func (s *Store) PutBytesExpected(ctx context.Context, data []byte, expected cas.Hash, prov cas.Provenance) (cas.BlobInfo, error) {
+	return s.tiers[0].PutBytesExpected(ctx, data, expected, prov)
+}
+
+// Get probes tiers in order. On a hit at tier N > 0 the bytes are
+// promoted to every closer tier (tiers with lower indices) before being
+// returned to the caller. Promotion uses PutBytesExpected so the content
+// hash is verified on the way down.
+//
+// Promotion provenance uses a generic ImportSource with a note recording
+// the source tier index. Upstream provenance is not fetched — remote
+// tiers typically don't track it and the extra round trip is not
+// worthwhile for a promotion step.
+func (s *Store) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
+	for i, tier := range s.tiers {
+		rc, err := tier.Get(ctx, h)
+		if err == nil {
+			if i == 0 {
+				return rc, nil
+			}
+			data, readErr := io.ReadAll(rc)
+			_ = rc.Close()
+			if readErr != nil {
+				return nil, readErr
+			}
+			s.promote(ctx, h, data, i)
+			return io.NopCloser(bytes.NewReader(data)), nil
+		}
+		if !errors.Is(err, cas.ErrNotFound) {
+			return nil, fmt.Errorf("tieredcas: tier %d Get: %w", i, err)
+		}
+	}
+	return nil, cas.ErrNotFound
+}
+
+// Stat returns the first found blob info, probing tiers in order. It
+// does not promote.
+func (s *Store) Stat(ctx context.Context, h cas.Hash) (cas.BlobInfo, error) {
+	for i, tier := range s.tiers {
+		info, err := tier.Stat(ctx, h)
+		if err == nil {
+			return info, nil
+		}
+		if !errors.Is(err, cas.ErrNotFound) {
+			return cas.BlobInfo{}, fmt.Errorf("tieredcas: tier %d Stat: %w", i, err)
+		}
+	}
+	return cas.BlobInfo{}, cas.ErrNotFound
+}
+
+// Has returns true as soon as any tier reports the blob present. It
+// does not promote.
+func (s *Store) Has(ctx context.Context, h cas.Hash) (bool, error) {
+	for i, tier := range s.tiers {
+		has, err := tier.Has(ctx, h)
+		if err != nil {
+			return false, fmt.Errorf("tieredcas: tier %d Has: %w", i, err)
+		}
+		if has {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// Provenance returns the provenance recorded in the primary tier.
+// Upstream tiers typically do not track provenance and are not consulted.
+func (s *Store) Provenance(ctx context.Context, h cas.Hash) (cas.Provenance, error) {
+	return s.tiers[0].Provenance(ctx, h)
+}
+
+// PutActionResult writes to the primary tier only.
+func (s *Store) PutActionResult(ctx context.Context, result cas.ActionResult) error {
+	return s.tiers[0].PutActionResult(ctx, result)
+}
+
+// GetActionResult probes tiers in order. On a hit at tier N > 0 the
+// result is promoted to the primary tier before returning so subsequent
+// lookups are served locally.
+func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, error) {
+	for i, tier := range s.tiers {
+		result, err := tier.GetActionResult(ctx, actionHash)
+		if err == nil {
+			if i > 0 {
+				_ = s.tiers[0].PutActionResult(ctx, result)
+			}
+			return result, nil
+		}
+		if !errors.Is(err, cas.ErrNotFound) {
+			return cas.ActionResult{}, fmt.Errorf("tieredcas: tier %d GetActionResult: %w", i, err)
+		}
+	}
+	return cas.ActionResult{}, cas.ErrNotFound
+}
+
+// promote writes data to every tier closer than sourceTier (i.e. indices
+// 0..sourceTier-1). Promotion errors are swallowed: a failure to promote
+// to a closer tier is not a correctness failure, only a missed cache
+// opportunity. The caller still gets the verified bytes.
+func (s *Store) promote(ctx context.Context, h cas.Hash, data []byte, sourceTier int) {
+	prov := cas.Provenance{
+		Source: cas.Source{
+			Kind: cas.SourceImport,
+			Import: &cas.ImportSource{
+				Note: fmt.Sprintf("tieredcas: promoted from tier %d", sourceTier),
+			},
+		},
+	}
+	for j := sourceTier - 1; j >= 0; j-- {
+		_, _ = s.tiers[j].PutBytesExpected(ctx, data, h, prov)
+	}
+}
+
+// Compile-time assertion that *Store satisfies cas.Store.
+var _ cas.Store = (*Store)(nil)
