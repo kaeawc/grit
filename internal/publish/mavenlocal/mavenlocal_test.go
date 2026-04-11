@@ -58,8 +58,10 @@ func TestPublishPinWritesMavenLayout(t *testing.T) {
 	}
 
 	baseDir := filepath.Join(root, "org", "jetbrains", "kotlin", "kotlin-stdlib", "2.0.0")
+	artifactDir := filepath.Join(root, "org", "jetbrains", "kotlin", "kotlin-stdlib")
 	jarPath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.jar")
 	pomPath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.pom")
+	metadataPath := filepath.Join(artifactDir, "maven-metadata-local.xml")
 
 	if got, err := os.ReadFile(jarPath); err != nil || string(got) != string(jarBytes) {
 		t.Fatalf("jar at %s: err=%v got=%q", jarPath, err, got)
@@ -71,6 +73,24 @@ func TestPublishPinWritesMavenLayout(t *testing.T) {
 	// SHA-1 and MD5 sidecars must match the published bytes.
 	assertSidecar(t, jarPath, jarBytes)
 	assertSidecar(t, pomPath, pomBytes)
+	metadataPayload, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatalf("metadata at %s: %v", metadataPath, err)
+	}
+	metadata, err := decodeArtifactMetadata(metadataPayload)
+	if err != nil {
+		t.Fatalf("decodeArtifactMetadata: %v", err)
+	}
+	if metadata.GroupID != "org.jetbrains.kotlin" || metadata.ArtifactID != "kotlin-stdlib" {
+		t.Fatalf("unexpected metadata identity: %#v", metadata)
+	}
+	if len(metadata.Versioning.Versions) != 1 || metadata.Versioning.Versions[0] != "2.0.0" {
+		t.Fatalf("unexpected metadata versions: %#v", metadata.Versioning)
+	}
+	if metadata.Versioning.Latest != "2.0.0" || metadata.Versioning.Release != "2.0.0" {
+		t.Fatalf("unexpected metadata latest/release: %#v", metadata.Versioning)
+	}
+	assertSidecar(t, metadataPath, metadataPayload)
 }
 
 func TestPublishPinMissingBlob(t *testing.T) {

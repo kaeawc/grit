@@ -11,12 +11,12 @@
 // Every file write is atomic via temp-file-then-rename so concurrent Maven
 // readers never see a half-written artifact.
 //
-// This package never writes a maven-metadata-local.xml file. Slice 6
-// scope: exact GAV publish only. Metadata regeneration (needed by clients
-// resolving version ranges or LATEST/RELEASE) is a follow-up.
+// In addition to exact-GAV files, the publisher maintains
+// maven-metadata-local.xml at the artifact directory so version-range and
+// LATEST/RELEASE lookups can discover locally published versions.
 //
-// See roadmap/planning/maven-local-support.md and
-// roadmap/planning/dependency-cache-architecture.md for the role this
+// See roadmap/in-progress/maven-local-support.md and
+// roadmap/in-progress/dependency-cache-architecture.md for the role this
 // publisher plays in the overall layer contract.
 package mavenlocal
 
@@ -88,6 +88,9 @@ func (p *Publisher) PublishPin(ctx context.Context, pin lockfile.Pin, store cas.
 			return fmt.Errorf("mavenlocal publish %s: %w", pin.Coordinate, err)
 		}
 	}
+	if err := p.publishArtifactMetadata(pin.Coordinate); err != nil {
+		return fmt.Errorf("mavenlocal publish metadata %s: %w", pin.Coordinate, err)
+	}
 	return nil
 }
 
@@ -139,17 +142,14 @@ func (p *Publisher) publishBlob(ctx context.Context, store cas.Store, blobHash c
 	return nil
 }
 
-// writeSidecar writes the hex digest of h to path atomically. Maven
-// checksum files contain just the hex digest, with no trailing newline.
-func writeSidecar(path string, h hash.Hash) error {
-	digest := hex.EncodeToString(h.Sum(nil))
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".sidecar-*")
+func writeFileAtomically(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".publish-*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.WriteString(digest); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -160,6 +160,34 @@ func writeSidecar(path string, h hash.Hash) error {
 		return err
 	}
 	return nil
+}
+
+func writeBytesWithSidecars(path string, data []byte) error {
+	if err := writeFileAtomically(path, data); err != nil {
+		return err
+	}
+	sh1 := sha1.New()
+	if _, err := sh1.Write(data); err != nil {
+		return err
+	}
+	if err := writeSidecar(path+".sha1", sh1); err != nil {
+		return err
+	}
+	m5 := md5.New()
+	if _, err := m5.Write(data); err != nil {
+		return err
+	}
+	if err := writeSidecar(path+".md5", m5); err != nil {
+		return err
+	}
+	return nil
+}
+
+// writeSidecar writes the hex digest of h to path atomically. Maven
+// checksum files contain just the hex digest, with no trailing newline.
+func writeSidecar(path string, h hash.Hash) error {
+	digest := hex.EncodeToString(h.Sum(nil))
+	return writeFileAtomically(path, []byte(digest))
 }
 
 // Compile-time assertion that *Publisher satisfies publish.Publisher.
