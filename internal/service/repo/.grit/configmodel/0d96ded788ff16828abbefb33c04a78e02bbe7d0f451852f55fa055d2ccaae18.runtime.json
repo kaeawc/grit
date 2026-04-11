@@ -1,0 +1,10 @@
+{
+  "actionCacheProbes": {
+    "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug": {
+      "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug",
+      "state": "reused",
+      "basis": "action-substeps",
+      "detail": "1 reused substeps"
+    }
+  }
+}

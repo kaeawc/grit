@@ -1,0 +1,720 @@
+{
+  "command": "assemble",
+  "modulePath": ":app",
+  "success": true,
+  "variant": "release",
+  "variants": [
+    "debug",
+    "release"
+  ],
+  "targetResolvedVariant": {
+    "name": "debug",
+    "modulePath": ":app",
+    "moduleType": "android_application",
+    "compatibility": {},
+    "coordinate": {
+      "modulePath": ":app",
+      "name": "debug",
+      "buildType": "debug"
+    },
+    "config": {
+      "name": "debug",
+      "baseBuildType": "debug",
+      "optimization": {
+        "minifyEnabled": false,
+        "shrinkResources": false
+      }
+    },
+    "optimization": {
+      "minifyEnabled": false,
+      "shrinkResources": false
+    },
+    "installable": true,
+    "testable": true,
+    "debuggable": true,
+    "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+    "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+    "classpathSnapshotIds": [
+      "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+    ],
+    "sourceRoots": [
+      "src/main",
+      "src/debug"
+    ],
+    "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+    "producedArtifactIds": [
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+    ],
+    "producedArtifacts": [
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+        "kind": "other",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+        "kind": "jar",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+        "kind": "other",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+        "kind": "apk",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "kind": "jar",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+        "kind": "directory",
+        "path": "src/main"
+      }
+    ]
+  },
+  "targetResolvedVariants": [
+    {
+      "name": "debug",
+      "modulePath": ":app",
+      "moduleType": "android_application",
+      "compatibility": {},
+      "coordinate": {
+        "modulePath": ":app",
+        "name": "debug",
+        "buildType": "debug"
+      },
+      "config": {
+        "name": "debug",
+        "baseBuildType": "debug",
+        "optimization": {
+          "minifyEnabled": false,
+          "shrinkResources": false
+        }
+      },
+      "optimization": {
+        "minifyEnabled": false,
+        "shrinkResources": false
+      },
+      "installable": true,
+      "testable": true,
+      "debuggable": true,
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "classpathSnapshotIds": [
+        "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+      ],
+      "sourceRoots": [
+        "src/main",
+        "src/debug"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+      ],
+      "producedArtifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+          "kind": "apk",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+          "kind": "directory",
+          "path": "src/main"
+        }
+      ]
+    },
+    {
+      "name": "release",
+      "modulePath": ":app",
+      "moduleType": "android_application",
+      "compatibility": {},
+      "coordinate": {
+        "modulePath": ":app",
+        "name": "release",
+        "buildType": "release"
+      },
+      "config": {
+        "name": "release",
+        "baseBuildType": "release",
+        "optimization": {
+          "minifyEnabled": false,
+          "shrinkResources": false
+        }
+      },
+      "optimization": {
+        "minifyEnabled": false,
+        "shrinkResources": false
+      },
+      "installable": true,
+      "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "classpathSnapshotIds": [
+        "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+      ],
+      "sourceRoots": [
+        "src/main",
+        "src/release"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+      ],
+      "producedArtifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+          "kind": "apk",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+          "kind": "directory",
+          "path": "src/main"
+        }
+      ]
+    }
+  ],
+  "runGraphSummary": {
+    "moduleId": "module|9:repo::app",
+    "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+    "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+    "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+    "plannedActionIds": [
+      "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+    ],
+    "rootActionIds": [
+      "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+    ],
+    "executedActionIds": [
+      "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+    ]
+  },
+  "criticalPathSummary": {
+    "batchCount": 2,
+    "representativeActionIds": [
+      "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+    ]
+  },
+  "plannedSchedule": {
+    "resourceBudgets": [
+      {
+        "resourceClass": "android-tools",
+        "capacity": 1
+      },
+      {
+        "resourceClass": "default",
+        "capacity": 1
+      },
+      {
+        "resourceClass": "device",
+        "capacity": 1
+      },
+      {
+        "resourceClass": "jvm-process",
+        "capacity": 2
+      }
+    ],
+    "batches": [
+      {
+        "actions": [
+          {
+            "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+            "name": "assembleDebug",
+            "operation": "assemble",
+            "modulePath": ":app",
+            "variantName": "debug",
+            "workerClass": "android-package",
+            "resourceClass": "android-tools",
+            "resourceCost": 1,
+            "maxParallelism": 1,
+            "cacheKey": "8dce7552bffd2d85bb4d9c2f31a8a20264a98bf682e5bd14d2f67dca9cad2d03",
+            "cacheable": true,
+            "probeOrder": [
+              "local-overlay",
+              "shared-machine"
+            ],
+            "executeOnMiss": true,
+            "probeHint": {
+              "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+              "state": "reused",
+              "basis": "action-substeps",
+              "detail": "1 reused substeps"
+            },
+            "retentionClass": "machine-shareable",
+            "shareability": "machine",
+            "outputs": [
+              "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app"
+            ]
+          }
+        ],
+        "resources": [
+          {
+            "resourceClass": "android-tools",
+            "capacity": 1,
+            "used": 1,
+            "remaining": 0
+          }
+        ]
+      },
+      {
+        "actions": [
+          {
+            "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+            "name": "assembleRelease",
+            "operation": "assemble",
+            "modulePath": ":app",
+            "variantName": "release",
+            "workerClass": "android-package",
+            "resourceClass": "android-tools",
+            "resourceCost": 1,
+            "maxParallelism": 1,
+            "cacheKey": "75d6dab82639f4b929581a13743467de658988dd2679753f1059583efd87d009",
+            "cacheable": true,
+            "probeOrder": [
+              "local-overlay",
+              "shared-machine"
+            ],
+            "executeOnMiss": true,
+            "probeHint": {
+              "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+              "state": "reused",
+              "basis": "action-substeps",
+              "detail": "1 reused substeps"
+            },
+            "retentionClass": "machine-shareable",
+            "shareability": "machine",
+            "outputs": [
+              "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app"
+            ]
+          }
+        ],
+        "resources": [
+          {
+            "resourceClass": "android-tools",
+            "capacity": 1,
+            "used": 1,
+            "remaining": 0
+          }
+        ]
+      }
+    ]
+  },
+  "cacheSummary": {
+    "totalActions": 2,
+    "reusedActions": 2
+  },
+  "schedulerSummary": {
+    "executedBatchCount": 2,
+    "criticalPathActions": 2,
+    "waitReasonCounts": {
+      "batch-order": 1
+    },
+    "cacheResultCounts": {
+      "reused": 2
+    },
+    "workerClasses": [
+      {
+        "key": "android-package",
+        "actionCount": 2,
+        "criticalPathCount": 2,
+        "waitReasonCounts": {
+          "batch-order": 1
+        },
+        "cacheResultCounts": {
+          "reused": 2
+        }
+      }
+    ],
+    "resourceClasses": [
+      {
+        "key": "android-tools",
+        "actionCount": 2,
+        "criticalPathCount": 2,
+        "waitReasonCounts": {
+          "batch-order": 1
+        },
+        "cacheResultCounts": {
+          "reused": 2
+        }
+      }
+    ]
+  },
+  "toolSummary": {
+    "operations": [
+      {
+        "key": "assemble",
+        "actionCount": 2,
+        "criticalPathCount": 2,
+        "statusCounts": {
+          "success": 2
+        },
+        "cacheResultCounts": {
+          "reused": 2
+        }
+      }
+    ],
+    "workerClasses": [
+      {
+        "key": "android-package",
+        "actionCount": 2,
+        "criticalPathCount": 2,
+        "statusCounts": {
+          "success": 2
+        },
+        "cacheResultCounts": {
+          "reused": 2
+        }
+      }
+    ],
+    "resourceClasses": [
+      {
+        "key": "android-tools",
+        "actionCount": 2,
+        "criticalPathCount": 2,
+        "statusCounts": {
+          "success": 2
+        },
+        "cacheResultCounts": {
+          "reused": 2
+        }
+      }
+    ]
+  },
+  "executedTasks": [
+    "assembleDebug",
+    "assembleRelease"
+  ],
+  "actionExecutions": [
+    {
+      "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "name": "assembleDebug",
+      "operation": "assemble",
+      "modulePath": ":app",
+      "variantName": "debug",
+      "criticalPath": true,
+      "workerClass": "android-package",
+      "resourceClass": "android-tools",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "cacheKey": "8dce7552bffd2d85bb4d9c2f31a8a20264a98bf682e5bd14d2f67dca9cad2d03",
+      "cacheable": true,
+      "probeOrder": [
+        "local-overlay",
+        "shared-machine"
+      ],
+      "executeOnMiss": true,
+      "probeHint": {
+        "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+        "state": "reused",
+        "basis": "action-substeps",
+        "detail": "1 reused substeps"
+      },
+      "retentionClass": "machine-shareable",
+      "shareability": "machine",
+      "outputArtifacts": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app"
+      ],
+      "durationMs": 0,
+      "status": "success",
+      "timings": [
+        {
+          "name": "runD8",
+          "durationMs": 0,
+          "explanation": {
+            "state": "reused",
+            "basis": "perf-duration",
+            "detail": "tracked action completed without observable work"
+          }
+        }
+      ],
+      "cacheProbe": {
+        "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+        "state": "reused",
+        "basis": "action-substeps",
+        "detail": "1 reused substeps"
+      },
+      "cacheProbeTrail": [
+        {
+          "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+          "stepName": "assemble",
+          "state": "reused",
+          "basis": "action-substeps",
+          "detail": "1 reused substeps"
+        }
+      ]
+    },
+    {
+      "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+      "name": "assembleRelease",
+      "operation": "assemble",
+      "modulePath": ":app",
+      "variantName": "release",
+      "batchIndex": 1,
+      "criticalPath": true,
+      "waitReason": "batch-order",
+      "workerClass": "android-package",
+      "resourceClass": "android-tools",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "cacheKey": "75d6dab82639f4b929581a13743467de658988dd2679753f1059583efd87d009",
+      "cacheable": true,
+      "probeOrder": [
+        "local-overlay",
+        "shared-machine"
+      ],
+      "executeOnMiss": true,
+      "probeHint": {
+        "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+        "state": "reused",
+        "basis": "action-substeps",
+        "detail": "1 reused substeps"
+      },
+      "retentionClass": "machine-shareable",
+      "shareability": "machine",
+      "outputArtifacts": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app"
+      ],
+      "durationMs": 0,
+      "status": "success",
+      "timings": [
+        {
+          "name": "runD8",
+          "durationMs": 0,
+          "explanation": {
+            "state": "reused",
+            "basis": "perf-duration",
+            "detail": "tracked action completed without observable work"
+          }
+        }
+      ],
+      "cacheProbe": {
+        "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+        "state": "reused",
+        "basis": "action-substeps",
+        "detail": "1 reused substeps"
+      },
+      "cacheProbeTrail": [
+        {
+          "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+          "stepName": "assemble",
+          "state": "reused",
+          "basis": "action-substeps",
+          "detail": "1 reused substeps"
+        }
+      ]
+    }
+  ],
+  "actionExplanations": [
+    {
+      "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "name": "assembleDebug",
+      "operation": "assemble",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "moduleId": "module|9:repo::app",
+      "cache": {
+        "state": "reused",
+        "basis": "action-substeps",
+        "detail": "1 reused substeps"
+      }
+    },
+    {
+      "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+      "name": "assembleRelease",
+      "operation": "assemble",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "moduleId": "module|9:repo::app",
+      "cache": {
+        "state": "reused",
+        "basis": "action-substeps",
+        "detail": "1 reused substeps"
+      }
+    }
+  ],
+  "materializations": [
+    {
+      "id": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "mode": "source-backed",
+      "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "classpathSnapshotIds": [
+        "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+      ],
+      "sourceRoots": [
+        "src/main",
+        "src/debug"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+      ],
+      "consumingActionIds": [
+        "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+        "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+      ],
+      "artifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+          "kind": "apk",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+          "kind": "directory",
+          "path": "src/main"
+        }
+      ]
+    },
+    {
+      "id": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "mode": "source-backed",
+      "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "classpathSnapshotIds": [
+        "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+      ],
+      "sourceRoots": [
+        "src/main",
+        "src/release"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+      ],
+      "consumingActionIds": [
+        "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+      ],
+      "artifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+          "kind": "apk",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+          "kind": "directory",
+          "path": "src/main"
+        }
+      ]
+    }
+  ],
+  "cacheProbes": [
+    {
+      "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "state": "reused",
+      "basis": "action-substeps",
+      "detail": "1 reused substeps"
+    },
+    {
+      "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+      "state": "reused",
+      "basis": "action-substeps",
+      "detail": "1 reused substeps"
+    }
+  ],
+  "cacheProbeRecords": [
+    {
+      "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "stepName": "assemble",
+      "state": "reused",
+      "basis": "action-substeps",
+      "detail": "1 reused substeps"
+    },
+    {
+      "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+      "stepName": "assemble",
+      "state": "reused",
+      "basis": "action-substeps",
+      "detail": "1 reused substeps"
+    }
+  ],
+  "writtenAt": "2026-04-11T17:27:22Z"
+}
