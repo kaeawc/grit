@@ -301,6 +301,113 @@ func TestBuilderProjectsAndroidDependencyProjection(t *testing.T) {
 	}
 }
 
+func TestBuildVariantProjectsLibraryOrderEntriesFromGraphClasspathInputs(t *testing.T) {
+	root := t.TempDir()
+	modDir := filepath.Join(root, "app")
+	if err := os.MkdirAll(filepath.Join(modDir, "src", "main"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(modDir, "src", "debug"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	mod := project.Module{
+		Path:       ":app",
+		Dir:        modDir,
+		BuildFile:  filepath.Join(modDir, "build.gradle.kts"),
+		Type:       "android-application",
+		CompileSDK: "34",
+		DefaultConfig: project.DefaultConfig{
+			ApplicationID: "com.example.app",
+		},
+		BuildTypes: map[string]project.BuildType{
+			"debug": {Name: "debug"},
+		},
+	}
+
+	g := graph.New()
+	appModule := graph.LogicalModule{
+		ID:   graph.LogicalModuleID("module.app"),
+		Path: mod.Path,
+		Kind: graph.ModuleKindAndroidApplication,
+	}
+	if err := g.AddLogicalModule(appModule); err != nil {
+		t.Fatal(err)
+	}
+	appVariant := graph.Variant{
+		ID:        graph.VariantID("variant.app.debug"),
+		ModuleID:  appModule.ID,
+		Name:      "debug",
+		BuildType: "debug",
+	}
+	if err := g.AddVariant(appVariant); err != nil {
+		t.Fatal(err)
+	}
+	appMaterialization := graph.Materialization{
+		ID:                   graph.MaterializationID("materialization.app.debug"),
+		ModuleID:             appModule.ID,
+		VariantID:            appVariant.ID,
+		Kind:                 graph.MaterializationKindSourceBacked,
+		SourceRoots:          []string{filepath.Join(modDir, "src", "main"), filepath.Join(modDir, "src", "debug")},
+		ClasspathSnapshotIDs: []string{"opaque-classpath-id"},
+		Attributes: map[string]string{
+			"mode": "source_backed",
+		},
+	}
+	if err := g.AddMaterialization(appMaterialization); err != nil {
+		t.Fatal(err)
+	}
+	backingArtifact := graph.Artifact{
+		ID:                graph.ArtifactID("artifact.app.sources"),
+		MaterializationID: appMaterialization.ID,
+		Kind:              graph.ArtifactKindDirectory,
+		Path:              filepath.Join(modDir, "src", "main"),
+	}
+	if err := g.AddArtifact(backingArtifact); err != nil {
+		t.Fatal(err)
+	}
+	externalArtifact := graph.Artifact{
+		ID:   graph.ArtifactID("artifact.gson"),
+		Kind: graph.ArtifactKindJar,
+		Path: "/Users/jason/.gradle/caches/modules-2/files-2.1/gson-2.10.jar",
+	}
+	if err := g.AddArtifact(externalArtifact); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddAction(graph.Action{
+		ID:        graph.ActionID("action.app.compile"),
+		ModuleID:  appModule.ID,
+		VariantID: appVariant.ID,
+		Name:      "compileDebugSources",
+		Kind:      graph.ActionKindCompile,
+		Inputs:    []graph.ArtifactID{backingArtifact.ID, externalArtifact.ID},
+		Attributes: map[string]string{
+			"operation":   "compile",
+			"variantName": "debug",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	projected := buildVariant(nil, g, mod, appVariant)
+
+	if len(projected.OrderEntries) != 2 {
+		t.Fatalf("expected SDK + library order entries, got %#v", projected.OrderEntries)
+	}
+	if projected.OrderEntries[0].Kind != OrderEntryKindSDK || projected.OrderEntries[0].Name != "Android API 34" {
+		t.Fatalf("expected SDK order entry first, got %#v", projected.OrderEntries)
+	}
+	if projected.OrderEntries[1].Kind != OrderEntryKindLibrary || projected.OrderEntries[1].Classes != externalArtifact.Path {
+		t.Fatalf("expected graph classpath input to project as library entry, got %#v", projected.OrderEntries[1])
+	}
+	if projected.OrderEntries[1].Sources != "/Users/jason/.gradle/caches/modules-2/files-2.1/gson-2.10-sources.jar" {
+		t.Fatalf("expected inferred sources jar, got %#v", projected.OrderEntries[1])
+	}
+	if projected.OrderEntries[1].Javadoc != "/Users/jason/.gradle/caches/modules-2/files-2.1/gson-2.10-javadoc.jar" {
+		t.Fatalf("expected inferred javadoc jar, got %#v", projected.OrderEntries[1])
+	}
+}
+
 func TestBuilderProjectsRepositoryMetadata(t *testing.T) {
 	prj := sampleSyncProject(t)
 	prj.Repositories = []project.Repository{

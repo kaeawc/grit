@@ -6,9 +6,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/classpath"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/intellijtask"
+	"github.com/kaeawc/grit/internal/materialization"
 	"github.com/kaeawc/grit/internal/project"
 )
 
@@ -413,8 +415,142 @@ func buildVariant(cfg *configmodel.Model, g *graph.Graph, mod project.Module, va
 	out.Actions = buildActionsForVariant(g, mod.Path, variant)
 	out.TaskCatalog = buildVariantTaskCatalog(mod, out.Name, out.TaskAliases, buildTasks(mod.Tasks()))
 	out.ContentRoots = buildContentRoots(mod, out, resolved)
-	out.OrderEntries = VariantOrderEntries(out)
+	out.OrderEntries = buildVariantOrderEntries(g, variant, out)
 	out.Targets = buildTargets(resolved, out.Materialization, out.Actions)
+	return out
+}
+
+func buildVariantOrderEntries(g *graph.Graph, variant graph.Variant, projected Variant) []OrderEntry {
+	if record, ok := classpathRecordForGraphVariant(g, variant); ok {
+		entries := ClasspathRecordToOrderEntries(record, ClasspathOrderEntryOptions{
+			CompileSDK:      projected.CompileSDK,
+			CurrentModuleID: variant.ModuleID.String(),
+			ModulePaths:     graphModulePaths(g),
+			VariantNames:    graphVariantNames(g),
+		})
+		if len(entries) > 0 {
+			return entries
+		}
+	}
+	return VariantOrderEntries(projected)
+}
+
+func classpathRecordForGraphVariant(g *graph.Graph, variant graph.Variant) (classpath.Record, bool) {
+	if g == nil {
+		return classpath.Record{}, false
+	}
+
+	entries := make([]classpath.Entry, 0)
+	materializations := g.VariantMaterializations(variant.ID)
+	for _, materialization := range materializations {
+		for _, root := range materialization.SourceRoots {
+			root = strings.TrimSpace(root)
+			if root == "" {
+				continue
+			}
+			entries = append(entries, classpath.Entry{
+				Path:            root,
+				NormalizedPath:  root,
+				Origin:          classpath.OriginSource,
+				ModuleID:        materialization.ModuleID.String(),
+				VariantID:       materialization.VariantID.String(),
+				SelectionReason: "variant source root",
+			})
+		}
+	}
+
+	for _, action := range g.ActionsForVariant(variant.ID) {
+		for _, artifact := range g.ActionInputs(action.ID) {
+			entries = append(entries, classpathEntriesForActionInput(g, variant, artifact)...)
+		}
+	}
+
+	if len(entries) == 0 {
+		return classpath.Record{}, false
+	}
+
+	snapshot := classpath.Normalize(
+		classpath.ScopeCompile,
+		variant.ModuleID.String(),
+		variant.ID.String(),
+		"",
+		entries,
+		materialization.Provenance{
+			Producer: "intellijsync.Builder",
+			Subject:  variant.ID.String(),
+			Reasons:  []string{"variant order entry projection"},
+		},
+	)
+	return snapshot.Record(), true
+}
+
+func classpathEntriesForActionInput(g *graph.Graph, variant graph.Variant, artifact graph.Artifact) []classpath.Entry {
+	if g == nil {
+		return nil
+	}
+	if materializationID := artifact.MaterializationID; materializationID != "" {
+		if materialization, ok := g.Materialization(materializationID); ok {
+			if materialization.ModuleID == variant.ModuleID {
+				return nil
+			}
+			if len(materialization.SourceRoots) > 0 {
+				entries := make([]classpath.Entry, 0, len(materialization.SourceRoots))
+				for _, root := range materialization.SourceRoots {
+					root = strings.TrimSpace(root)
+					if root == "" {
+						continue
+					}
+					entries = append(entries, classpath.Entry{
+						Path:            root,
+						NormalizedPath:  root,
+						Origin:          classpath.OriginSource,
+						ArtifactID:      artifact.ID.String(),
+						ModuleID:        materialization.ModuleID.String(),
+						VariantID:       materialization.VariantID.String(),
+						SelectionReason: "variant dependency input",
+					})
+				}
+				if len(entries) > 0 {
+					return entries
+				}
+			}
+		}
+	}
+
+	path := strings.TrimSpace(artifact.Path)
+	if path == "" {
+		return nil
+	}
+	return []classpath.Entry{{
+		Path:            path,
+		NormalizedPath:  path,
+		Origin:          classpath.OriginArtifact,
+		ArtifactID:      artifact.ID.String(),
+		SelectionReason: "variant artifact input",
+	}}
+}
+
+func graphModulePaths(g *graph.Graph) map[string]string {
+	if g == nil {
+		return nil
+	}
+	out := make(map[string]string, len(g.LogicalModules()))
+	for _, module := range g.LogicalModules() {
+		out[module.ID.String()] = module.Path
+	}
+	return out
+}
+
+func graphVariantNames(g *graph.Graph) map[string]string {
+	if g == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, module := range g.LogicalModules() {
+		for _, variant := range g.ModuleVariants(module.ID) {
+			out[variant.ID.String()] = variant.Name
+		}
+	}
 	return out
 }
 
