@@ -121,3 +121,48 @@ func TestRunBundletoolBuildBundleRejectsMissingModuleZip(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestBundletoolBuildBundleArgsMultipleModules(t *testing.T) {
+	t.Parallel()
+	args := bundletoolBuildBundleArgs(
+		"/sdk/bundletool.jar",
+		[]string{"base.zip", "feature1.zip", "feature2.zip"},
+		"app.aab",
+		"BundleConfig.pb",
+	)
+	// Verify modules are comma-joined with all three.
+	foundModules := false
+	foundConfig := false
+	for _, a := range args {
+		if a == "--modules=base.zip,feature1.zip,feature2.zip" {
+			foundModules = true
+		}
+		if a == "--config=BundleConfig.pb" {
+			foundConfig = true
+		}
+	}
+	if !foundModules {
+		t.Errorf("expected all three modules comma-joined, got %v", args)
+	}
+	if !foundConfig {
+		t.Errorf("expected --config flag, got %v", args)
+	}
+}
+
+func TestBundletoolBuildBundleArgsSingleModuleNoConfig(t *testing.T) {
+	t.Parallel()
+	args := bundletoolBuildBundleArgs(
+		"/sdk/bundletool.jar",
+		[]string{"base.zip"},
+		"output.aab",
+		"",
+	)
+	for _, a := range args {
+		if strings.HasPrefix(a, "--config=") {
+			t.Errorf("config flag should not appear when bundleConfigPath is empty, got %v", args)
+		}
+	}
+	if len(args) != 5 {
+		t.Errorf("expected 5 args (jar, build-bundle, modules, output), got %d: %v", len(args), args)
+	}
+}

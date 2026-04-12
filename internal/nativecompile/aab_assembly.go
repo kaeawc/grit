@@ -54,5 +54,8 @@ func runBundletoolBuildBundle(ctx context.Context, tc *bundletoolToolchain, modu
 	if err != nil {
 		return fmt.Errorf("bundletool build-bundle failed: %w", err)
 	}
+	if !pathIsFile(outputAAB) {
+		return fmt.Errorf("bundletool build-bundle: expected output not found: %s", outputAAB)
+	}
 	return nil
 }
