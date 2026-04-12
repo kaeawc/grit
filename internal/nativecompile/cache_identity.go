@@ -249,6 +249,44 @@ func toolIdentity(bin string) string {
 	return bin + ":" + identity
 }
 
+// aabAssemblyCacheDir returns a deterministic cache directory for an AAB
+// assembly action. The hash incorporates the bundletool version, module zip
+// contents, and optional BundleConfig.pb so that any change in inputs
+// produces a distinct cache key.
+func aabAssemblyCacheDir(tc *bundletoolToolchain, moduleZips []string, bundleConfigPath string) string {
+	sum := sha256.New()
+	sum.Write([]byte("aab-assembly-v1"))
+	sum.Write([]byte{0})
+
+	// Bundletool version.
+	if tc != nil {
+		sum.Write([]byte(tc.Version))
+		sum.Write([]byte{0})
+		sum.Write([]byte(cacheIdentityForInput(tc.JarPath)))
+	} else {
+		sum.Write([]byte("no-toolchain"))
+	}
+	sum.Write([]byte{0})
+
+	// Module zip contents.
+	for _, z := range moduleZips {
+		sum.Write([]byte(filepath.Clean(z)))
+		sum.Write([]byte{0})
+		sum.Write([]byte(cacheIdentityForInput(z)))
+		sum.Write([]byte{0})
+	}
+
+	// Bundle configuration.
+	if bundleConfigPath != "" {
+		sum.Write([]byte(cacheIdentityForInput(bundleConfigPath)))
+	} else {
+		sum.Write([]byte("no-config"))
+	}
+	sum.Write([]byte{0})
+
+	return filepath.Join(sharedNativeCacheRoot(), "aab", hex.EncodeToString(sum.Sum(nil)))
+}
+
 func resourceArtifactIdentity(artifact androidResourceArtifact) string {
 	sum := sha256.New()
 	sum.Write([]byte(artifact.ModulePath))
