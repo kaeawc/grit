@@ -48,6 +48,86 @@ func runD8(ctx context.Context, workRoot, classesJar, _ string, _ string, merged
 	return writeStamp(mergeStampPath, mergeStampValue)
 }
 
+func runD8Release(ctx context.Context, workRoot, classesJar, minAPI string, mergedDexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+	runtimeCP = collapseVersions(runtimeCP)
+	traceD8Inputs("runtime", runtimeCP, stderr)
+	projectLibs, externalLibs := partitionRuntimeClasspath(workRoot, runtimeCP)
+	traceD8Inputs("project", projectLibs, stderr)
+	traceD8Inputs("external", externalLibs, stderr)
+	projectDexDir := sharedProjectDexDir(projectLibs)
+	externalDexDir := sharedExternalDexDir(externalLibs)
+	sharedAppDexDir := sharedAppDexDir(classesJar, runtimeCP)
+	if err := runD8ReleaseForLibraries(ctx, minAPI, externalDexDir, externalLibs, stdout, stderr); err != nil {
+		return err
+	}
+	if err := runD8ReleaseForLibraries(ctx, minAPI, projectDexDir, projectLibs, stdout, stderr); err != nil {
+		return err
+	}
+	if err := runD8ReleaseForApp(ctx, classesJar, minAPI, sharedAppDexDir, runtimeCP, stdout, stderr); err != nil {
+		return err
+	}
+	mergeStampPath := filepath.Join(filepath.Dir(mergedDexDir), "dex-merge.stamp")
+	mergeStampValue := dexMergeStampValue(sharedAppDexDir, projectDexDir, externalDexDir)
+	if stampMatches(mergeStampPath, mergeStampValue) && hasOutputFiles(mergedDexDir) {
+		return nil
+	}
+	if outputsNewerThanInputs(mergedDexDir, []string{sharedAppDexDir, projectDexDir, externalDexDir}) {
+		_ = writeStamp(mergeStampPath, mergeStampValue)
+		return nil
+	}
+	if err := os.RemoveAll(mergedDexDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(mergedDexDir, 0o755); err != nil {
+		return err
+	}
+	if err := mergeDexDirs(mergedDexDir, sharedAppDexDir, projectDexDir, externalDexDir); err != nil {
+		return err
+	}
+	return writeStamp(mergeStampPath, mergeStampValue)
+}
+
+func runD8ReleaseForLibraries(ctx context.Context, minAPI string, dexDir string, jars []string, stdout, stderr *os.File) error {
+	jars = collapseVersions(jars)
+	if len(jars) == 0 {
+		return os.MkdirAll(dexDir, 0o755)
+	}
+	if isSharedDexCacheReady(dexDir) {
+		return nil
+	}
+	inputs := append([]string{androidJarPath()}, jars...)
+	if outputsNewerThanInputs(dexDir, inputs) {
+		return nil
+	}
+	if err := os.RemoveAll(dexDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dexDir, 0o755); err != nil {
+		return err
+	}
+	args := d8ReleaseLibraryArgs(androidJarPath(), minAPI, jars, dexDir)
+	return runD8Command(ctx, args, stdout, stderr)
+}
+
+func runD8ReleaseForApp(ctx context.Context, classesJar, minAPI string, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+	runtimeCP = collapseVersions(runtimeCP)
+	if isSharedDexCacheReady(dexDir) {
+		return nil
+	}
+	inputs := append([]string{classesJar, androidJarPath()}, runtimeCP...)
+	if outputsNewerThanInputs(dexDir, inputs) {
+		return nil
+	}
+	if err := os.RemoveAll(dexDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dexDir, 0o755); err != nil {
+		return err
+	}
+	args := d8ReleaseAppArgs(androidJarPath(), minAPI, classesJar, runtimeCP, dexDir)
+	return runD8Command(ctx, args, stdout, stderr)
+}
+
 func traceD8Inputs(label string, paths []string, stderr *os.File) {
 	if os.Getenv("GRIT_TRACE_D8") == "" || stderr == nil {
 		return

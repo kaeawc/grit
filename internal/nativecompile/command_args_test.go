@@ -94,6 +94,36 @@ func TestD8Args(t *testing.T) {
 	}
 }
 
+func TestD8ReleaseArgs(t *testing.T) {
+	libArgs := d8ReleaseLibraryArgs("/sdk/android.jar", "24", []string{"a.jar", "b.jar"}, "out/lib-dex")
+	libWant := []string{
+		"--release",
+		"--lib", "/sdk/android.jar",
+		"--min-api", "24",
+		"--map-diagnostics", "info", "warning",
+		"--output", "out/lib-dex",
+		"a.jar", "b.jar",
+	}
+	if !reflect.DeepEqual(libArgs, libWant) {
+		t.Fatalf("unexpected release library d8 args: got %#v want %#v", libArgs, libWant)
+	}
+
+	appArgs := d8ReleaseAppArgs("/sdk/android.jar", "24", "classes.jar", []string{"lib-a.jar", "lib-b.jar"}, "out/app-dex")
+	appWant := []string{
+		"--release",
+		"--lib", "/sdk/android.jar",
+		"--min-api", "24",
+		"--map-diagnostics", "info", "warning",
+		"--output", "out/app-dex",
+		"--classpath", "lib-a.jar",
+		"--classpath", "lib-b.jar",
+		"classes.jar",
+	}
+	if !reflect.DeepEqual(appArgs, appWant) {
+		t.Fatalf("unexpected release app d8 args: got %#v want %#v", appArgs, appWant)
+	}
+}
+
 func TestR8Args(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 

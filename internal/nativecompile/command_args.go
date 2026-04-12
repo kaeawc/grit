@@ -82,6 +82,31 @@ func d8AppArgs(androidJar string, classesJar string, runtimeCP []string, dexDir 
 	return append(args, classesJar)
 }
 
+func d8ReleaseLibraryArgs(androidJar string, minAPI string, jars []string, dexDir string) []string {
+	args := []string{
+		"--release",
+		"--lib", androidJar,
+		"--min-api", minAPI,
+		"--map-diagnostics", "info", "warning",
+		"--output", dexDir,
+	}
+	return append(args, jars...)
+}
+
+func d8ReleaseAppArgs(androidJar string, minAPI string, classesJar string, runtimeCP []string, dexDir string) []string {
+	args := []string{
+		"--release",
+		"--lib", androidJar,
+		"--min-api", minAPI,
+		"--map-diagnostics", "info", "warning",
+		"--output", dexDir,
+	}
+	for _, jar := range runtimeCP {
+		args = append(args, "--classpath", jar)
+	}
+	return append(args, classesJar)
+}
+
 func r8Args(androidJar string, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, extraRules string) []string {
 	args := []string{
 		"-cp", filepath.Join(os.Getenv("HOME"), "Library", "Android", "sdk", "build-tools", "36.0.0", "lib", "d8.jar"),
