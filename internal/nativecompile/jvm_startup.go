@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 type jvmStartupMode string
@@ -127,8 +129,38 @@ func prepareJavaStartupArgs(args []string) error {
 		if err := os.MkdirAll(filepath.Dir(archive), 0o755); err != nil {
 			return fmt.Errorf("prepare AppCDS cache dir: %w", err)
 		}
+		// Probabilistically evict stale archives (~1 in 20 launches).
+		if rand.Intn(20) == 0 {
+			go evictStaleAppCDSArchives(filepath.Dir(archive), 7*24*time.Hour)
+		}
 	}
 	return nil
+}
+
+// evictStaleAppCDSArchives removes .jsa files in dir that have not been
+// modified within maxAge. This keeps the AppCDS cache from growing unboundedly
+// as classpaths evolve over time.
+func evictStaleAppCDSArchives(dir string, maxAge time.Duration) (removed int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsa") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			if os.Remove(filepath.Join(dir, entry.Name())) == nil {
+				removed++
+			}
+		}
+	}
+	return removed
 }
 
 func appCDSInputIdentity(path string) string {
