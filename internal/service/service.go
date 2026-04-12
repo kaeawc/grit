@@ -172,6 +172,11 @@ type ActionExecution struct {
 	// denied the remote cache probe for this action. When set, the action
 	// was resolved using only local cache tiers.
 	DeferRemote bool `json:"deferRemote,omitempty"`
+
+	// RemoteBytesRead is the measured remote-cache traffic observed while the
+	// action executed. The configmodel runtime sidecar feeds this back into
+	// later schedules to improve bandwidth admission estimates.
+	RemoteBytesRead int64 `json:"remoteBytesRead,omitempty"`
 }
 
 func New() *Service {
@@ -340,7 +345,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 			outcome = mergeBatchOutcome(outcome, results)
 			s.finalizeRunSummaryState(&outcome, plan)
 			if s.models != nil {
-				_ = s.models.RecordRuntimeProbes(prj.RootDir, model.CacheKey(), outcome.CacheProbes)
+				_ = s.models.RecordRuntimeObservations(prj.RootDir, model.CacheKey(), runtimeObservationsFromExecutions(outcome.ActionExecutions))
 			}
 			outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), batchErr)
 			return outcome, batchErr
@@ -349,7 +354,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 	}
 	s.finalizeRunSummaryState(&outcome, plan)
 	if s.models != nil {
-		_ = s.models.RecordRuntimeProbes(prj.RootDir, model.CacheKey(), outcome.CacheProbes)
+		_ = s.models.RecordRuntimeObservations(prj.RootDir, model.CacheKey(), runtimeObservationsFromExecutions(outcome.ActionExecutions))
 	}
 	outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), nil)
 	switch req.Command {
@@ -385,6 +390,28 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 	default:
 		return outcome, griterr.Newf(griterr.ErrUnsupported, "command %s", req.Command)
 	}
+}
+
+func runtimeObservationsFromExecutions(executions []ActionExecution) []configmodel.RuntimeActionObservation {
+	if len(executions) == 0 {
+		return nil
+	}
+	out := make([]configmodel.RuntimeActionObservation, 0, len(executions))
+	for _, execution := range executions {
+		if execution.ActionID == "" {
+			continue
+		}
+		observation := configmodel.RuntimeActionObservation{
+			ActionID:        execution.ActionID,
+			RemoteBytesRead: execution.RemoteBytesRead,
+		}
+		if execution.CacheProbe != nil {
+			probe := *execution.CacheProbe
+			observation.CacheProbe = &probe
+		}
+		out = append(out, observation)
+	}
+	return out
 }
 
 func (s *Service) ResolveExecutionPlan(prj *project.Project, mod *project.Module, command string, requestedVariant string, variantExplicit bool) (BuildPlan, error) {

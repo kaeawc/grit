@@ -322,6 +322,15 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		ActionExecutions:   []ActionExecution{execution},
 		ActionExplanations: []explain.Action{actionExplanation},
 	}
+	finish := func(err error) actionResult {
+		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
+		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
+		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
+		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
+		remoteBytes := remoteReads.Bytes()
+		outcome.ActionExecutions[0].RemoteBytesRead = remoteBytes
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteBytes}
+	}
 	if action.Name != "" {
 		outcome.ExecutedTasks = []string{action.Name}
 	}
@@ -335,55 +344,31 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		outcome.Compiled = true
 		outcome.Message = fmt.Sprintf("%s compilation completed", variantName)
 		err := compiler.CompileVariant(ctx, prj, modulePath, variantName, stdout, stderr)
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "install":
 		outcome.Installed = true
 		outcome.Message = "APK installed"
 		err := compiler.InstallVariant(ctx, prj, modulePath, variantName, req.DeviceSerial, stdout, stderr)
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "assemble":
 		outcome.Message = "APK assembled"
 		err := compiler.AssembleVariant(ctx, prj, modulePath, variantName, stdout, stderr)
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "test":
 		outcome.Tested = true
 		outcome.Message = "unit tests completed"
 		err := compiler.TestDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr)
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "compile-tests":
 		outcome.Compiled = true
 		outcome.Message = "debug unit test sources compiled"
 		err := compiler.CompileDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr)
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "compile-android-tests":
 		outcome.Compiled = true
 		outcome.Message = "debug androidTest sources compiled"
 		err := compiler.CompileDebugAndroidTest(ctx, prj, modulePath, variantName, stdout, stderr)
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "install-android-tests":
 		outcome.Installed = true
 		outcome.Message = "androidTest APK installed"
@@ -392,11 +377,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		if ok {
 			err = installer.InstallAndroidTestVariant(ctx, prj, modulePath, variantName, req.DeviceSerial, stdout, stderr)
 		}
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	case "uninstall-android-tests":
 		outcome.Message = "androidTest APK uninstalled"
 		uninstaller, ok := compiler.(androidTestUninstaller)
@@ -404,18 +385,10 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		if ok {
 			err = uninstaller.UninstallAndroidTestVariant(ctx, prj, modulePath, variantName, req.DeviceSerial, stdout, stderr)
 		}
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	default:
 		err := griterr.Newf(griterr.ErrUnsupported, "graph action operation %s", action.Attributes["operation"])
-		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
-		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
-		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
-		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
+		return finish(err)
 	}
 }
 

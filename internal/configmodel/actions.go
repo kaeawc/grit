@@ -511,6 +511,9 @@ func (m *Model) scheduleStepForAction(action graph.Action, deps []graph.ActionID
 			clone := probe
 			step.ProbeHint = &clone
 		}
+		if observed, ok := m.LastRemoteBytesForAction(action.ID); ok && observed > step.EstimatedBytes {
+			step.EstimatedBytes = observed
+		}
 	}
 	return step
 }

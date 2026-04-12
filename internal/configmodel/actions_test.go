@@ -212,6 +212,41 @@ func TestScheduleStepEstimatedBytesFollowOperationHeuristic(t *testing.T) {
 	}
 }
 
+func TestScheduleStepEstimatedBytesUseObservedRemoteBytesAsFloor(t *testing.T) {
+	model := &Model{
+		runtimeState: &RuntimeState{
+			ActionRemoteBytes: map[string]int64{
+				"action:large": 32 * 1024 * 1024,
+				"action:small": 1024,
+			},
+		},
+	}
+
+	largeObserved := model.scheduleStepForAction(graph.Action{
+		ID:   graph.ActionID("action:large"),
+		Name: "assembleDebug",
+		Kind: graph.ActionKindPackage,
+		Attributes: map[string]string{
+			"operation": "assemble",
+		},
+	}, nil)
+	if got, want := largeObserved.EstimatedBytes, int64(32*1024*1024); got != want {
+		t.Fatalf("expected observed remote bytes to raise estimate to %d, got %d", want, got)
+	}
+
+	smallObserved := model.scheduleStepForAction(graph.Action{
+		ID:   graph.ActionID("action:small"),
+		Name: "compileDebugSources",
+		Kind: graph.ActionKindCompile,
+		Attributes: map[string]string{
+			"operation": "compile",
+		},
+	}, nil)
+	if got, want := smallObserved.EstimatedBytes, estimatedProbeBytesCompile; got != want {
+		t.Fatalf("expected small observed bytes to preserve heuristic floor %d, got %d", want, got)
+	}
+}
+
 func TestActionsForResolvedCommandUsesFlavorAwareDebugVariants(t *testing.T) {
 	root := t.TempDir()
 	testutil.WriteFile(t, root, "settings.gradle.kts", "include(\":app\")\n")

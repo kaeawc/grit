@@ -1573,3 +1573,24 @@ func TestBuildSchedulerSummaryIncludesBandwidthAccounting(t *testing.T) {
 		t.Fatalf("unexpected bandwidth accounting: %#v", summary.Bandwidth)
 	}
 }
+
+func TestRuntimeObservationsFromExecutionsCarryRemoteBytes(t *testing.T) {
+	observations := runtimeObservationsFromExecutions([]ActionExecution{{
+		ActionID:        "action:compile",
+		RemoteBytesRead: 4096,
+		CacheProbe: &responsepayload.CacheProbe{
+			ActionID: "action:compile",
+			State:    "reused",
+			Basis:    "shared-cache-hit",
+		},
+	}})
+	if len(observations) != 1 {
+		t.Fatalf("expected one observation, got %#v", observations)
+	}
+	if observations[0].ActionID != "action:compile" || observations[0].RemoteBytesRead != 4096 {
+		t.Fatalf("unexpected observation payload: %#v", observations[0])
+	}
+	if observations[0].CacheProbe == nil || observations[0].CacheProbe.State != "reused" {
+		t.Fatalf("expected cache probe to be preserved, got %#v", observations[0].CacheProbe)
+	}
+}

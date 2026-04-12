@@ -45,6 +45,8 @@ type Model struct {
 	ArtifactSummaries   []ArtifactSummary            `json:"artifactSummaries,omitempty"`
 	ProvenanceSummaries []ProvenanceSummary          `json:"provenanceSummaries,omitempty"`
 	Snapshot            graph.Snapshot               `json:"snapshot"`
+
+	runtimeState *RuntimeState `json:"-"`
 }
 
 type DefaultBuilder struct{}
@@ -76,6 +78,7 @@ func (s *Store) LoadOrBuild(ctx context.Context, prj *project.Project) (*Model, 
 		var model Model
 		if err := json.Unmarshal(data, &model); err == nil && model.SchemaVersion == schemaVersion {
 			if state, stateErr := loadRuntimeState(prj.RootDir, key); stateErr == nil {
+				model.runtimeState = state
 				model.Summary = enrichSummaryWithRuntime(model.Summary, state)
 			}
 			return &model, nil
@@ -100,6 +103,7 @@ func (s *Store) LoadOrBuild(ctx context.Context, prj *project.Project) (*Model, 
 		return nil, err
 	}
 	if state, stateErr := loadRuntimeState(prj.RootDir, key); stateErr == nil {
+		model.runtimeState = state
 		model.Summary = enrichSummaryWithRuntime(model.Summary, state)
 	}
 	for _, hook := range s.hooks {
@@ -221,6 +225,17 @@ func (m *Model) LastCacheProbeForAction(id graph.ActionID) (responsepayload.Cach
 		}
 	}
 	return responsepayload.CacheProbe{}, false
+}
+
+func (m *Model) LastRemoteBytesForAction(id graph.ActionID) (int64, bool) {
+	if m == nil || m.runtimeState == nil || len(m.runtimeState.ActionRemoteBytes) == 0 {
+		return 0, false
+	}
+	bytes, ok := m.runtimeState.ActionRemoteBytes[id.String()]
+	if !ok || bytes <= 0 {
+		return 0, false
+	}
+	return bytes, true
 }
 
 func (m *Model) ResolvedVariant(modulePath, variantName string) (project.ResolvedVariant, bool) {

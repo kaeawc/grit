@@ -10,6 +10,17 @@ import (
 
 type RuntimeState struct {
 	ActionCacheProbes map[string]responsepayload.CacheProbe `json:"actionCacheProbes,omitempty"`
+	ActionRemoteBytes map[string]int64                      `json:"actionRemoteBytes,omitempty"`
+}
+
+// RuntimeActionObservation captures the runtime cache data we want to feed back
+// into future schedules. RemoteBytesRead is only recorded when it is positive;
+// zero-byte runs do not clear prior observations so the planner retains a
+// conservative estimate until it sees a new measured transfer.
+type RuntimeActionObservation struct {
+	ActionID        string
+	CacheProbe      *responsepayload.CacheProbe
+	RemoteBytesRead int64
 }
 
 func runtimeFilePath(root, key string) string {
@@ -62,6 +73,21 @@ func writeRuntimeState(root, key string, state *RuntimeState) error {
 }
 
 func (s *Store) RecordRuntimeProbes(root, key string, probes []responsepayload.CacheProbe) error {
+	if len(probes) == 0 {
+		return nil
+	}
+	observations := make([]RuntimeActionObservation, 0, len(probes))
+	for _, probe := range probes {
+		probe := probe
+		observations = append(observations, RuntimeActionObservation{
+			ActionID:   probe.ActionID,
+			CacheProbe: &probe,
+		})
+	}
+	return s.RecordRuntimeObservations(root, key, observations)
+}
+
+func (s *Store) RecordRuntimeObservations(root, key string, observations []RuntimeActionObservation) error {
 	if key == "" || root == "" {
 		return nil
 	}
@@ -72,12 +98,19 @@ func (s *Store) RecordRuntimeProbes(root, key string, probes []responsepayload.C
 	if state.ActionCacheProbes == nil {
 		state.ActionCacheProbes = map[string]responsepayload.CacheProbe{}
 	}
-	for _, probe := range probes {
-		if probe.ActionID == "" {
+	if state.ActionRemoteBytes == nil {
+		state.ActionRemoteBytes = map[string]int64{}
+	}
+	for _, observation := range observations {
+		if observation.ActionID == "" {
 			continue
 		}
-		state.ActionCacheProbes[probe.ActionID] = probe
+		if observation.CacheProbe != nil {
+			state.ActionCacheProbes[observation.ActionID] = *observation.CacheProbe
+		}
+		if observation.RemoteBytesRead > 0 {
+			state.ActionRemoteBytes[observation.ActionID] = observation.RemoteBytesRead
+		}
 	}
 	return writeRuntimeState(root, key, state)
 }
-
