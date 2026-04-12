@@ -32,6 +32,7 @@ type preparedMainCompile struct {
 	moduleJarPath     string
 	compileStampPath  string
 	pluginPaths       []string
+	pluginOptions     []string
 	effectiveCompile  []string
 	compileInputs     []string
 	androidModuleType bool
@@ -164,7 +165,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	if err != nil {
 		return out, err
 	}
-	out.pluginPaths = compilerPluginsForModule(mod, variantName, toolchain)
+	out.pluginPaths, out.pluginOptions = compilerPluginsForModule(mod, variantName, toolchain)
 	out.effectiveCompile = out.compileCP
 	kotlinInputs := append([]string{}, out.mainSources...)
 	kotlinInputs = append(kotlinInputs, mod.BuildFile)
@@ -178,6 +179,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	out.compileInputs = append(out.compileInputs, toolchain.RuntimeJars...)
 	out.compileInputs = append(out.compileInputs, toolchain.CompilerClasspath...)
 	out.compileInputs = append(out.compileInputs, out.pluginPaths...)
+	out.compileInputs = append(out.compileInputs, out.pluginOptions...)
 	out.sharedCompileDir = moduleCompileCacheDir(mod.Path, variantName, mod.ResolveVariant(variantName).ConfigHash(), out.compileInputs)
 	out.moduleJarPath = filepath.Join(filepath.Dir(out.mainOut), "module-classes.jar")
 	out.compileStampPath = filepath.Join(filepath.Dir(out.mainOut), "compile.stamp")
@@ -228,7 +230,7 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 		if toolchainErr != nil {
 			return toolchainErr
 		}
-		if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
+		if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
 			return err
 		}
 		_ = writeStamp(prepared.compileStampPath, prepared.sharedCompileDir)

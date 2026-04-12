@@ -188,7 +188,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 	if err == nil && !stampMatches(testCompileStampPath, testSharedCompileDir) {
 		recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled tests required fresh Kotlin compilation")
 		err = c.track("kotlincTests", func() error {
-			return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, includeAndroid, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
+			return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, nil, includeAndroid, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
 		})
 		if err == nil {
 			err = c.track("publishCompileTestsCache", func() error {

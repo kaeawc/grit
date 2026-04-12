@@ -13,13 +13,13 @@ import (
 	"github.com/kaeawc/grit/internal/project"
 )
 
-func runKotlinc(ctx context.Context, toolchain *kotlinToolchain, sources []string, outDir string, classpath []string, plugins []string, includeAndroidJar bool, appMain bool, extraArgs []string, stdout, stderr *os.File) error {
+func runKotlinc(ctx context.Context, toolchain *kotlinToolchain, sources []string, outDir string, classpath []string, plugins []string, pluginOptions []string, includeAndroidJar bool, appMain bool, extraArgs []string, stdout, stderr *os.File) error {
 	androidJar := ""
 	if includeAndroidJar {
 		androidJar = androidJarPath()
 	}
 	classpath = compilerRuntimeClasspath(toolchain, classpath)
-	args := kotlincArgs(androidJar, sources, outDir, classpath, plugins, appMain, extraArgs)
+	args := kotlincArgs(androidJar, sources, outDir, classpath, plugins, pluginOptions, appMain, extraArgs)
 	if strings.TrimSpace(os.Getenv("GRIT_TRACE_KOTLINC")) != "" {
 		fmt.Fprintln(stderr, "TRACE kotlinc classpath:")
 		for i, entry := range append([]string{}, classpath...) {

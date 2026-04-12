@@ -8,7 +8,7 @@ import (
 	"github.com/kaeawc/grit/internal/project"
 )
 
-func kotlincArgs(androidJar string, sources []string, outDir string, classpath []string, plugins []string, appMain bool, extraArgs []string) []string {
+func kotlincArgs(androidJar string, sources []string, outDir string, classpath []string, plugins []string, pluginOptions []string, appMain bool, extraArgs []string) []string {
 	args := []string{
 		"-jvm-target", "21",
 		"-no-stdlib",
@@ -18,7 +18,6 @@ func kotlincArgs(androidJar string, sources []string, outDir string, classpath [
 	}
 	if appMain {
 		args = append(args,
-			"-P", "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true",
 			"-opt-in=kotlin.time.ExperimentalTime",
 			"-opt-in=kotlin.RequiresOptIn",
 			"-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
@@ -28,6 +27,9 @@ func kotlincArgs(androidJar string, sources []string, outDir string, classpath [
 	}
 	for _, plugin := range plugins {
 		args = append(args, "-Xplugin="+plugin)
+	}
+	for _, option := range pluginOptions {
+		args = append(args, "-P", option)
 	}
 	args = append(args, extraArgs...)
 	fullCP := append([]string{}, classpath...)

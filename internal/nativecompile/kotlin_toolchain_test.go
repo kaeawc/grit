@@ -47,6 +47,7 @@ func TestCompilerPluginsForModuleUsesActiveVariantPlugins(t *testing.T) {
 	reg := modulebuild.NewPluginRegistry()
 	reg.Register(modulebuild.CompilerPlugin{
 		ID:       modulebuild.ComposeCompilerPluginID,
+		Options:  map[string]string{"suppressKotlinVersionCompatibilityCheck": "true"},
 		Variants: []string{"debug"},
 	})
 	reg.Register(modulebuild.CompilerPlugin{
@@ -56,6 +57,7 @@ func TestCompilerPluginsForModuleUsesActiveVariantPlugins(t *testing.T) {
 	reg.Register(modulebuild.CompilerPlugin{
 		ID:        "com.example.custom",
 		Classpath: []string{"/plugins/custom-one.jar", "/plugins/custom-two.jar"},
+		Options:   map[string]string{"mode": "strict", "debug": "true"},
 		Variants:  []string{"debug"},
 	})
 	mod := &project.Module{CompilerPlugins: reg}
@@ -64,16 +66,27 @@ func TestCompilerPluginsForModuleUsesActiveVariantPlugins(t *testing.T) {
 		SerializationPlugin: "/plugins/serialization.jar",
 	}
 
-	debugPlugins := compilerPluginsForModule(mod, "debug", toolchain)
+	debugPlugins, debugOptions := compilerPluginsForModule(mod, "debug", toolchain)
 	debugWant := []string{"/plugins/compose.jar", "/plugins/custom-one.jar", "/plugins/custom-two.jar"}
 	if !reflect.DeepEqual(debugPlugins, debugWant) {
 		t.Fatalf("unexpected debug plugins: got %#v want %#v", debugPlugins, debugWant)
 	}
+	debugOptionsWant := []string{
+		"plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true",
+		"plugin:com.example.custom:debug=true",
+		"plugin:com.example.custom:mode=strict",
+	}
+	if !reflect.DeepEqual(debugOptions, debugOptionsWant) {
+		t.Fatalf("unexpected debug plugin options: got %#v want %#v", debugOptions, debugOptionsWant)
+	}
 
-	releasePlugins := compilerPluginsForModule(mod, "release", toolchain)
+	releasePlugins, releaseOptions := compilerPluginsForModule(mod, "release", toolchain)
 	releaseWant := []string{"/plugins/serialization.jar"}
 	if !reflect.DeepEqual(releasePlugins, releaseWant) {
 		t.Fatalf("unexpected release plugins: got %#v want %#v", releasePlugins, releaseWant)
+	}
+	if len(releaseOptions) != 0 {
+		t.Fatalf("expected no release plugin options, got %#v", releaseOptions)
 	}
 }
 
@@ -90,7 +103,7 @@ func TestCompilerPluginsForModuleFallsBackToLegacyModuleFlags(t *testing.T) {
 		SerializationPlugin: "/plugins/serialization.jar",
 	}
 
-	got := compilerPluginsForModule(mod, "debug", toolchain)
+	got, options := compilerPluginsForModule(mod, "debug", toolchain)
 	want := []string{
 		"/plugins/compose.jar",
 		"/plugins/serialization.jar",
@@ -98,6 +111,9 @@ func TestCompilerPluginsForModuleFallsBackToLegacyModuleFlags(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected legacy plugin fallback: got %#v want %#v", got, want)
+	}
+	if len(options) != 0 {
+		t.Fatalf("expected no legacy plugin options, got %#v", options)
 	}
 
 	if sep := string(os.PathSeparator); !strings.Contains(got[2], sep+".gradle"+sep) {

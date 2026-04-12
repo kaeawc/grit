@@ -136,8 +136,10 @@ func fallbackKotlinToolchain() *kotlinToolchain {
 	}
 }
 
-func compilerPluginsForModule(mod *project.Module, variantName string, toolchain *kotlinToolchain) []string {
-	var plugins []string
+func activeCompilerPluginsForModule(mod *project.Module, variantName string) []modulebuild.CompilerPlugin {
+	if mod == nil {
+		return nil
+	}
 	registered := mod.ActiveCompilerPlugins(variantName)
 	if len(registered) == 0 && mod.CompilerPlugins == nil {
 		if mod.UsesCompose {
@@ -150,25 +152,43 @@ func compilerPluginsForModule(mod *project.Module, variantName string, toolchain
 			registered = append(registered, modulebuild.CompilerPlugin{ID: modulebuild.MetroCompilerPluginID})
 		}
 	}
+	return registered
+}
+
+func compilerPluginsForModule(mod *project.Module, variantName string, toolchain *kotlinToolchain) ([]string, []string) {
+	registered := activeCompilerPluginsForModule(mod, variantName)
+	var plugins []string
+	var options []string
 	for _, plugin := range registered {
 		if len(plugin.Classpath) > 0 {
 			plugins = append(plugins, plugin.Classpath...)
+		} else {
+			switch plugin.ID {
+			case modulebuild.ComposeCompilerPluginID:
+				if toolchain != nil && strings.TrimSpace(toolchain.ComposePlugin) != "" {
+					plugins = append(plugins, toolchain.ComposePlugin)
+				}
+			case modulebuild.KotlinSerializationCompilerPluginID:
+				if toolchain != nil && strings.TrimSpace(toolchain.SerializationPlugin) != "" {
+					plugins = append(plugins, toolchain.SerializationPlugin)
+				}
+			case modulebuild.MetroCompilerPluginID:
+				plugins = append(plugins, filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
+			}
+		}
+		if len(plugin.Options) == 0 {
 			continue
 		}
-		switch plugin.ID {
-		case modulebuild.ComposeCompilerPluginID:
-			if toolchain != nil && strings.TrimSpace(toolchain.ComposePlugin) != "" {
-				plugins = append(plugins, toolchain.ComposePlugin)
-			}
-		case modulebuild.KotlinSerializationCompilerPluginID:
-			if toolchain != nil && strings.TrimSpace(toolchain.SerializationPlugin) != "" {
-				plugins = append(plugins, toolchain.SerializationPlugin)
-			}
-		case modulebuild.MetroCompilerPluginID:
-			plugins = append(plugins, filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
+		keys := make([]string, 0, len(plugin.Options))
+		for key := range plugin.Options {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			options = append(options, fmt.Sprintf("plugin:%s:%s=%s", plugin.ID, key, plugin.Options[key]))
 		}
 	}
-	return plugins
+	return plugins, options
 }
 
 func compilerRuntimeClasspath(toolchain *kotlinToolchain, classpath []string) []string {

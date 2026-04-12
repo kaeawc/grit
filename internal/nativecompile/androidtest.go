@@ -162,7 +162,7 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 	if err == nil && !stampMatches(testCompileStampPath, testSharedCompileDir) {
 		recordCacheProbe(c.tracker, "compileAndroidTests", false, "cache-miss", "compiled androidTest sources required fresh Kotlin compilation")
 		err = c.track("kotlincAndroidTests", func() error {
-			return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, true, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
+			return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, nil, true, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
 		})
 		if err == nil {
 			err = c.track("publishCompileAndroidTestsCache", func() error {

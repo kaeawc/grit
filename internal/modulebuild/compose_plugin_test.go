@@ -13,6 +13,9 @@ func TestRegisterComposePlugin_Enabled(t *testing.T) {
 	if plugins[0].ID != ComposeCompilerPluginID {
 		t.Errorf("expected plugin ID %s, got %s", ComposeCompilerPluginID, plugins[0].ID)
 	}
+	if got := plugins[0].Options["suppressKotlinVersionCompatibilityCheck"]; got != "true" {
+		t.Fatalf("expected compose plugin compatibility option to be set, got %q", got)
+	}
 
 	// Compose plugin should apply to all variants.
 	release := reg.ActivePlugins("release")

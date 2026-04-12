@@ -19,6 +19,9 @@ func RegisterComposePlugin(reg *PluginRegistry, composeEnabled bool) {
 	}
 	reg.Register(CompilerPlugin{
 		ID: ComposeCompilerPluginID,
+		Options: map[string]string{
+			"suppressKotlinVersionCompatibilityCheck": "true",
+		},
 	})
 }
 
