@@ -543,6 +543,228 @@ func TestBuildVariantOrderEntriesMergesFallbackModuleDependenciesWithGraphClassp
 	}
 }
 
+func TestBuildVariantOrderEntriesIgnoreNonCompileActionInputs(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "app")
+	for _, path := range []string{
+		filepath.Join(appDir, "src", "main"),
+		filepath.Join(appDir, "src", "debug"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	app := project.Module{
+		Path:       ":app",
+		Dir:        appDir,
+		BuildFile:  filepath.Join(appDir, "build.gradle.kts"),
+		Type:       "android-application",
+		CompileSDK: "34",
+		DefaultConfig: project.DefaultConfig{
+			ApplicationID: "com.example.app",
+		},
+		BuildTypes: map[string]project.BuildType{
+			"debug": {Name: "debug"},
+		},
+	}
+
+	g := graph.New()
+	appModule := graph.LogicalModule{
+		ID:   graph.LogicalModuleID("module.app"),
+		Path: app.Path,
+		Kind: graph.ModuleKindAndroidApplication,
+	}
+	if err := g.AddLogicalModule(appModule); err != nil {
+		t.Fatal(err)
+	}
+	appVariant := graph.Variant{
+		ID:        graph.VariantID("variant.app.debug"),
+		ModuleID:  appModule.ID,
+		Name:      "debug",
+		BuildType: "debug",
+	}
+	if err := g.AddVariant(appVariant); err != nil {
+		t.Fatal(err)
+	}
+	appMaterialization := graph.Materialization{
+		ID:          graph.MaterializationID("materialization.app.debug"),
+		ModuleID:    appModule.ID,
+		VariantID:   appVariant.ID,
+		Kind:        graph.MaterializationKindSourceBacked,
+		SourceRoots: []string{filepath.Join(appDir, "src", "main"), filepath.Join(appDir, "src", "debug")},
+		Attributes: map[string]string{
+			"mode": "source_backed",
+		},
+	}
+	if err := g.AddMaterialization(appMaterialization); err != nil {
+		t.Fatal(err)
+	}
+	compileArtifact := graph.Artifact{
+		ID:   graph.ArtifactID("artifact.gson"),
+		Kind: graph.ArtifactKindJar,
+		Path: "/Users/jason/.gradle/caches/modules-2/files-2.1/gson-2.10.jar",
+	}
+	manifestArtifact := graph.Artifact{
+		ID:   graph.ArtifactID("artifact.manifest"),
+		Kind: graph.ArtifactKindManifest,
+		Path: filepath.Join(appDir, "src", "main", "AndroidManifest.xml"),
+	}
+	for _, artifact := range []graph.Artifact{compileArtifact, manifestArtifact} {
+		if err := g.AddArtifact(artifact); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := g.AddAction(graph.Action{
+		ID:        graph.ActionID("action.app.compile"),
+		ModuleID:  appModule.ID,
+		VariantID: appVariant.ID,
+		Name:      "compileDebugSources",
+		Kind:      graph.ActionKindCompile,
+		Inputs:    []graph.ArtifactID{compileArtifact.ID},
+		Attributes: map[string]string{
+			"operation":   "compile",
+			"variantName": "debug",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddAction(graph.Action{
+		ID:        graph.ActionID("action.app.package"),
+		ModuleID:  appModule.ID,
+		VariantID: appVariant.ID,
+		Name:      "assembleDebug",
+		Kind:      graph.ActionKindPackage,
+		Inputs:    []graph.ArtifactID{manifestArtifact.ID},
+		Attributes: map[string]string{
+			"operation":   "assemble",
+			"variantName": "debug",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	projected := buildVariant(nil, g, app, appVariant)
+
+	if len(projected.OrderEntries) != 2 {
+		t.Fatalf("expected SDK + compile library order entries, got %#v", projected.OrderEntries)
+	}
+	if projected.OrderEntries[1].Kind != OrderEntryKindLibrary || projected.OrderEntries[1].Classes != compileArtifact.Path {
+		t.Fatalf("expected only compile classpath artifact to project as a library, got %#v", projected.OrderEntries)
+	}
+}
+
+func TestBuildVariantOrderEntriesIgnoreTestCompileActionInputs(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "app")
+	for _, path := range []string{
+		filepath.Join(appDir, "src", "main"),
+		filepath.Join(appDir, "src", "debug"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	app := project.Module{
+		Path:       ":app",
+		Dir:        appDir,
+		BuildFile:  filepath.Join(appDir, "build.gradle.kts"),
+		Type:       "android-application",
+		CompileSDK: "34",
+		DefaultConfig: project.DefaultConfig{
+			ApplicationID: "com.example.app",
+		},
+		BuildTypes: map[string]project.BuildType{
+			"debug": {Name: "debug"},
+		},
+	}
+
+	g := graph.New()
+	appModule := graph.LogicalModule{
+		ID:   graph.LogicalModuleID("module.app"),
+		Path: app.Path,
+		Kind: graph.ModuleKindAndroidApplication,
+	}
+	if err := g.AddLogicalModule(appModule); err != nil {
+		t.Fatal(err)
+	}
+	appVariant := graph.Variant{
+		ID:        graph.VariantID("variant.app.debug"),
+		ModuleID:  appModule.ID,
+		Name:      "debug",
+		BuildType: "debug",
+	}
+	if err := g.AddVariant(appVariant); err != nil {
+		t.Fatal(err)
+	}
+	appMaterialization := graph.Materialization{
+		ID:          graph.MaterializationID("materialization.app.debug"),
+		ModuleID:    appModule.ID,
+		VariantID:   appVariant.ID,
+		Kind:        graph.MaterializationKindSourceBacked,
+		SourceRoots: []string{filepath.Join(appDir, "src", "main"), filepath.Join(appDir, "src", "debug")},
+		Attributes: map[string]string{
+			"mode": "source_backed",
+		},
+	}
+	if err := g.AddMaterialization(appMaterialization); err != nil {
+		t.Fatal(err)
+	}
+	mainCompileArtifact := graph.Artifact{
+		ID:   graph.ArtifactID("artifact.gson"),
+		Kind: graph.ArtifactKindJar,
+		Path: "/Users/jason/.gradle/caches/modules-2/files-2.1/gson-2.10.jar",
+	}
+	testCompileArtifact := graph.Artifact{
+		ID:   graph.ArtifactID("artifact.junit"),
+		Kind: graph.ArtifactKindJar,
+		Path: "/Users/jason/.gradle/caches/modules-2/files-2.1/junit-4.13.2.jar",
+	}
+	for _, artifact := range []graph.Artifact{mainCompileArtifact, testCompileArtifact} {
+		if err := g.AddArtifact(artifact); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := g.AddAction(graph.Action{
+		ID:        graph.ActionID("action.app.compile"),
+		ModuleID:  appModule.ID,
+		VariantID: appVariant.ID,
+		Name:      "compileDebugSources",
+		Kind:      graph.ActionKindCompile,
+		Inputs:    []graph.ArtifactID{mainCompileArtifact.ID},
+		Attributes: map[string]string{
+			"operation":   "compile",
+			"variantName": "debug",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddAction(graph.Action{
+		ID:        graph.ActionID("action.app.compile.tests"),
+		ModuleID:  appModule.ID,
+		VariantID: appVariant.ID,
+		Name:      "compileDebugUnitTestSources",
+		Kind:      graph.ActionKindCompile,
+		Inputs:    []graph.ArtifactID{testCompileArtifact.ID},
+		Attributes: map[string]string{
+			"operation":   "compile-tests",
+			"variantName": "debug",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	projected := buildVariant(nil, g, app, appVariant)
+
+	if len(projected.OrderEntries) != 2 {
+		t.Fatalf("expected SDK + main compile library order entries, got %#v", projected.OrderEntries)
+	}
+	if projected.OrderEntries[1].Kind != OrderEntryKindLibrary || projected.OrderEntries[1].Classes != mainCompileArtifact.Path {
+		t.Fatalf("expected only production compile classpath artifact to project as a library, got %#v", projected.OrderEntries)
+	}
+}
+
 func TestBuilderProjectsRepositoryMetadata(t *testing.T) {
 	prj := sampleSyncProject(t)
 	prj.Repositories = []project.Repository{

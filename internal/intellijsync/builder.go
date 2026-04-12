@@ -496,7 +496,13 @@ func classpathRecordForGraphVariant(g *graph.Graph, variant graph.Variant) (clas
 	}
 
 	for _, action := range g.ActionsForVariant(variant.ID) {
+		if !isOrderEntryClasspathAction(action) {
+			continue
+		}
 		for _, artifact := range g.ActionInputs(action.ID) {
+			if !isOrderEntryClasspathArtifact(artifact) {
+				continue
+			}
 			entries = append(entries, classpathEntriesForActionInput(g, variant, artifact)...)
 		}
 	}
@@ -518,6 +524,30 @@ func classpathRecordForGraphVariant(g *graph.Graph, variant graph.Variant) (clas
 		},
 	)
 	return snapshot.Record(), true
+}
+
+func isOrderEntryClasspathAction(action graph.Action) bool {
+	if action.Kind != graph.ActionKindCompile {
+		return false
+	}
+	operation := strings.TrimSpace(action.Attributes["operation"])
+	return operation == "" || operation == "compile"
+}
+
+func isOrderEntryClasspathArtifact(artifact graph.Artifact) bool {
+	if artifact.MaterializationID != "" {
+		return true
+	}
+	switch artifact.Kind {
+	case graph.ArtifactKindJar, graph.ArtifactKindAar, graph.ArtifactKindDirectory, graph.ArtifactKindClasspath, graph.ArtifactKindUnknown:
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(artifact.Path))) {
+	case ".jar", ".aar":
+		return true
+	default:
+		return false
+	}
 }
 
 func classpathEntriesForActionInput(g *graph.Graph, variant graph.Variant, artifact graph.Artifact) []classpath.Entry {
