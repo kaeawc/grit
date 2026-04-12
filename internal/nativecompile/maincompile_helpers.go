@@ -164,7 +164,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	if err != nil {
 		return out, err
 	}
-	out.pluginPaths = compilerPluginsForModule(mod, toolchain)
+	out.pluginPaths = compilerPluginsForModule(mod, variantName, toolchain)
 	out.effectiveCompile = out.compileCP
 	kotlinInputs := append([]string{}, out.mainSources...)
 	kotlinInputs = append(kotlinInputs, mod.BuildFile)

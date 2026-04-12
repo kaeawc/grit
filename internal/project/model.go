@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kaeawc/grit/internal/modulebuild"
 )
 
 type Project struct {
@@ -61,6 +63,7 @@ type Module struct {
 	UsesKotlinSerialization   bool
 	UsesMetro                 bool
 	BuildFeatures             BuildFeatures
+	CompilerPlugins           *modulebuild.PluginRegistry
 	KotlinFreeCompilerArgs    []string
 	LintDisabledChecks        []string
 	ConsumerProguardFiles     []string

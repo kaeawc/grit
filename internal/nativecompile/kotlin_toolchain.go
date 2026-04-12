@@ -136,16 +136,37 @@ func fallbackKotlinToolchain() *kotlinToolchain {
 	}
 }
 
-func compilerPluginsForModule(mod *project.Module, toolchain *kotlinToolchain) []string {
+func compilerPluginsForModule(mod *project.Module, variantName string, toolchain *kotlinToolchain) []string {
 	var plugins []string
-	if mod.UsesCompose && toolchain != nil && strings.TrimSpace(toolchain.ComposePlugin) != "" {
-		plugins = append(plugins, toolchain.ComposePlugin)
+	registered := mod.ActiveCompilerPlugins(variantName)
+	if len(registered) == 0 && mod.CompilerPlugins == nil {
+		if mod.UsesCompose {
+			registered = append(registered, modulebuild.CompilerPlugin{ID: modulebuild.ComposeCompilerPluginID})
+		}
+		if mod.UsesKotlinSerialization {
+			registered = append(registered, modulebuild.CompilerPlugin{ID: modulebuild.KotlinSerializationCompilerPluginID})
+		}
+		if mod.UsesMetro {
+			registered = append(registered, modulebuild.CompilerPlugin{ID: modulebuild.MetroCompilerPluginID})
+		}
 	}
-	if mod.UsesKotlinSerialization && toolchain != nil && strings.TrimSpace(toolchain.SerializationPlugin) != "" {
-		plugins = append(plugins, toolchain.SerializationPlugin)
-	}
-	if mod.UsesMetro {
-		plugins = append(plugins, filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
+	for _, plugin := range registered {
+		if len(plugin.Classpath) > 0 {
+			plugins = append(plugins, plugin.Classpath...)
+			continue
+		}
+		switch plugin.ID {
+		case modulebuild.ComposeCompilerPluginID:
+			if toolchain != nil && strings.TrimSpace(toolchain.ComposePlugin) != "" {
+				plugins = append(plugins, toolchain.ComposePlugin)
+			}
+		case modulebuild.KotlinSerializationCompilerPluginID:
+			if toolchain != nil && strings.TrimSpace(toolchain.SerializationPlugin) != "" {
+				plugins = append(plugins, toolchain.SerializationPlugin)
+			}
+		case modulebuild.MetroCompilerPluginID:
+			plugins = append(plugins, filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
+		}
 	}
 	return plugins
 }
