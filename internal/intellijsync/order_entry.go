@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/kaeawc/grit/internal/classpath"
 )
 
 // OrderEntry represents an IntelliJ classpath order entry derived from a
@@ -47,6 +49,15 @@ type ClasspathEntry struct {
 	Exported bool
 }
 
+// ClasspathOrderEntryOptions provides the extra IntelliJ sync context needed
+// to project classpath records into order entries.
+type ClasspathOrderEntryOptions struct {
+	CompileSDK      string
+	CurrentModuleID string
+	ModulePaths     map[string]string
+	VariantNames    map[string]string
+}
+
 // ClasspathToOrderEntries converts a slice of ClasspathEntry values into
 // the ordered list of OrderEntry objects that the IDE requires.  Entries
 // are deduplicated by name and sorted: SDK entries first, then module
@@ -63,6 +74,39 @@ func ClasspathToOrderEntries(entries []ClasspathEntry) []OrderEntry {
 		out = append(out, orderEntryFromClasspath(e))
 	}
 	sortOrderEntries(out)
+	return out
+}
+
+// ClasspathSnapshotToOrderEntries converts an internal classpath snapshot into
+// IntelliJ order entries while preserving the snapshot entry order.
+func ClasspathSnapshotToOrderEntries(snapshot classpath.Snapshot, options ClasspathOrderEntryOptions) []OrderEntry {
+	return ClasspathRecordToOrderEntries(snapshot.Record(), options)
+}
+
+// ClasspathRecordToOrderEntries converts an internal classpath record into
+// IntelliJ order entries while preserving the record's entry order. Current
+// module source roots are ignored, upstream module source roots become module
+// dependencies, and artifact/generated entries become library dependencies.
+func ClasspathRecordToOrderEntries(record classpath.Record, options ClasspathOrderEntryOptions) []OrderEntry {
+	var out []OrderEntry
+	seen := map[string]struct{}{}
+	if sdk := sdkEntry(options.CompileSDK, record.ToolchainID); sdk.Name != "" {
+		key := orderEntryKey(ClasspathEntry{Kind: sdk.Kind, Name: sdk.Name})
+		seen[key] = struct{}{}
+		out = append(out, sdk)
+	}
+	for _, entry := range record.Entries {
+		projected, ok := orderEntryFromClasspathRecordEntry(entry, options, scopeFromClasspathScope(record.Scope))
+		if !ok {
+			continue
+		}
+		key := orderEntryKey(projected)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, orderEntryFromClasspath(projected))
+	}
 	return out
 }
 
@@ -128,6 +172,9 @@ func orderEntryKey(e ClasspathEntry) string {
 	if e.Kind == OrderEntryKindSDK {
 		return "sdk:" + e.Name
 	}
+	if e.Classes != "" {
+		return "library:" + e.Classes
+	}
 	return "library:" + e.Name
 }
 
@@ -184,4 +231,112 @@ func libraryNameFromPath(path string) string {
 	base := filepath.Base(path)
 	ext := filepath.Ext(base)
 	return strings.TrimSuffix(base, ext)
+}
+
+func orderEntryFromClasspathRecordEntry(entry classpath.EntryRecord, options ClasspathOrderEntryOptions, scope string) (ClasspathEntry, bool) {
+	switch entry.Origin {
+	case classpath.OriginSource:
+		if strings.TrimSpace(entry.ModuleID) == "" || strings.TrimSpace(entry.ModuleID) == strings.TrimSpace(options.CurrentModuleID) {
+			return ClasspathEntry{}, false
+		}
+		modulePath := modulePathForID(entry.ModuleID, options.ModulePaths)
+		if modulePath == "" {
+			modulePath = strings.TrimSpace(entry.ModuleID)
+		}
+		name := moduleOrderEntryName(modulePath, variantNameForID(entry.VariantID, options.VariantNames))
+		return ClasspathEntry{
+			Kind:       OrderEntryKindModule,
+			Name:       name,
+			Scope:      scope,
+			ModulePath: modulePath,
+			Exported:   true,
+		}, true
+	case classpath.OriginArtifact, classpath.OriginGenerated:
+		classesPath := firstNonEmptyString(strings.TrimSpace(entry.NormalizedPath), strings.TrimSpace(entry.Path))
+		if classesPath == "" {
+			return ClasspathEntry{}, false
+		}
+		projected := classpathEntryFromSnapshotID(classesPath)
+		projected.Name = libraryNameForRecordEntry(entry, projected.Name)
+		projected.Scope = firstNonEmptyString(scope, projected.Scope)
+		return projected, true
+	case classpath.OriginToolchain:
+		sdk := sdkEntry(options.CompileSDK, "")
+		if sdk.Name == "" {
+			sdk = sdkEntry("", entry.NormalizedPath)
+		}
+		if sdk.Name == "" {
+			return ClasspathEntry{}, false
+		}
+		return ClasspathEntry{
+			Kind:  sdk.Kind,
+			Name:  sdk.Name,
+			Scope: sdk.Scope,
+		}, true
+	default:
+		return ClasspathEntry{}, false
+	}
+}
+
+func modulePathForID(moduleID string, modulePaths map[string]string) string {
+	moduleID = strings.TrimSpace(moduleID)
+	if moduleID == "" || len(modulePaths) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(modulePaths[moduleID])
+}
+
+func variantNameForID(variantID string, variantNames map[string]string) string {
+	variantID = strings.TrimSpace(variantID)
+	if variantID == "" || len(variantNames) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(variantNames[variantID])
+}
+
+func moduleOrderEntryName(modulePath, variantName string) string {
+	modulePath = strings.TrimSpace(modulePath)
+	variantName = strings.TrimSpace(variantName)
+	if modulePath == "" {
+		return variantName
+	}
+	if variantName == "" {
+		return modulePath
+	}
+	return modulePath + "/" + variantName
+}
+
+func libraryNameForRecordEntry(entry classpath.EntryRecord, fallback string) string {
+	if familyKey := strings.TrimSpace(entry.FamilyKey); familyKey != "" {
+		return familyKey
+	}
+	return fallback
+}
+
+func scopeFromClasspathScope(scope classpath.Scope) string {
+	switch scope {
+	case classpath.ScopeRuntime:
+		return "runtime"
+	case classpath.ScopeTest:
+		return "test"
+	default:
+		return "compile"
+	}
+}
+
+func sdkEntry(compileSDK, toolchainID string) OrderEntry {
+	name := strings.TrimSpace(compileSDK)
+	if name != "" {
+		name = "Android API " + name
+	} else if toolchainID = strings.TrimSpace(toolchainID); toolchainID != "" {
+		name = toolchainID
+	}
+	if name == "" {
+		return OrderEntry{}
+	}
+	return OrderEntry{
+		Kind:  OrderEntryKindSDK,
+		Name:  name,
+		Scope: "compile",
+	}
 }

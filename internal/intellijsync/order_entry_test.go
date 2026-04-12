@@ -2,6 +2,8 @@ package intellijsync
 
 import (
 	"testing"
+
+	"github.com/kaeawc/grit/internal/classpath"
 )
 
 func TestClasspathToOrderEntriesDeduplicatesAndSorts(t *testing.T) {
@@ -192,5 +194,107 @@ func TestLibraryNameFromPath(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("libraryNameFromPath(%q) = %q, want %q", tc.path, got, tc.want)
 		}
+	}
+}
+
+func TestClasspathRecordToOrderEntriesProjectsRealClasspathModel(t *testing.T) {
+	record := classpath.Record{
+		Scope:       classpath.ScopeCompile,
+		ToolchainID: "ignored-when-compile-sdk-present",
+		Entries: []classpath.EntryRecord{
+			{
+				Order:          0,
+				Path:           "/repo/app/src/main",
+				NormalizedPath: "/repo/app/src/main",
+				Origin:         classpath.OriginSource,
+				ModuleID:       "module-app",
+				VariantID:      "variant-debug",
+			},
+			{
+				Order:          1,
+				Path:           "/repo/lib/src/main",
+				NormalizedPath: "/repo/lib/src/main",
+				Origin:         classpath.OriginSource,
+				ModuleID:       "module-lib",
+				VariantID:      "variant-debug",
+			},
+			{
+				Order:          2,
+				Path:           "/repo/lib/src/debug",
+				NormalizedPath: "/repo/lib/src/debug",
+				Origin:         classpath.OriginSource,
+				ModuleID:       "module-lib",
+				VariantID:      "variant-debug",
+			},
+			{
+				Order:          3,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0.jar",
+				Origin:         classpath.OriginArtifact,
+				FamilyKey:      "com.squareup.okhttp3:okhttp",
+			},
+			{
+				Order:          4,
+				Path:           "/repo/tools/build-logic.jar",
+				NormalizedPath: "/repo/tools/build-logic.jar",
+				Origin:         classpath.OriginGenerated,
+			},
+		},
+	}
+
+	got := ClasspathRecordToOrderEntries(record, ClasspathOrderEntryOptions{
+		CompileSDK:      "34",
+		CurrentModuleID: "module-app",
+		ModulePaths: map[string]string{
+			"module-app": ":app",
+			"module-lib": ":lib",
+		},
+		VariantNames: map[string]string{
+			"variant-debug": "debug",
+		},
+	})
+
+	if len(got) != 4 {
+		t.Fatalf("expected 4 entries, got %d: %#v", len(got), got)
+	}
+	if got[0].Kind != OrderEntryKindSDK || got[0].Name != "Android API 34" {
+		t.Fatalf("expected SDK entry first, got %#v", got[0])
+	}
+	if got[1].Kind != OrderEntryKindModule || got[1].ModulePath != ":lib" || got[1].Name != ":lib/debug" {
+		t.Fatalf("expected deduplicated module entry, got %#v", got[1])
+	}
+	if got[2].Kind != OrderEntryKindLibrary || got[2].Name != "com.squareup.okhttp3:okhttp" {
+		t.Fatalf("expected artifact-backed library entry, got %#v", got[2])
+	}
+	if got[2].Sources != "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0-sources.jar" || got[2].Javadoc != "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0-javadoc.jar" {
+		t.Fatalf("expected inferred companion jars, got %#v", got[2])
+	}
+	if got[3].Kind != OrderEntryKindLibrary || got[3].Name != "build-logic" {
+		t.Fatalf("expected generated classes entry to project as a library, got %#v", got[3])
+	}
+}
+
+func TestClasspathSnapshotToOrderEntriesUsesToolchainFallback(t *testing.T) {
+	snapshot := classpath.Snapshot{
+		Scope:       classpath.ScopeRuntime,
+		ToolchainID: "jvm-21",
+		Entries: []classpath.Entry{
+			{
+				Path:           "/repo/out/runtime.jar",
+				NormalizedPath: "/repo/out/runtime.jar",
+				Origin:         classpath.OriginArtifact,
+			},
+		},
+	}
+
+	got := ClasspathSnapshotToOrderEntries(snapshot, ClasspathOrderEntryOptions{})
+	if len(got) != 2 {
+		t.Fatalf("expected SDK + library entries, got %d: %#v", len(got), got)
+	}
+	if got[0].Kind != OrderEntryKindSDK || got[0].Name != "jvm-21" {
+		t.Fatalf("expected toolchain-based SDK fallback, got %#v", got[0])
+	}
+	if got[1].Kind != OrderEntryKindLibrary || got[1].Scope != "runtime" {
+		t.Fatalf("expected runtime-scoped library entry, got %#v", got[1])
 	}
 }
