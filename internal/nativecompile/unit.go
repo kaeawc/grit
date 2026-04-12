@@ -478,6 +478,23 @@ func androidTestSourceRoots(mod *project.Module, variantName string) []string {
 	return uniqueStringPaths(roots)
 }
 
+// baselineProfilesForVariant discovers baseline-prof.txt and startup-prof.txt
+// files across the variant source roots. These profile files tell ART which
+// methods to AOT-compile at install time.
+func baselineProfilesForVariant(mod *project.Module, variantName string) []string {
+	roots := mainSourceRoots(mod, variantName)
+	var out []string
+	for _, root := range roots {
+		for _, name := range []string{"baseline-prof.txt", "startup-prof.txt"} {
+			p := filepath.Join(root, name)
+			if info, err := os.Stat(p); err == nil && !info.IsDir() {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
 func collectSourcesFromRoots(roots []string) ([]string, error) {
 	var out []string
 	for _, root := range roots {
