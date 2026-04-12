@@ -1168,10 +1168,29 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 }
 
 func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string]bool {
-	if schedule.NetworkBudgetConfig == nil || len(schedule.Batches) == 0 {
+	if schedule.NetworkBudgetConfig == nil || (len(schedule.Batches) == 0 && len(schedule.Steps) == 0) {
 		return nil
 	}
-	return execbackend.NewSchedulerFromSchedule(schedule).PredictRemoteProbeDeferrals()
+	scheduler := execbackend.NewSchedulerFromSchedule(schedule)
+	decisions := make(map[string]bool, len(schedule.Steps))
+	for {
+		ready := scheduler.ReadyWithRemoteProbeDecisions()
+		if len(ready) == 0 {
+			break
+		}
+		for _, action := range ready {
+			decisions[action.Step.Action.ID.String()] = action.RemoteProbeDecision.DeferRemote
+		}
+		for _, action := range ready {
+			if err := scheduler.Complete(action.Step.Action.ID); err != nil {
+				return decisions
+			}
+		}
+	}
+	if len(decisions) == 0 {
+		return nil
+	}
+	return decisions
 }
 
 func (s *Service) VariantProvenance(ctx context.Context, prj *project.Project, modulePath, variantName string) (ProvenanceResult, error) {

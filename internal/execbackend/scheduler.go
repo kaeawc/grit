@@ -21,6 +21,14 @@ type Scheduler struct {
 	ready         []graph.ActionID
 	completed     map[graph.ActionID]bool
 	admission     *admission.Controller
+	remoteProbes  map[graph.ActionID]admission.RemoteProbeDecision
+}
+
+// ReadyAction captures a currently ready action along with the scheduler's
+// cached bandwidth-aware remote probe decision for that action.
+type ReadyAction struct {
+	Step                configmodel.ActionScheduleStep
+	RemoteProbeDecision admission.RemoteProbeDecision
 }
 
 // NewSchedulerFromSchedule constructs a scheduler stub directly from the
@@ -45,6 +53,7 @@ func NewScheduler(schedule configmodel.ActionSchedule, controller *admission.Con
 		stepOrder:     make(map[graph.ActionID]int, len(steps)),
 		completed:     make(map[graph.ActionID]bool, len(steps)),
 		admission:     controller,
+		remoteProbes:  make(map[graph.ActionID]admission.RemoteProbeDecision, len(steps)),
 	}
 	for actionID, ids := range schedule.Dependents {
 		s.dependents[actionID] = append([]graph.ActionID(nil), ids...)
@@ -92,6 +101,24 @@ func (s *Scheduler) Ready() []configmodel.ActionScheduleStep {
 	return out
 }
 
+// ReadyWithRemoteProbeDecisions returns the currently ready actions in
+// deterministic scheduler order alongside their remote probe decisions. The
+// scheduler computes each decision once, when the action is first observed in
+// the ready set, so repeated reads do not double-consume network budget.
+func (s *Scheduler) ReadyWithRemoteProbeDecisions() []ReadyAction {
+	if s == nil || len(s.ready) == 0 {
+		return nil
+	}
+	out := make([]ReadyAction, 0, len(s.ready))
+	for _, id := range s.ready {
+		out = append(out, ReadyAction{
+			Step:                s.steps[id],
+			RemoteProbeDecision: s.remoteProbeDecision(id),
+		})
+	}
+	return out
+}
+
 // Complete marks an action complete and promotes newly-unblocked dependents
 // into the ready set.
 func (s *Scheduler) Complete(actionID graph.ActionID) error {
@@ -131,18 +158,32 @@ func (s *Scheduler) PredictRemoteProbeDeferrals() map[string]bool {
 	}
 	decisions := make(map[string]bool, len(s.steps))
 	for len(s.ready) > 0 {
-		ready := append([]graph.ActionID(nil), s.ready...)
-		for _, id := range ready {
-			decision := s.admission.AdmitRemoteProbe(s.steps[id])
-			decisions[id.String()] = decision.DeferRemote
+		ready := s.ReadyWithRemoteProbeDecisions()
+		for _, action := range ready {
+			decisions[action.Step.Action.ID.String()] = action.RemoteProbeDecision.DeferRemote
 		}
-		for _, id := range ready {
-			if err := s.Complete(id); err != nil {
+		for _, action := range ready {
+			if err := s.Complete(action.Step.Action.ID); err != nil {
 				return decisions
 			}
 		}
 	}
 	return decisions
+}
+
+func (s *Scheduler) remoteProbeDecision(actionID graph.ActionID) admission.RemoteProbeDecision {
+	if s == nil {
+		return admission.RemoteProbeDecision{}
+	}
+	if decision, ok := s.remoteProbes[actionID]; ok {
+		return decision
+	}
+	decision := admission.RemoteProbeDecision{ActionID: actionID.String()}
+	if s.admission != nil {
+		decision = s.admission.AdmitRemoteProbe(s.steps[actionID])
+	}
+	s.remoteProbes[actionID] = decision
+	return decision
 }
 
 func (s *Scheduler) sortReady() {

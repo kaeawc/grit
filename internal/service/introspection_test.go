@@ -1262,6 +1262,59 @@ func TestToPlanScheduleResultPredictsDeferredRemoteProbes(t *testing.T) {
 	}
 }
 
+func TestPlannedRemoteProbeDecisionsUsesStepsWithoutBatches(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		NetworkBudgetConfig: &configmodel.ScheduleNetworkBudget{
+			CapacityBytes:     80,
+			RefillBytesPerSec: 0,
+		},
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 2}},
+		Steps: []configmodel.ActionScheduleStep{
+			{
+				Action: graph.Action{
+					ID:         "action:first",
+					Name:       "compileDebugKotlin",
+					Attributes: map[string]string{"operation": "compile", "modulePath": ":app", "variantName": "debug"},
+				},
+				WorkerClass:    "kotlin-compile",
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				MaxParallelism: 1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				ExecuteOnMiss:  true,
+				EstimatedBytes: 80,
+			},
+			{
+				Action: graph.Action{
+					ID:         "action:second",
+					Name:       "compileDebugJava",
+					Attributes: map[string]string{"operation": "compile", "modulePath": ":app", "variantName": "debug"},
+				},
+				WorkerClass:    "javac",
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				MaxParallelism: 1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				ExecuteOnMiss:  true,
+				EstimatedBytes: 80,
+			},
+		},
+	}
+
+	decisions := plannedRemoteProbeDecisions(schedule)
+	if len(decisions) != 2 {
+		t.Fatalf("expected decisions for steps-only schedule, got %#v", decisions)
+	}
+	if decisions["action:first"] {
+		t.Fatalf("expected first step to keep remote probes enabled, got %#v", decisions)
+	}
+	if !decisions["action:second"] {
+		t.Fatalf("expected second step to defer remote probes once the budget is exhausted, got %#v", decisions)
+	}
+}
+
 func TestDiagnosticSummaryReadbackRecomputesFromRawDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	runSummaryDir := filepath.Join(root, "build", "grit", "run-summaries", "_app")

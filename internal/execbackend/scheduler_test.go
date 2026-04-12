@@ -103,6 +103,61 @@ func TestSchedulerPredictRemoteProbeDeferralsUsesSchedulerOrder(t *testing.T) {
 	}
 }
 
+func TestSchedulerReadyWithRemoteProbeDecisionsCachesBudgetConsumption(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 3}},
+		Steps: []configmodel.ActionScheduleStep{
+			schedulerStep("action:first"),
+			schedulerStep("action:second"),
+			schedulerStep("action:third", "action:first", "action:second"),
+		},
+		Dependencies: map[graph.ActionID][]graph.ActionID{
+			"action:third": {"action:first", "action:second"},
+		},
+		Dependents: map[graph.ActionID][]graph.ActionID{
+			"action:first":  {"action:third"},
+			"action:second": {"action:third"},
+		},
+	}
+
+	scheduler := NewSchedulerFromSchedule(schedule)
+	scheduler.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     240,
+		RefillBytesPerSec: 0,
+	}))
+
+	firstReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(firstReady) != 2 {
+		t.Fatalf("expected two root actions ready, got %#v", firstReady)
+	}
+	if firstReady[0].RemoteProbeDecision.DeferRemote || firstReady[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected both root actions to fit in the initial budget, got %#v", firstReady)
+	}
+
+	secondReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(secondReady) != 2 {
+		t.Fatalf("expected repeated ready read to return same actions, got %#v", secondReady)
+	}
+	if secondReady[0].RemoteProbeDecision.DeferRemote || secondReady[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected cached ready decisions to avoid double-spending the budget, got %#v", secondReady)
+	}
+
+	if err := scheduler.Complete("action:first"); err != nil {
+		t.Fatalf("complete first action: %v", err)
+	}
+	if err := scheduler.Complete("action:second"); err != nil {
+		t.Fatalf("complete second action: %v", err)
+	}
+
+	ready := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(ready) != 1 || ready[0].Step.Action.ID != "action:third" {
+		t.Fatalf("expected dependent action to become ready, got %#v", ready)
+	}
+	if ready[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected remaining budget to cover the dependent probe, got %#v", ready[0])
+	}
+}
+
 func TestSchedulerSetNetworkBudgetOverridesDefaultControllerBudget(t *testing.T) {
 	schedule := configmodel.ActionSchedule{
 		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 1}},
