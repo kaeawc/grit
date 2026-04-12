@@ -236,6 +236,30 @@ func (c *Controller) AdmitBatch(ready []configmodel.ActionScheduleStep) (admitte
 	return admitted, waiting
 }
 
+// BatchEntry pairs an admitted action step with its admission decision, giving
+// the caller access to per-action flags like DeferRemote.
+type BatchEntry struct {
+	Step     configmodel.ActionScheduleStep
+	Decision Decision
+}
+
+// AdmitBatchWithDecisions takes a set of ready steps and returns admitted
+// entries (each paired with their Decision) and the steps that must wait.
+// Unlike AdmitBatch, this preserves per-action admission metadata such as
+// DeferRemote, which the executor needs to decide whether to skip remote
+// cache probes.
+func (c *Controller) AdmitBatchWithDecisions(ready []configmodel.ActionScheduleStep) (admitted []BatchEntry, waiting []configmodel.ActionScheduleStep) {
+	for _, step := range ready {
+		decision := c.TryAdmit(step)
+		if decision.Admitted {
+			admitted = append(admitted, BatchEntry{Step: step, Decision: decision})
+		} else {
+			waiting = append(waiting, step)
+		}
+	}
+	return admitted, waiting
+}
+
 // Snapshot returns the current state of all resource pools and worker slots.
 func (c *Controller) Snapshot() ([]PoolSnapshot, []WorkerSnapshot) {
 	c.mu.Lock()

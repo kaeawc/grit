@@ -257,6 +257,65 @@ func TestAdmitBatchEmptyInput(t *testing.T) {
 	}
 }
 
+func TestAdmitBatchWithDecisionsReturnsDeferRemote(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 10},
+	})
+	// Set a tight network budget: only 100 bytes capacity, no refill.
+	c.SetNetworkBudget(NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	}))
+
+	ready := []configmodel.ActionScheduleStep{
+		{
+			Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+			WorkerClass:    "kotlin-compile",
+			ResourceClass:  "jvm-process",
+			ResourceCost:   1,
+			MaxParallelism: 10,
+			Cacheable:      true,
+			ProbeOrder:     []string{"local-overlay", "remote"},
+			EstimatedBytes: 80,
+		},
+		{
+			Action:         graph.Action{ID: "a2", Attributes: map[string]string{"operation": "compile"}},
+			WorkerClass:    "kotlin-compile",
+			ResourceClass:  "jvm-process",
+			ResourceCost:   1,
+			MaxParallelism: 10,
+			Cacheable:      true,
+			ProbeOrder:     []string{"local-overlay", "remote"},
+			EstimatedBytes: 80,
+		},
+	}
+
+	admitted, waiting := c.AdmitBatchWithDecisions(ready)
+	if len(admitted) != 2 {
+		t.Fatalf("expected 2 admitted, got %d", len(admitted))
+	}
+	if len(waiting) != 0 {
+		t.Fatalf("expected 0 waiting, got %d", len(waiting))
+	}
+
+	// First action should consume 80 of 100 bytes — no DeferRemote.
+	if admitted[0].Decision.DeferRemote {
+		t.Fatal("first action should not have DeferRemote")
+	}
+	// Second action needs 80 bytes but only 20 remain — DeferRemote.
+	if !admitted[1].Decision.DeferRemote {
+		t.Fatal("second action should have DeferRemote set")
+	}
+}
+
+func TestAdmitBatchWithDecisionsEmptyInput(t *testing.T) {
+	c := NewController(budgets())
+	admitted, waiting := c.AdmitBatchWithDecisions(nil)
+	if len(admitted) != 0 || len(waiting) != 0 {
+		t.Fatal("expected empty results for nil input")
+	}
+}
+
 func TestResourceCostGreaterThanOne(t *testing.T) {
 	c := NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "jvm-process", Capacity: 4},

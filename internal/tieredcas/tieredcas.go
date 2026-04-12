@@ -61,6 +61,14 @@ type ProbeRecord struct {
 	Error            string         `json:"error,omitempty"`
 }
 
+// ProbeOptions controls which tiers are probed during a read operation.
+type ProbeOptions struct {
+	// MaxTier limits probing to tiers with index < MaxTier. Zero means
+	// no limit (probe all tiers). For example, MaxTier=2 probes tiers
+	// 0 and 1 only, skipping any remote tiers beyond that.
+	MaxTier int
+}
+
 // Store composes an ordered chain of cas.Store tiers.
 //
 // The tier at index 0 is the primary tier: every Put/PutBytes/PutExpected
@@ -116,8 +124,16 @@ func (s *Store) PutBytesExpected(ctx context.Context, data []byte, expected cas.
 // a deterministic probe timeline. The timeline contains one record per
 // tier probe, with the hit record marked when promotion occurred.
 func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadCloser, []ProbeRecord, error) {
+	return s.getFromTiers(ctx, h, s.tiers)
+}
+
+// getFromTiers is the shared implementation for Get-family methods. It
+// probes the given tier slice in order and returns the bytes plus probe
+// records. Only the supplied tiers are probed; this enables local-only
+// reads when the bandwidth budget is exhausted.
+func (s *Store) getFromTiers(ctx context.Context, h cas.Hash, tiers []cas.Store) (io.ReadCloser, []ProbeRecord, error) {
 	var records []ProbeRecord
-	for i, tier := range s.tiers {
+	for i, tier := range tiers {
 		start := time.Now()
 		rc, err := tier.Get(ctx, h)
 		if err == nil {
@@ -184,6 +200,31 @@ func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadClo
 func (s *Store) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
 	rc, _, err := s.GetWithProbeRecords(ctx, h)
 	return rc, err
+}
+
+// GetWithOptions probes tiers in order, respecting ProbeOptions. When
+// opts.MaxTier is set, only tiers with index < MaxTier are probed,
+// allowing the caller to skip remote tiers (e.g. when the bandwidth
+// budget is exhausted and the admission controller sets DeferRemote).
+func (s *Store) GetWithOptions(ctx context.Context, h cas.Hash, opts ProbeOptions) (io.ReadCloser, []ProbeRecord, error) {
+	tiers := s.probeTiers(opts)
+	return s.getFromTiers(ctx, h, tiers)
+}
+
+// GetActionResultWithOptions probes tiers in order for a cached action
+// result, respecting ProbeOptions. When opts.MaxTier is set, only tiers
+// with index < MaxTier are probed.
+func (s *Store) GetActionResultWithOptions(ctx context.Context, actionHash cas.Hash, opts ProbeOptions) (cas.ActionResult, []ProbeRecord, error) {
+	tiers := s.probeTiers(opts)
+	return s.getActionResultFromTiers(ctx, actionHash, tiers)
+}
+
+// probeTiers returns the subset of tiers to probe given the options.
+func (s *Store) probeTiers(opts ProbeOptions) []cas.Store {
+	if opts.MaxTier <= 0 || opts.MaxTier >= len(s.tiers) {
+		return s.tiers
+	}
+	return s.tiers[:opts.MaxTier]
 }
 
 // Stat returns the first found blob info, probing tiers in order. It
@@ -268,8 +309,14 @@ func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.A
 // GetActionResultWithProbeRecords probes tiers in order and returns the
 // cached action result plus a deterministic probe timeline.
 func (s *Store) GetActionResultWithProbeRecords(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, []ProbeRecord, error) {
+	return s.getActionResultFromTiers(ctx, actionHash, s.tiers)
+}
+
+// getActionResultFromTiers is the shared implementation for
+// GetActionResult-family methods. Only the supplied tiers are probed.
+func (s *Store) getActionResultFromTiers(ctx context.Context, actionHash cas.Hash, tiers []cas.Store) (cas.ActionResult, []ProbeRecord, error) {
 	var records []ProbeRecord
-	for i, tier := range s.tiers {
+	for i, tier := range tiers {
 		start := time.Now()
 		result, err := tier.GetActionResult(ctx, actionHash)
 		if err == nil {

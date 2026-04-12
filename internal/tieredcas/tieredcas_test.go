@@ -524,6 +524,138 @@ func TestTiersCopySnapshot(t *testing.T) {
 	}
 }
 
+func TestGetWithOptionsLocalOnlySkipsRemoteTier(t *testing.T) {
+	primary := cas.NewFilesystemStore(t.TempDir())
+	shared := cas.NewFilesystemStore(t.TempDir())
+	remote := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+
+	// Seed only the remote tier.
+	payload := []byte("remote-only content")
+	info, err := remote.PutBytes(ctx, payload, cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "seed"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := New(primary, shared, remote)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// With MaxTier=2, only tiers 0 and 1 are probed — remote (tier 2) is skipped.
+	_, records, err := s.GetWithOptions(ctx, info.Hash, ProbeOptions{MaxTier: 2})
+	if !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound with local-only probe, got err=%v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 probe records (tiers 0,1), got %d: %#v", len(records), records)
+	}
+	for _, r := range records {
+		if r.Outcome != ProbeOutcomeMiss {
+			t.Fatalf("expected miss on local tiers, got %#v", r)
+		}
+	}
+
+	// With no limit (MaxTier=0), the remote tier is probed and hits.
+	rc, records, err := s.GetWithOptions(ctx, info.Hash, ProbeOptions{})
+	if err != nil {
+		t.Fatalf("expected hit with all tiers, got %v", err)
+	}
+	got, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("content mismatch")
+	}
+	if len(records) != 3 {
+		t.Fatalf("expected 3 probe records, got %d", len(records))
+	}
+	if records[2].Tier != 2 || records[2].Outcome != ProbeOutcomeHit {
+		t.Fatalf("expected hit at tier 2, got %#v", records[2])
+	}
+}
+
+func TestGetActionResultWithOptionsLocalOnlySkipsRemoteTier(t *testing.T) {
+	primary := cas.NewFilesystemStore(t.TempDir())
+	shared := cas.NewFilesystemStore(t.TempDir())
+	remote := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+
+	actionHash := cas.HashBytes([]byte("action-local-only"))
+	result := cas.ActionResult{
+		ActionHash: actionHash,
+		Outputs: []cas.NamedOutput{
+			{Role: "out", Blob: cas.BlobInfo{Hash: cas.HashBytes([]byte("output")), Size: 6}},
+		},
+	}
+	if err := remote.PutActionResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := New(primary, shared, remote)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Local-only (MaxTier=2) should miss.
+	_, records, err := s.GetActionResultWithOptions(ctx, actionHash, ProbeOptions{MaxTier: 2})
+	if !errors.Is(err, cas.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound with local-only probe, got err=%v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 probe records, got %d", len(records))
+	}
+
+	// No limit — should hit remote and promote.
+	loaded, records, err := s.GetActionResultWithOptions(ctx, actionHash, ProbeOptions{})
+	if err != nil {
+		t.Fatalf("expected hit with all tiers, got %v", err)
+	}
+	if loaded.ActionHash != actionHash {
+		t.Fatalf("action hash mismatch")
+	}
+	if len(records) != 3 {
+		t.Fatalf("expected 3 probe records, got %d", len(records))
+	}
+	if records[2].Tier != 2 || records[2].Outcome != ProbeOutcomeHit {
+		t.Fatalf("expected hit at tier 2, got %#v", records[2])
+	}
+	// Should have promoted to primary.
+	if _, err := primary.GetActionResult(ctx, actionHash); err != nil {
+		t.Fatalf("primary should have promoted result: %v", err)
+	}
+}
+
+func TestGetWithOptionsMaxTierBeyondTierCountProbesAll(t *testing.T) {
+	primary := cas.NewFilesystemStore(t.TempDir())
+	upstream := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+
+	payload := []byte("all tiers")
+	info, err := upstream.PutBytes(ctx, payload, cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "seed"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, _ := New(primary, upstream)
+	// MaxTier=100 exceeds tier count — should probe all tiers.
+	rc, records, err := s.GetWithOptions(ctx, info.Hash, ProbeOptions{MaxTier: 100})
+	if err != nil {
+		t.Fatalf("expected hit, got %v", err)
+	}
+	got, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("content mismatch")
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+}
+
 func TestGetFromPrimaryStreamsDirectly(t *testing.T) {
 	// Regression guard: when the primary tier holds the blob, Get must
 	// not round-trip through io.ReadAll. This test cannot observe that
