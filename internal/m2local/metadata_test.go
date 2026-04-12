@@ -1,6 +1,7 @@
 package m2local
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -266,6 +267,39 @@ func TestChooseVariantSelectsAvailableAtVariant(t *testing.T) {
 	}
 }
 
+func TestModuleMetadataParsesAvailableAtURL(t *testing.T) {
+	t.Parallel()
+
+	var mod moduleMetadata
+	body := `{
+		"variants": [
+			{
+				"name": "jvmRuntimeElements-published",
+				"attributes": {
+					"org.jetbrains.kotlin.platform.type": "jvm",
+					"org.gradle.usage": "java-runtime"
+				},
+				"available-at": {
+					"group": "org.example",
+					"module": "lib-jvm",
+					"version": "1.0.0",
+					"url": "../../lib-jvm/1.0.0/lib-jvm-1.0.0.module"
+				}
+			}
+		]
+	}`
+
+	if err := json.Unmarshal([]byte(body), &mod); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if len(mod.Variants) != 1 || mod.Variants[0].AvailableAt == nil {
+		t.Fatalf("expected parsed available-at variant, got %#v", mod.Variants)
+	}
+	if got := mod.Variants[0].AvailableAt.URL; got != "../../lib-jvm/1.0.0/lib-jvm-1.0.0.module" {
+		t.Fatalf("unexpected available-at url: %q", got)
+	}
+}
+
 func TestResolveOneFollowsAvailableAtRedirect(t *testing.T) {
 	t.Parallel()
 
@@ -442,10 +476,10 @@ func TestParseBOMExtractsManagedVersions(t *testing.T) {
 	}
 
 	expected := map[string]string{
-		"androidx.compose.ui:ui":                   "1.6.8",
-		"androidx.compose.material3:material3":     "1.2.1",
-		"androidx.compose.foundation:foundation":   "1.6.8",
-		"androidx.compose.runtime:runtime":         "1.6.8",
+		"androidx.compose.ui:ui":                 "1.6.8",
+		"androidx.compose.material3:material3":   "1.2.1",
+		"androidx.compose.foundation:foundation": "1.6.8",
+		"androidx.compose.runtime:runtime":       "1.6.8",
 	}
 	if len(got) != len(expected) {
 		t.Fatalf("expected %d managed versions, got %d: %v", len(expected), len(got), got)

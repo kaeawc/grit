@@ -38,6 +38,7 @@ type moduleAvailableAt struct {
 	Group   string `json:"group"`
 	Module  string `json:"module"`
 	Version string `json:"version"`
+	URL     string `json:"url"`
 }
 
 type moduleDep struct {
