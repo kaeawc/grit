@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	diagWithColumn       = regexp.MustCompile(`^(.+?):(\d+):(\d+):\s*(error|warning|info|note):\s*(.+)$`)
-	diagWithoutCol       = regexp.MustCompile(`^(.+?):(\d+):\s*(error|warning|info|note):\s*(.+)$`)
+	diagWithColumn       = regexp.MustCompile(`(?i)^(.+?):(\d+):(\d+):\s*(error|warning|info|note|information|informational):\s*(.+)$`)
+	diagWithoutCol       = regexp.MustCompile(`(?i)^(.+?):(\d+):\s*(error|warning|info|note|information|informational):\s*(.+)$`)
 	kotlinPrefix         = regexp.MustCompile(`^(e|w|i|n):\s*(.+?):\s*\((\d+),\s*(\d+)\):\s*(.+)$`)
 	bracketCode          = regexp.MustCompile(`^\[([A-Za-z0-9_.-]+)\]\s*(.+)$`)
 	failureBracketCode   = regexp.MustCompile(`(?i)\bfailure\s*\[([A-Za-z0-9_.-]+)(?::\s*(.+?))?\]`)
@@ -134,7 +134,7 @@ func normalizeSeverity(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "warning":
 		return "warning"
-	case "info", "note":
+	case "info", "note", "information", "informational":
 		return "info"
 	default:
 		return "error"
@@ -191,6 +191,23 @@ func inferredSeverityForTool(tool, line string) string {
 			strings.Contains(lower, "unaligned"):
 			return "warning"
 		}
+	case "lint":
+		switch {
+		case strings.Contains(lower, "error:") || strings.HasPrefix(lower, "error:"):
+			return "error"
+		case strings.Contains(lower, "warning:") || strings.HasPrefix(lower, "warning:"):
+			return "warning"
+		case strings.Contains(lower, "information:") || strings.Contains(lower, "informational:"):
+			return "info"
+		}
+	case "manifest-merger":
+		switch {
+		case strings.Contains(lower, "merge failed") || strings.Contains(lower, "merging failed"),
+			strings.Contains(lower, "conflict") && strings.Contains(lower, "attribute"):
+			return "error"
+		case strings.Contains(lower, "suggestion:") || strings.Contains(lower, "tools:replace") || strings.Contains(lower, "tools:node"):
+			return "warning"
+		}
 	}
 	return ""
 }
@@ -220,9 +237,13 @@ func classifyDiagnostic(tool, severity, message string) (string, string) {
 			return "java_error", "runtime"
 		}
 	}
-	if code, rest, ok := extractBracketCode(message); ok {
-		lower = strings.ToLower(strings.TrimSpace(rest))
-		return normalizedTool + "_" + sanitizeDiagnosticToken(code), sanitizeDiagnosticToken(code)
+	if code, _, ok := extractBracketCode(message); ok {
+		sanitized := sanitizeDiagnosticToken(code)
+		category := sanitized
+		if normalizedTool == "lint" {
+			category = classifyLintIssueID(sanitized)
+		}
+		return normalizedTool + "_" + sanitized, category
 	}
 	switch normalizedTool {
 	case "kotlinc":
@@ -330,8 +351,75 @@ func classifyDiagnostic(tool, severity, message string) (string, string) {
 			strings.Contains(lower, "unaligned"):
 			return "zipalign_unaligned_entry", "packaging"
 		}
+	case "lint":
+		switch {
+		case strings.Contains(lower, "missing permission") || strings.Contains(lower, "requires permission"):
+			return "lint_missing_permission", "permissions"
+		case strings.Contains(lower, "unused resource") || strings.Contains(lower, "the resource") && strings.Contains(lower, "appears to be unused"):
+			return "lint_unused_resource", "unused-code"
+		case strings.Contains(lower, "hardcoded text") || strings.Contains(lower, "hardcoded string"):
+			return "lint_hardcoded_text", "i18n"
+		case strings.Contains(lower, "missing translation") || strings.Contains(lower, "is not translated"):
+			return "lint_missing_translation", "i18n"
+		case strings.Contains(lower, "deprecated"):
+			return "lint_deprecated_api", "deprecation"
+		case strings.Contains(lower, "overdraw") || strings.Contains(lower, "useless parent"):
+			return "lint_layout_performance", "performance"
+		case strings.Contains(lower, "obsolete") || strings.Contains(lower, "gradle") && strings.Contains(lower, "obsolete"):
+			return "lint_obsolete_dependency", "dependencies"
+		case strings.Contains(lower, "missing constraints") || strings.Contains(lower, "not constrained"):
+			return "lint_missing_constraints", "layout"
+		case strings.Contains(lower, "contentdescription") || strings.Contains(lower, "content description"):
+			return "lint_accessibility", "accessibility"
+		case strings.Contains(lower, "newapi") || strings.Contains(lower, "requires api level"):
+			return "lint_new_api", "api-compatibility"
+		case strings.Contains(lower, "inlinedapi") || strings.Contains(lower, "inlined api"):
+			return "lint_inlined_api", "api-compatibility"
+		}
+	case "manifest-merger":
+		switch {
+		case strings.Contains(lower, "conflict") && strings.Contains(lower, "attribute"):
+			return "manifest_attribute_conflict", "manifest-merging"
+		case strings.Contains(lower, "placeholder") && (strings.Contains(lower, "not found") || strings.Contains(lower, "unresolved")):
+			return "manifest_missing_placeholder", "manifest-merging"
+		case strings.Contains(lower, "uses-sdk") || strings.Contains(lower, "minsdkversion") || strings.Contains(lower, "targetsdkversion"):
+			return "manifest_sdk_conflict", "manifest-merging"
+		case strings.Contains(lower, "duplicate element") || strings.Contains(lower, "duplicate declaration"):
+			return "manifest_duplicate_element", "manifest-merging"
+		case strings.Contains(lower, "suggestion:") || strings.Contains(lower, "tools:replace") || strings.Contains(lower, "tools:node"):
+			return "manifest_merge_suggestion", "manifest-merging"
+		case strings.Contains(lower, "merge failed") || strings.Contains(lower, "merging failed"):
+			return "manifest_merge_failed", "manifest-merging"
+		}
 	}
 	return diagnosticCode(tool, severity), diagnosticCategory(tool)
+}
+
+func classifyLintIssueID(issueID string) string {
+	switch issueID {
+	case "hardcodedtext", "missingtranslation", "extratext", "typos", "settext_i18n":
+		return "i18n"
+	case "contentdescription", "labelfora11y", "imagecontrastcheck":
+		return "accessibility"
+	case "missingpermission", "unusedpermission":
+		return "permissions"
+	case "newapi", "inlinedapi", "obsoletesdkint":
+		return "api-compatibility"
+	case "unusedresources", "unusedids", "unusedattribute":
+		return "unused-code"
+	case "overdraw", "uselessparent", "toomanylayouts", "mergerootframe":
+		return "performance"
+	case "missingconstraints", "notsibling", "diffutils":
+		return "layout"
+	case "obsoletegradledependency", "gradledependency", "newerlibraryavailable":
+		return "dependencies"
+	case "deprecated", "deprecation":
+		return "deprecation"
+	case "sdkcardpath", "worldreadablefiles", "worldwriteablefiles", "unprotectedsmsmessage":
+		return "security"
+	default:
+		return issueID
+	}
 }
 
 func diagnosticCode(tool, severity string) string {

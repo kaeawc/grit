@@ -248,6 +248,162 @@ WARNING: unaligned entry res/layout/main.xml
 	}
 }
 
+func TestParseToolDiagnosticsClassifiesLintWarningsAndErrors(t *testing.T) {
+	records := parseToolDiagnostics("lint", "stdout", `
+/repo/app/src/main/java/App.java:10: Warning: Hardcoded string "Hello", should use @string resource [HardcodedText]
+/repo/app/src/main/res/layout/main.xml:5: Warning: Missing contentDescription attribute on image [ContentDescription]
+/repo/app/src/main/java/App.java:22: Error: Missing permission required by LocationManager.requestLocationUpdates: android.permission.ACCESS_FINE_LOCATION [MissingPermission]
+/repo/app/src/main/java/App.java:30: Warning: This method requires API level 26 [NewApi]
+/repo/app/src/main/res/values/strings.xml:3: Warning: "app_name" is not translated in "fr" [MissingTranslation]
+`)
+	if len(records) != 5 {
+		t.Fatalf("expected 5 diagnostics, got %d: %#v", len(records), records)
+	}
+	// Lint lines with structured locations use message-based classification
+	// because [IssueId] brackets appear at end of message, not at start
+	if records[0].Severity != "warning" || records[0].Code != "lint_hardcoded_text" || records[0].Category != "i18n" {
+		t.Fatalf("unexpected lint hardcoded-text diagnostic: %#v", records[0])
+	}
+	if records[0].File != "/repo/app/src/main/java/App.java" || records[0].Line != 10 {
+		t.Fatalf("unexpected lint location: %#v", records[0])
+	}
+	if records[1].Code != "lint_accessibility" || records[1].Category != "accessibility" {
+		t.Fatalf("unexpected lint accessibility diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "error" || records[2].Code != "lint_missing_permission" || records[2].Category != "permissions" {
+		t.Fatalf("unexpected lint missing-permission diagnostic: %#v", records[2])
+	}
+	if records[3].Code != "lint_new_api" || records[3].Category != "api-compatibility" {
+		t.Fatalf("unexpected lint new-api diagnostic: %#v", records[3])
+	}
+	if records[4].Code != "lint_missing_translation" || records[4].Category != "i18n" {
+		t.Fatalf("unexpected lint missing-translation diagnostic: %#v", records[4])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesLintInferredSeverity(t *testing.T) {
+	records := parseToolDiagnostics("lint", "stderr", `
+Warning: unused resource res/drawable/old_icon.png
+Error: requires permission android.permission.CAMERA
+Information: deprecated API usage detected
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Severity != "warning" || records[0].Code != "lint_unused_resource" || records[0].Category != "unused-code" {
+		t.Fatalf("unexpected lint unused-resource diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "lint_missing_permission" || records[1].Category != "permissions" {
+		t.Fatalf("unexpected lint requires-permission diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "info" || records[2].Code != "lint_deprecated_api" || records[2].Category != "deprecation" {
+		t.Fatalf("unexpected lint deprecated diagnostic: %#v", records[2])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesLintDiagnosticsAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "lint", `
+/repo/app/src/main/java/App.java:10: Error: Missing permission required by call [MissingPermission]
+`, `
+/repo/app/src/main/res/layout/main.xml:7: Warning: Useless parent layout [UselessParent]
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected lint diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Severity != "error" || records[0].Code != "lint_missing_permission" || records[0].Category != "permissions" {
+		t.Fatalf("unexpected collected lint error diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Severity != "warning" || records[1].Code != "lint_layout_performance" || records[1].Category != "performance" {
+		t.Fatalf("unexpected collected lint warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesManifestMergerErrors(t *testing.T) {
+	records := parseToolDiagnostics("manifest-merger", "stderr", `
+/repo/app/src/main/AndroidManifest.xml:12:5: error: Attribute application@allowBackup conflict with another library
+/repo/app/src/main/AndroidManifest.xml:3: error: Merge failed: placeholder ${applicationId} not found
+/repo/app/src/main/AndroidManifest.xml:8: warning: Suggestion: add 'tools:replace="android:allowBackup"' to override
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "manifest_attribute_conflict" || records[0].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest attribute conflict diagnostic: %#v", records[0])
+	}
+	if records[0].File != "/repo/app/src/main/AndroidManifest.xml" || records[0].Line != 12 || records[0].Column != 5 {
+		t.Fatalf("unexpected manifest location: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "manifest_missing_placeholder" || records[1].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest merge-failed diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "warning" || records[2].Code != "manifest_merge_suggestion" || records[2].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest suggestion diagnostic: %#v", records[2])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesManifestMergerSDKConflict(t *testing.T) {
+	records := parseToolDiagnostics("manifest-merger", "stderr", `
+/repo/app/src/main/AndroidManifest.xml:4: error: uses-sdk:minSdkVersion 21 cannot be lower than version 24 declared in library
+/repo/app/src/main/AndroidManifest.xml:7: error: Duplicate element permission declared in two libraries
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Code != "manifest_sdk_conflict" || records[0].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest SDK conflict diagnostic: %#v", records[0])
+	}
+	if records[1].Code != "manifest_duplicate_element" || records[1].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest duplicate-element diagnostic: %#v", records[1])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesManifestMergerAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "manifest-merger", `
+Manifest merging failed: conflict in attribute application@label
+`, `
+Suggestion: add 'tools:node="replace"' to override
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected manifest-merger diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "manifest_attribute_conflict" || records[0].Category != "manifest-merging" {
+		t.Fatalf("unexpected collected manifest attribute-conflict diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "manifest_merge_suggestion" || records[1].Category != "manifest-merging" {
+		t.Fatalf("unexpected collected manifest suggestion diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsCaseInsensitiveSeverity(t *testing.T) {
+	records := parseToolDiagnostics("lint", "stderr", `
+/repo/app/src/main/java/App.java:10: Warning: something bad
+/repo/app/src/main/java/App.java:20: Error: something worse
+/repo/app/src/main/java/App.java:30: Information: fyi
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Severity != "warning" {
+		t.Fatalf("expected warning severity for capitalized Warning, got %#v", records[0])
+	}
+	if records[1].Severity != "error" {
+		t.Fatalf("expected error severity for capitalized Error, got %#v", records[1])
+	}
+	if records[2].Severity != "info" {
+		t.Fatalf("expected info severity for Information, got %#v", records[2])
+	}
+}
+
 func TestRecordToolDiagnosticsCapturesAAPT2DiagnosticsAcrossStreams(t *testing.T) {
 	collector := &tooldiag.Collector{}
 	ctx := tooldiag.WithCollector(context.Background(), collector)
