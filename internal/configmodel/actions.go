@@ -31,6 +31,7 @@ type ActionScheduleStep struct {
 	ProbeOrder     []string
 	ExecuteOnMiss  bool
 	ProbeHint      *projectProbeHint
+	EstimatedBytes int64
 	RetentionClass string
 	Shareability   string
 }

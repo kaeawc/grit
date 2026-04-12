@@ -27,6 +27,11 @@ type Decision struct {
 	WaitCost    int    // cost that exceeded capacity, if any
 	PoolUsage   []PoolSnapshot
 	WorkerUsage []WorkerSnapshot
+
+	// DeferRemote is true when the action was admitted but the network budget
+	// denied the remote probe. The executor should skip the remote cache tier
+	// and resolve locally.
+	DeferRemote bool
 }
 
 // PoolSnapshot captures the state of a single resource pool at a point in time.
@@ -58,6 +63,13 @@ type Controller struct {
 
 	// Actions currently admitted, keyed by action ID.
 	admitted map[string]admittedAction
+
+	// networkBudget is an optional bandwidth-aware admission constraint.
+	// When non-nil, cacheable actions with remote probe tiers are checked
+	// against this budget before admission. Denied actions have their
+	// Decision.DeferRemote flag set, signalling the executor to skip the
+	// remote probe and resolve locally.
+	networkBudget *NetworkBudget
 }
 
 type pool struct {
@@ -89,6 +101,16 @@ func NewController(budgets []configmodel.ResourceBudget) *Controller {
 		c.pools[b.ResourceClass] = &pool{capacity: b.Capacity}
 	}
 	return c
+}
+
+// SetNetworkBudget attaches a bandwidth-aware admission constraint. When set,
+// cacheable actions that include remote probe tiers are checked against the
+// budget before admission. If the budget denies the request, the action is
+// still admitted for local execution but the Decision.DeferRemote flag is set.
+func (c *Controller) SetNetworkBudget(nb *NetworkBudget) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.networkBudget = nb
 }
 
 // RegisterWorkerClass sets the maximum parallelism for a worker class. If the
@@ -153,10 +175,20 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 		resourceCost:  step.ResourceCost,
 		workerClass:   step.WorkerClass,
 	}
+
+	// Check network budget for cacheable actions with remote probe tiers.
+	deferRemote := false
+	if c.networkBudget != nil && step.Cacheable && hasRemoteTier(step.ProbeOrder) {
+		if !c.networkBudget.Admit(step.EstimatedBytes) {
+			deferRemote = true
+		}
+	}
+
 	return Decision{
 		Admitted:    true,
 		ActionID:    actionID,
 		Reason:      "admitted",
+		DeferRemote: deferRemote,
 		PoolUsage:   c.snapshotPoolsLocked(),
 		WorkerUsage: c.snapshotWorkersLocked(),
 	}
@@ -252,6 +284,18 @@ func (c *Controller) snapshotPoolsLocked() []PoolSnapshot {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ResourceClass < out[j].ResourceClass })
 	return out
+}
+
+// hasRemoteTier returns true if the probe order includes any tier beyond
+// local-only tiers. Any tier name that is not "local-overlay" is treated as
+// remote.
+func hasRemoteTier(probeOrder []string) bool {
+	for _, tier := range probeOrder {
+		if tier != "local-overlay" {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) snapshotWorkersLocked() []WorkerSnapshot {
