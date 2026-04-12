@@ -217,6 +217,8 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 	libDexDir := filepath.Join(outRoot, "lib-dex")
 	appDexDir := filepath.Join(outRoot, "app-dex")
 	classesJar := filepath.Join(outRoot, "app-classes.jar")
+	protoAPK := filepath.Join(outRoot, "proto-resources.apk")
+	protoDir := filepath.Join(outRoot, "proto-extracted")
 	moduleZipDir := filepath.Join(outRoot, "module-zip")
 	baseZip := filepath.Join(moduleZipDir, "base.zip")
 	unsignedAAB := filepath.Join(outRoot, "app-"+variant.Name+"-unsigned.aab")
@@ -272,15 +274,73 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 		return "", err
 	}
 
+	// Link resources in proto format for AAB module zip.
+	compiledFiles := flattenCompiledResourceFiles(resources)
+	if err := tracker.Track("aapt2LinkProto", func() error {
+		if len(compiledFiles) == 0 {
+			return nil
+		}
+		manifestPath := manifestForPackagingPathOrEmpty(prj, mod, variant.Name)
+		if manifestPath == "" {
+			return fmt.Errorf("assembleAAB: manifest not found for proto link %s/%s", mod.Path, variant.Name)
+		}
+		debugMode := strings.EqualFold(strings.TrimSpace(firstNonEmpty(variant.BaseBuildType, variant.Name)), "debug") || strings.HasSuffix(strings.TrimSpace(variant.Name), "Debug")
+		outInputs := append([]string{manifestPath}, resourceArtifactStamps(resources)...)
+		if outputsNewerThanInputs(protoAPK, outInputs) {
+			recordCacheProbe(tracker, "aapt2LinkProto", true, "local-up-to-date", "proto resource APK newer than manifest and resource inputs")
+			return nil
+		}
+		recordCacheProbe(tracker, "aapt2LinkProto", false, "cache-miss", "proto resource APK required fresh aapt2 link")
+		return runAAPT2LinkProto(ctx, manifestPath, mod.MinSDK, mod.TargetSDK, debugMode, compiledFiles, resourceArtifactStamps(resources), protoAPK, stdout, stderr)
+	}); err != nil {
+		return "", err
+	}
+
+	// Extract proto APK if resources were linked.
+	if err := tracker.Track("extractProtoAPK", func() error {
+		if len(compiledFiles) == 0 || !pathIsFile(protoAPK) {
+			return nil
+		}
+		if outputsNewerThanInputs(protoDir, []string{protoAPK}) {
+			recordCacheProbe(tracker, "extractProtoAPK", true, "local-up-to-date", "extracted proto dir newer than proto APK")
+			return nil
+		}
+		recordCacheProbe(tracker, "extractProtoAPK", false, "cache-miss", "proto APK extraction required")
+		if err := os.RemoveAll(protoDir); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(protoDir, 0o755); err != nil {
+			return err
+		}
+		return extractProtoAPK(protoAPK, protoDir)
+	}); err != nil {
+		return "", err
+	}
+
 	// Assemble module zip.
 	if err := tracker.Track("assembleModuleZip", func() error {
+		// Use proto-format manifest if available (from aapt2 link --proto-format),
+		// otherwise fall back to the source manifest.
 		manifestPath := manifestForPackagingPathOrEmpty(prj, mod, variant.Name)
 		if manifestPath == "" {
 			return fmt.Errorf("assembleAAB: manifest not found for %s/%s", mod.Path, variant.Name)
 		}
+		protoManifest := filepath.Join(protoDir, "AndroidManifest.xml")
+		if pathIsFile(protoManifest) {
+			manifestPath = protoManifest
+		}
 		inputs := moduleZipInputs{
 			ManifestPath: manifestPath,
 			DexDir:       dexDir,
+		}
+		// Include proto resource table and compiled resources if available.
+		resourcesTable := filepath.Join(protoDir, "resources.pb")
+		if pathIsFile(resourcesTable) {
+			inputs.ResourceTablePath = resourcesTable
+		}
+		protoResDir := filepath.Join(protoDir, "res")
+		if pathIsDir(protoResDir) {
+			inputs.ResourceDir = protoResDir
 		}
 		// Discover assets directory if it exists.
 		assetsDir := filepath.Join(mod.Dir, "src", "main", "assets")
@@ -304,6 +364,12 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 			}
 		}
 		zipInputs := []string{inputs.ManifestPath, dexDir}
+		if inputs.ResourceTablePath != "" {
+			zipInputs = append(zipInputs, inputs.ResourceTablePath)
+		}
+		if inputs.ResourceDir != "" {
+			zipInputs = append(zipInputs, inputs.ResourceDir)
+		}
 		if outputsNewerThanInputs(baseZip, zipInputs) {
 			recordCacheProbe(tracker, "assembleModuleZip", true, "local-up-to-date", "module zip newer than manifest and dex inputs")
 			return nil

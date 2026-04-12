@@ -1,11 +1,13 @@
 package nativecompile
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -186,6 +188,75 @@ func runAAPT2LinkForSymbols(ctx context.Context, mod *project.Module, manifestPa
 	}
 	traceAAPT2Args("link", args, stderr)
 	return runCmd(ctx, "aapt2", append([]string{"link"}, args...), stdout, stderr)
+}
+
+// runAAPT2LinkProto runs aapt2 link with --proto-format to produce a proto-format
+// resource APK suitable for AAB assembly. The output APK contains proto-format
+// AndroidManifest.xml, resources.pb, and compiled resources under res/.
+func runAAPT2LinkProto(ctx context.Context, manifestPath, minSDK, targetSDK string, debugMode bool, compiledFiles []string, compiledInputs []string, outAPK string, stdout, stderr *os.File) error {
+	androidJar := androidJarPath()
+	inputs := append([]string{manifestPath, androidJar}, compiledInputs...)
+	if outputsNewerThanInputs(outAPK, inputs) {
+		return nil
+	}
+	args := []string{
+		"--manifest", manifestPath,
+		"-I", androidJar,
+		"--min-sdk-version", minSDK,
+		"--target-sdk-version", targetSDK,
+		"--auto-add-overlay",
+		"--proto-format",
+		"-o", outAPK,
+	}
+	if debugMode {
+		args = append(args, "--debug-mode")
+	}
+	linkedFiles, cleanup, err := compactAAPT2InputPaths(compiledFiles)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	for _, file := range linkedFiles {
+		args = append(args, "-R", file)
+	}
+	traceAAPT2Args("link-proto", args, stderr)
+	return runCmd(ctx, "aapt2", append([]string{"link"}, args...), stdout, stderr)
+}
+
+// extractProtoAPK extracts a proto-format resource APK (produced by aapt2 link
+// --proto-format) into the given directory. The extracted contents include
+// AndroidManifest.xml, resources.pb, and res/ entries.
+func extractProtoAPK(protoAPK, destDir string) error {
+	zr, err := zip.OpenReader(protoAPK)
+	if err != nil {
+		return fmt.Errorf("open proto APK: %w", err)
+	}
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		target := filepath.Join(destDir, f.Name)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		out, err := os.Create(target)
+		if err != nil {
+			rc.Close()
+			return err
+		}
+		_, copyErr := io.Copy(out, rc)
+		rc.Close()
+		out.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+	}
+	return nil
 }
 
 func compactAAPT2InputPaths(compiledFiles []string) ([]string, func(), error) {

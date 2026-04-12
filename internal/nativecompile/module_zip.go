@@ -32,6 +32,11 @@ type moduleZipInputs struct {
 	// NativeLibDirs maps ABI name (e.g. "arm64-v8a") to a directory
 	// containing .so files. Added under lib/<abi>/ in the zip.
 	NativeLibDirs map[string]string
+
+	// ResourceTablePath is the path to the proto-format resource table
+	// (resources.pb) produced by aapt2 link --proto-format. Added at the
+	// root of the zip. Empty to omit.
+	ResourceTablePath string
 }
 
 // assembleModuleZip creates a bundletool-compatible module zip at outputPath
@@ -68,6 +73,13 @@ func assembleModuleZip(inputs moduleZipInputs, outputPath string) error {
 	// Manifest (required).
 	if err := addFileToZip(w, inputs.ManifestPath, "manifest/AndroidManifest.xml"); err != nil {
 		return fmt.Errorf("module zip: add manifest: %w", err)
+	}
+
+	// Proto resource table (resources.pb).
+	if inputs.ResourceTablePath != "" && pathIsFile(inputs.ResourceTablePath) {
+		if err := addFileToZip(w, inputs.ResourceTablePath, "resources.pb"); err != nil {
+			return fmt.Errorf("module zip: add resources.pb: %w", err)
+		}
 	}
 
 	// Dex files.
