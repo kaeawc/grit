@@ -12,8 +12,24 @@ import (
 
 type actionCacheKeyFunc func(*Model, graph.Action) string
 
-var actionCacheKeyRegistry = map[graph.ActionKind]actionCacheKeyFunc{
-	graph.ActionKindLint: lintActionCacheKey,
+var actionCacheKeyRegistry = map[graph.ActionKind]actionCacheKeyFunc{}
+
+func init() {
+	registerActionCacheKey(graph.ActionKindLint, lintActionCacheKey)
+}
+
+func registerActionCacheKey(kind graph.ActionKind, fn actionCacheKeyFunc) {
+	switch kind {
+	case "", graph.ActionKindUnknown:
+		panic("configmodel: action cache key registration requires a concrete action kind")
+	}
+	if fn == nil {
+		panic("configmodel: action cache key registration requires a function")
+	}
+	if _, exists := actionCacheKeyRegistry[kind]; exists {
+		panic(fmt.Sprintf("configmodel: action cache key already registered for %q", kind))
+	}
+	actionCacheKeyRegistry[kind] = fn
 }
 
 func actionCacheKey(action graph.Action) string {
