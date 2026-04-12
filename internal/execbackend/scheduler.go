@@ -156,14 +156,14 @@ func (s *Scheduler) Complete(actionID graph.ActionID) error {
 
 // CompleteWithActualRemoteBytes reconciles the scheduler's cached remote-probe
 // admission decision against the measured remote bytes before unblocking
-// dependents. This lets newly-ready actions observe returned bandwidth budget
-// immediately after an upstream action completes.
+// dependents. This lets newly-ready actions observe either returned surplus
+// capacity or overrun debt immediately after an upstream action completes.
 func (s *Scheduler) CompleteWithActualRemoteBytes(actionID graph.ActionID, actualRemoteBytes int64) error {
 	if s == nil {
 		return fmt.Errorf("scheduler is nil")
 	}
-	if cached, ok := s.remoteProbes[actionID]; ok && s.networkBudget != nil && actualRemoteBytes >= 0 && cached.decision.Eligible && !cached.decision.DeferRemote && actualRemoteBytes < cached.decision.EstimatedBytes {
-		s.networkBudget.Return(cached.decision.EstimatedBytes - actualRemoteBytes)
+	if cached, ok := s.remoteProbes[actionID]; ok && s.networkBudget != nil && actualRemoteBytes >= 0 && cached.decision.Eligible && !cached.decision.DeferRemote {
+		s.networkBudget.Reconcile(cached.decision.EstimatedBytes, actualRemoteBytes)
 	}
 	return s.Complete(actionID)
 }

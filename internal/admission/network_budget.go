@@ -16,7 +16,10 @@ type NetworkBudget struct {
 	// capacity is the maximum number of byte-tokens the bucket can hold.
 	capacity int64
 
-	// available is the current number of byte-tokens.
+	// available is the current number of byte-tokens. It may go negative when
+	// execution consumes more bytes than the scheduler reserved up front; that
+	// negative balance represents bandwidth debt that future refills must repay
+	// before new remote probes can be admitted.
 	available int64
 
 	// refillRate is the number of byte-tokens added per second.
@@ -129,6 +132,32 @@ func (nb *NetworkBudget) Return(bytes int64) {
 	nb.available += bytes
 	if nb.available > nb.capacity {
 		nb.available = nb.capacity
+	}
+}
+
+// Reconcile adjusts the budget after execution reports actual network usage for
+// a previously reserved probe. Surplus reserved bytes are returned to the
+// bucket; overages consume additional tokens and may drive the budget negative
+// so future probes defer until refill catches up.
+func (nb *NetworkBudget) Reconcile(reservedBytes, actualBytes int64) {
+	if nb == nil || reservedBytes <= 0 || actualBytes < 0 {
+		return
+	}
+
+	nb.mu.Lock()
+	defer nb.mu.Unlock()
+	nb.refillLocked()
+
+	delta := actualBytes - reservedBytes
+	switch {
+	case delta < 0:
+		nb.available += -delta
+		if nb.available > nb.capacity {
+			nb.available = nb.capacity
+		}
+	case delta > 0:
+		nb.available -= delta
+		nb.totalAdmitted += delta
 	}
 }
 

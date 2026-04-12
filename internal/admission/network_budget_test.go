@@ -116,6 +116,61 @@ func TestNetworkBudgetReturnZeroOrNegative(t *testing.T) {
 	}
 }
 
+func TestNetworkBudgetReconcileReturnsSurplus(t *testing.T) {
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	if !nb.Admit(80) {
+		t.Fatal("expected initial admission")
+	}
+
+	nb.Reconcile(80, 30)
+
+	snap := nb.Snapshot()
+	if snap.Available != 70 {
+		t.Fatalf("expected 70 available after returning surplus, got %+v", snap)
+	}
+	if snap.TotalAdmitted != 80 || snap.TotalDenied != 0 {
+		t.Fatalf("expected reconcile surplus to preserve admission totals, got %+v", snap)
+	}
+}
+
+func TestNetworkBudgetReconcileTracksOverrunDebt(t *testing.T) {
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 10,
+	})
+	nb.now = func() time.Time { return fakeNow }
+	nb.lastRefill = fakeNow
+	if !nb.Admit(80) {
+		t.Fatal("expected initial admission")
+	}
+
+	nb.Reconcile(80, 120)
+
+	snap := nb.Snapshot()
+	if snap.Available != -20 {
+		t.Fatalf("expected 20 bytes of debt after overrun, got %+v", snap)
+	}
+	if snap.TotalAdmitted != 120 || snap.TotalDenied != 0 {
+		t.Fatalf("expected overrun to increase admitted total to actual bytes, got %+v", snap)
+	}
+	if nb.CanAdmit(1) {
+		t.Fatal("expected debt to block new admissions before refill")
+	}
+
+	fakeNow = fakeNow.Add(3 * time.Second)
+	if !nb.CanAdmit(1) {
+		t.Fatal("expected refill to repay debt and admit new bytes")
+	}
+	snap = nb.Snapshot()
+	if snap.Available != 10 {
+		t.Fatalf("expected refill to repay debt and leave 10 bytes available, got %+v", snap)
+	}
+}
+
 func TestNetworkBudgetSnapshot(t *testing.T) {
 	nb := NewNetworkBudget(NetworkBudgetConfig{
 		CapacityBytes:     2000,

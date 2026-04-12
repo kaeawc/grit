@@ -1799,6 +1799,123 @@ func TestExecuteScheduleSchedulerReconciliationUsesActualRemoteBytesOnce(t *test
 	}
 }
 
+func TestExecuteScheduleSchedulerReconciliationChargesRemoteOverrun(t *testing.T) {
+	blob := bytes.Repeat([]byte("x"), 95)
+	hash := cas.HashBytes(blob)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/cas/"+hash.String() {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(blob)
+	}))
+	defer ts.Close()
+
+	client, err := remotecache.New(ts.URL, "")
+	if err != nil {
+		t.Fatalf("remotecache.New: %v", err)
+	}
+
+	fake := &remoteReadCompiler{
+		CompilerRecorder: &testsupport.CompilerRecorder{},
+		client:           client,
+		hash:             hash,
+		reads:            []bool{true, false},
+	}
+	svc := NewWithCompiler(fake)
+
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 1},
+	})
+	ac.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	}))
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	schedule := configmodel.ActionSchedule{
+		Steps: []configmodel.ActionScheduleStep{
+			{
+				Action: graph.Action{
+					ID:   graph.ActionID("action:compile1"),
+					Name: "compileDebug1",
+					Attributes: map[string]string{
+						"operation":   "compile",
+						"modulePath":  ":app",
+						"variantName": "debug",
+					},
+				},
+				WorkerClass:    "kotlin-compile",
+				MaxParallelism: 1,
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				EstimatedBytes: 80,
+			},
+			{
+				Action: graph.Action{
+					ID:   graph.ActionID("action:compile2"),
+					Name: "compileDebug2",
+					Attributes: map[string]string{
+						"operation":   "compile",
+						"modulePath":  ":app",
+						"variantName": "debug",
+					},
+				},
+				Dependencies:   []graph.ActionID{"action:compile1"},
+				WorkerClass:    "kotlin-compile",
+				MaxParallelism: 1,
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				EstimatedBytes: 80,
+			},
+		},
+		Dependencies: map[graph.ActionID][]graph.ActionID{
+			"action:compile2": {"action:compile1"},
+		},
+		Dependents: map[graph.ActionID][]graph.ActionID{
+			"action:compile1": {"action:compile2"},
+		},
+	}
+
+	outcomes, err := svc.executeSchedule(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, schedule, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("executeSchedule returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected 2 outcomes, got %d", len(outcomes))
+	}
+	if outcomes[0].ActionExecutions[0].RemoteBytesRead != 95 {
+		t.Fatalf("expected first action to observe 95 remote bytes, got %#v", outcomes[0].ActionExecutions[0])
+	}
+	if outcomes[0].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected first action to keep remote probing enabled, got %#v", outcomes[0].ActionExecutions[0])
+	}
+	if !outcomes[1].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected second action to defer after overrun leaves only 5 bytes, got %#v", outcomes[1].ActionExecutions[0])
+	}
+
+	summary := ac.BandwidthSummary()
+	if summary == nil {
+		t.Fatal("expected bandwidth summary")
+	}
+	if summary.TotalAdmittedBytes != 95 || summary.TotalDeniedBytes != 80 {
+		t.Fatalf("expected overrun to raise admitted bytes to actual usage, got %+v", summary)
+	}
+	if summary.BudgetRemainingBytes != 5 {
+		t.Fatalf("expected only 5 bytes remaining after overrun accounting, got %+v", summary)
+	}
+}
+
 func TestExecuteBatchRestoresNetworkBudgetFromMeasuredRemoteBytes(t *testing.T) {
 	svc := NewWithCompiler(&testsupport.CompilerRecorder{})
 

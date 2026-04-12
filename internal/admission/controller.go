@@ -255,9 +255,10 @@ func (c *Controller) AdmitRemoteProbe(step configmodel.ActionScheduleStep) Remot
 	return c.admitRemoteProbeLocked(step)
 }
 
-// ReconcileRemoteProbe returns unused network-budget capacity from a prior
-// remote-probe decision. Callers should pass the scheduler's cached decision
-// together with the measured remote bytes once execution completes.
+// ReconcileRemoteProbe reconciles a prior remote-probe reservation against the
+// measured bytes once execution completes. Surplus reserved bytes are returned;
+// underestimated probes consume additional budget so later actions observe the
+// overrun immediately.
 //
 // Deferred or ineligible probes are a no-op because they never consumed
 // bandwidth budget in the first place.
@@ -269,10 +270,10 @@ func (c *Controller) ReconcileRemoteProbe(decision RemoteProbeDecision, actualBy
 	c.mu.Lock()
 	nb := c.networkBudget
 	c.mu.Unlock()
-	if nb == nil || actualBytes >= decision.EstimatedBytes {
+	if nb == nil {
 		return
 	}
-	nb.Return(decision.EstimatedBytes - actualBytes)
+	nb.Reconcile(decision.EstimatedBytes, actualBytes)
 }
 
 // Release frees the resources held by a previously admitted action. It returns
@@ -332,9 +333,8 @@ func (c *Controller) releaseLocked(actionID string, actualBytes int64) error {
 		} else if entry.remoteProbePrecomputed {
 			// The scheduler pre-reserved bandwidth for this remote probe, so it
 			// also owns the later actual-byte reconciliation.
-		} else if actualBytes >= 0 && actualBytes < entry.estimatedBytes {
-			// Action used fewer bytes than estimated; return the surplus.
-			c.networkBudget.Return(entry.estimatedBytes - actualBytes)
+		} else if actualBytes >= 0 {
+			c.networkBudget.Reconcile(entry.estimatedBytes, actualBytes)
 		}
 	}
 

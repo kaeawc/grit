@@ -510,6 +510,39 @@ func TestReconcileRemoteProbeReturnsUnusedEstimate(t *testing.T) {
 	}
 }
 
+func TestReconcileRemoteProbeChargesOverrun(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 1},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	step := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+
+	decision := c.AdmitRemoteProbe(step)
+	if decision.DeferRemote {
+		t.Fatalf("expected admitted remote probe, got %+v", decision)
+	}
+
+	c.ReconcileRemoteProbe(decision, 120)
+
+	if snap := nb.Snapshot(); snap.Available != -20 || snap.TotalAdmitted != 120 {
+		t.Fatalf("expected reconcile to charge 40 extra bytes, got %+v", snap)
+	}
+}
+
 func TestReconcileRemoteProbeSkipsDeferredDecision(t *testing.T) {
 	c := NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "jvm-process", Capacity: 1},
@@ -693,6 +726,40 @@ func TestReleaseWithActualZeroBytesReturnsFullEstimate(t *testing.T) {
 	snap := nb.Snapshot()
 	if snap.Available != 1000 {
 		t.Fatalf("expected 1000 available after full return, got %d", snap.Available)
+	}
+}
+
+func TestReleaseWithActualChargesOverrun(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 10},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	s := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 10,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+	c.TryAdmit(s)
+
+	if err := c.ReleaseWithActual("a1", 120); err != nil {
+		t.Fatal(err)
+	}
+	snap := nb.Snapshot()
+	if snap.Available != -20 {
+		t.Fatalf("expected overrun to drive budget into 20-byte debt, got %+v", snap)
+	}
+	if snap.TotalAdmitted != 120 {
+		t.Fatalf("expected overrun to raise admitted bytes to 120, got %+v", snap)
 	}
 }
 

@@ -284,6 +284,52 @@ func TestSchedulerCompleteWithActualRemoteBytesRestoresBudgetBeforeUnlockingDepe
 	}
 }
 
+func TestSchedulerCompleteWithActualRemoteBytesChargesOverrunBeforeUnlockingDependents(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 1}},
+		Steps: []configmodel.ActionScheduleStep{
+			schedulerStep("action:first"),
+			schedulerStep("action:second", "action:first"),
+		},
+		Dependencies: map[graph.ActionID][]graph.ActionID{
+			"action:second": {"action:first"},
+		},
+		Dependents: map[graph.ActionID][]graph.ActionID{
+			"action:first": {"action:second"},
+		},
+	}
+
+	scheduler := NewSchedulerFromSchedule(schedule)
+	nb := admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	scheduler.SetNetworkBudget(nb)
+
+	firstReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(firstReady) != 1 || firstReady[0].Step.Action.ID != "action:first" {
+		t.Fatalf("expected only first action ready, got %#v", firstReady)
+	}
+	if firstReady[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected first action to consume initial budget, got %#v", firstReady[0])
+	}
+
+	if err := scheduler.CompleteWithActualRemoteBytes("action:first", 95); err != nil {
+		t.Fatalf("complete with actual bytes: %v", err)
+	}
+
+	secondReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(secondReady) != 1 || secondReady[0].Step.Action.ID != "action:second" {
+		t.Fatalf("expected dependent action ready after completion, got %#v", secondReady)
+	}
+	if !secondReady[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected overrun to force dependent action into local-only mode, got %#v", secondReady[0])
+	}
+	if secondReady[0].RemoteProbeDecision.BudgetBeforeBytes != 5 || secondReady[0].RemoteProbeDecision.BudgetAfterBytes != 5 {
+		t.Fatalf("expected dependent action to observe only 5 bytes remaining, got %#v", secondReady[0].RemoteProbeDecision)
+	}
+}
+
 func TestSchedulerClonesControllerNetworkBudget(t *testing.T) {
 	schedule := configmodel.ActionSchedule{
 		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 2}},
