@@ -374,6 +374,70 @@ func zipEntries(t *testing.T, path string) []string {
 	return names
 }
 
+func TestAssembleModuleZipProducesValidCentralDirectory(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+
+	manifest := filepath.Join(tmp, "AndroidManifest.xml")
+	if err := os.WriteFile(manifest, []byte("<manifest/>"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	dexDir := filepath.Join(tmp, "dex")
+	if err := os.MkdirAll(dexDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dexDir, "classes.dex"), []byte("dex-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(tmp, "base.zip")
+	if err := assembleModuleZip(moduleZipInputs{
+		ManifestPath: manifest,
+		DexDir:       dexDir,
+	}, out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Open and read every entry to confirm the zip is structurally complete.
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatalf("zip has invalid central directory: %v", err)
+	}
+	defer zr.Close()
+
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatalf("cannot open entry %s: %v", f.Name, err)
+		}
+		buf := make([]byte, f.UncompressedSize64+1)
+		n, _ := rc.Read(buf)
+		rc.Close()
+		if uint64(n) != f.UncompressedSize64 {
+			t.Errorf("entry %s: read %d bytes, expected %d", f.Name, n, f.UncompressedSize64)
+		}
+	}
+}
+
+func TestAssembleModuleZipCleansUpOnError(t *testing.T) {
+	t.Parallel()
+	tmp := t.TempDir()
+
+	// Point ManifestPath at a directory instead of a file — this passes the
+	// initial pathIsFile check's inverse (directories aren't files) and should
+	// return an error. The output zip should not remain on disk.
+	out := filepath.Join(tmp, "out", "base.zip")
+	err := assembleModuleZip(moduleZipInputs{
+		ManifestPath: "/nonexistent/AndroidManifest.xml",
+	}, out)
+	if err == nil {
+		t.Fatal("expected error for missing manifest")
+	}
+	if pathIsFile(out) {
+		t.Fatal("partial zip file should be removed on error")
+	}
+}
+
 func stringSlicesEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

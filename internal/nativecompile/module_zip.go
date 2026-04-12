@@ -65,10 +65,15 @@ func assembleModuleZip(inputs moduleZipInputs, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("module zip: create file: %w", err)
 	}
-	defer f.Close()
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			f.Close()
+			os.Remove(outputPath)
+		}
+	}()
 
 	w := zip.NewWriter(f)
-	defer w.Close()
 
 	// Manifest (required).
 	if err := addFileToZip(w, inputs.ManifestPath, "manifest/AndroidManifest.xml"); err != nil {
@@ -128,6 +133,15 @@ func assembleModuleZip(inputs moduleZipInputs, outputPath string) error {
 		}
 	}
 
+	// Explicitly close the zip writer to flush the central directory,
+	// then close the file. Errors here mean a corrupt zip on disk.
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("module zip: finalize zip: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("module zip: close file: %w", err)
+	}
+	succeeded = true
 	return nil
 }
 
