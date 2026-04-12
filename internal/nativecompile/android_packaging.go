@@ -383,6 +383,9 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 	// Discover optional BundleConfig.
 	bundleConfigPath := findBundleConfig(mod.Dir)
 
+	// Compute shared cache directory for the AAB assembly.
+	aabCacheDir := aabAssemblyCacheDir(tc, []string{baseZip}, bundleConfigPath)
+
 	// Run bundletool build-bundle.
 	if err := tracker.Track("bundletoolBuildBundle", func() error {
 		inputs := []string{baseZip}
@@ -393,8 +396,16 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 			recordCacheProbe(tracker, "bundletoolBuildBundle", true, "local-up-to-date", "unsigned AAB newer than module zip")
 			return nil
 		}
+		if restoreSharedAABAssembly(unsignedAAB, aabCacheDir) {
+			recordCacheProbe(tracker, "bundletoolBuildBundle", true, "shared-cache-hit", "restored unsigned AAB from shared cache")
+			return nil
+		}
 		recordCacheProbe(tracker, "bundletoolBuildBundle", false, "cache-miss", "unsigned AAB required bundletool execution")
-		return runBundletoolBuildBundle(ctx, tc, []string{baseZip}, unsignedAAB, bundleConfigPath, stdout, stderr)
+		if err := runBundletoolBuildBundle(ctx, tc, []string{baseZip}, unsignedAAB, bundleConfigPath, stdout, stderr); err != nil {
+			return err
+		}
+		_ = saveSharedAABAssembly(unsignedAAB, aabCacheDir)
+		return nil
 	}); err != nil {
 		return "", err
 	}

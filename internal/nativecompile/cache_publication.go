@@ -157,6 +157,36 @@ func saveSharedSignedAAB(finalAAB, sharedAAB string) error {
 	return os.Rename(tmpDir, filepath.Dir(sharedAAB))
 }
 
+// restoreSharedAABAssembly attempts to restore an unsigned AAB from the shared
+// cache directory produced by aabAssemblyCacheDir. Returns true if the cache
+// hit succeeded and outputAAB was written.
+func restoreSharedAABAssembly(outputAAB, cacheDir string) bool {
+	cachedAAB := filepath.Join(cacheDir, "unsigned.aab")
+	if !pathIsFile(cachedAAB) {
+		return false
+	}
+	return copyFile(cachedAAB, outputAAB) == nil
+}
+
+// saveSharedAABAssembly stores the unsigned AAB into the shared cache so
+// subsequent builds with the same inputs can skip bundletool invocation.
+func saveSharedAABAssembly(outputAAB, cacheDir string) error {
+	if pathIsFile(filepath.Join(cacheDir, "unsigned.aab")) {
+		return nil
+	}
+	tmpDir := cacheDir + ".tmp"
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return err
+	}
+	if err := copyFile(outputAAB, filepath.Join(tmpDir, "unsigned.aab")); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(cacheDir); err != nil {
+		return err
+	}
+	return os.Rename(tmpDir, cacheDir)
+}
+
 func restoreSharedCompileCache(classesDir, moduleJar, cacheDir string) bool {
 	cachedClasses := filepath.Join(cacheDir, "classes")
 	cachedJar := filepath.Join(cacheDir, "module-classes.jar")
