@@ -108,6 +108,7 @@ type Variant struct {
 	ContentRoots              []ContentRoot   `json:"contentRoots,omitempty"`
 	Materialization           Materialization `json:"materialization,omitempty"`
 	Dependencies              []Dependency    `json:"dependencies,omitempty"`
+	OrderEntries              []OrderEntry    `json:"orderEntries,omitempty"`
 	Actions                   []Action        `json:"actions,omitempty"`
 	Targets                   []Target        `json:"targets,omitempty"`
 }

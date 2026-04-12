@@ -140,6 +140,31 @@ func TestVariantOrderEntriesDeduplicatesDependencies(t *testing.T) {
 	}
 }
 
+func TestVariantOrderEntriesIgnoresOpaqueSnapshotIDs(t *testing.T) {
+	v := Variant{
+		Name:       "debug",
+		CompileSDK: "34",
+		Dependencies: []Dependency{
+			{Kind: "module", TargetModulePath: ":lib"},
+		},
+		Materialization: Materialization{
+			ClasspathSnapshotIDs: []string{
+				"classpath-snapshot-123",
+				"ordered-entries-456",
+				"/caches/transforms/material-1.9.0.aar",
+			},
+		},
+	}
+
+	got := VariantOrderEntries(v)
+	if len(got) != 3 {
+		t.Fatalf("expected sdk, module, and one library entry, got %d: %#v", len(got), got)
+	}
+	if got[2].Kind != OrderEntryKindLibrary || got[2].Classes != "/caches/transforms/material-1.9.0.aar" {
+		t.Fatalf("expected only path-like snapshot ids to become library entries, got %#v", got)
+	}
+}
+
 func TestClasspathEntryFromSnapshotIDInfersCompanionJars(t *testing.T) {
 	entry := classpathEntryFromSnapshotID("/repo/libs/retrofit-2.9.0.jar")
 	if entry.Kind != OrderEntryKindLibrary {
@@ -193,6 +218,24 @@ func TestLibraryNameFromPath(t *testing.T) {
 		got := libraryNameFromPath(tc.path)
 		if got != tc.want {
 			t.Errorf("libraryNameFromPath(%q) = %q, want %q", tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestLooksLikeLibrarySnapshotPath(t *testing.T) {
+	tests := []struct {
+		id   string
+		want bool
+	}{
+		{"/repo/okhttp-4.12.0.jar", true},
+		{"/repo/material-1.9.0.aar", true},
+		{"classpath-snapshot-123", false},
+		{"ordered-entries-456", false},
+		{"/build/classes/debug", false},
+	}
+	for _, tc := range tests {
+		if got := looksLikeLibrarySnapshotPath(tc.id); got != tc.want {
+			t.Errorf("looksLikeLibrarySnapshotPath(%q) = %t, want %t", tc.id, got, tc.want)
 		}
 	}
 }

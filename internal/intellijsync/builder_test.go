@@ -104,6 +104,9 @@ func TestBuilderProjectsTypedModulesAndJvmMainVariant(t *testing.T) {
 	if !sameStrings(lib.Variants[0].Identity.SyncFragments, []string{"module::lib", "variant:main", "buildType:main", "sourceSet:main"}) {
 		t.Fatalf("expected JVM identity sync fragments in sync model, got %#v", lib.Variants[0].Identity)
 	}
+	if len(lib.Variants[0].OrderEntries) != 0 {
+		t.Fatalf("expected no order entries for standalone JVM main variant, got %#v", lib.Variants[0].OrderEntries)
+	}
 	if len(lib.Variants[0].Actions) != 3 {
 		t.Fatalf("expected main JVM variant actions, got %#v", lib.Variants[0].Actions)
 	}
@@ -225,6 +228,15 @@ func TestBuilderProjectsAndroidDependencyProjection(t *testing.T) {
 	}
 	if len(debugVariant.Materialization.ClasspathSnapshotIDs) == 0 {
 		t.Fatalf("expected classpath snapshot ids in sync model, got %#v", debugVariant.Materialization)
+	}
+	if len(debugVariant.OrderEntries) != 2 {
+		t.Fatalf("expected projected order entries for debug variant, got %#v", debugVariant.OrderEntries)
+	}
+	if debugVariant.OrderEntries[0].Kind != OrderEntryKindSDK || debugVariant.OrderEntries[0].Name != "Android API 34" {
+		t.Fatalf("expected SDK order entry first, got %#v", debugVariant.OrderEntries)
+	}
+	if debugVariant.OrderEntries[1].Kind != OrderEntryKindModule || debugVariant.OrderEntries[1].ModulePath != ":lib" {
+		t.Fatalf("expected :lib module order entry, got %#v", debugVariant.OrderEntries)
 	}
 	if len(debugVariant.Targets) != 5 {
 		t.Fatalf("expected IDE targets for debug variant, got %#v", debugVariant.Targets)

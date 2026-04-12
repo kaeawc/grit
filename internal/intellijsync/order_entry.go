@@ -130,6 +130,9 @@ func VariantOrderEntries(v Variant) []OrderEntry {
 	// Module dependencies.
 	for _, dep := range v.Dependencies {
 		if dep.Kind == "module" || dep.Kind == "variant" || dep.Kind == "materialization" {
+			if strings.TrimSpace(dep.TargetModulePath) == strings.TrimSpace(v.Identity.ModulePath) {
+				continue
+			}
 			name := dep.TargetModulePath
 			if dep.TargetVariantName != "" {
 				name = dep.TargetModulePath + "/" + dep.TargetVariantName
@@ -146,6 +149,9 @@ func VariantOrderEntries(v Variant) []OrderEntry {
 
 	// Library entries from classpath snapshot IDs.
 	for _, cpID := range v.Materialization.ClasspathSnapshotIDs {
+		if !looksLikeLibrarySnapshotPath(cpID) {
+			continue
+		}
 		entries = append(entries, classpathEntryFromSnapshotID(cpID))
 	}
 
@@ -231,6 +237,19 @@ func libraryNameFromPath(path string) string {
 	base := filepath.Base(path)
 	ext := filepath.Ext(base)
 	return strings.TrimSuffix(base, ext)
+}
+
+func looksLikeLibrarySnapshotPath(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(id)) {
+	case ".jar", ".aar":
+		return true
+	default:
+		return false
+	}
 }
 
 func orderEntryFromClasspathRecordEntry(entry classpath.EntryRecord, options ClasspathOrderEntryOptions, scope string) (ClasspathEntry, bool) {

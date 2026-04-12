@@ -360,6 +360,7 @@ func buildVariantFromProject(cfg *configmodel.Model, mod project.Module, bt proj
 	}
 	out.TaskCatalog = buildVariantTaskCatalog(mod, out.Name, out.TaskAliases, buildTasks(mod.Tasks()))
 	out.ContentRoots = buildContentRoots(mod, out, resolved)
+	out.OrderEntries = VariantOrderEntries(out)
 	out.Targets = buildTargets(resolved, out.Materialization, nil)
 	return out
 }
@@ -412,6 +413,7 @@ func buildVariant(cfg *configmodel.Model, g *graph.Graph, mod project.Module, va
 	out.Actions = buildActionsForVariant(g, mod.Path, variant)
 	out.TaskCatalog = buildVariantTaskCatalog(mod, out.Name, out.TaskAliases, buildTasks(mod.Tasks()))
 	out.ContentRoots = buildContentRoots(mod, out, resolved)
+	out.OrderEntries = VariantOrderEntries(out)
 	out.Targets = buildTargets(resolved, out.Materialization, out.Actions)
 	return out
 }
