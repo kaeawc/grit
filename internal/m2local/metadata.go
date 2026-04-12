@@ -63,8 +63,14 @@ func parseBOM(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	body := string(data)
+	properties := extractPOMProperties(body)
 	out := map[string]string{}
-	for _, dep := range extractPOMDependencies(string(data), true) {
+	for _, dep := range extractPOMDependencies(body, true) {
+		dep.Version = resolvePOMVersion(dep.Version, properties)
+		if dep.Version == "" {
+			continue
+		}
 		out[dep.GroupID+":"+dep.ArtifactID] = dep.Version
 	}
 	return out, nil

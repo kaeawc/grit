@@ -395,6 +395,222 @@ func TestResolveOneRejectsDeepAvailableAtChain(t *testing.T) {
 	}
 }
 
+func TestParseBOMExtractsManagedVersions(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "compose-bom-2024.06.00.pom")
+	body := `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>androidx.compose</groupId>
+  <artifactId>compose-bom</artifactId>
+  <version>2024.06.00</version>
+  <packaging>pom</packaging>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>androidx.compose.ui</groupId>
+        <artifactId>ui</artifactId>
+        <version>1.6.8</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.material3</groupId>
+        <artifactId>material3</artifactId>
+        <version>1.2.1</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.foundation</groupId>
+        <artifactId>foundation</artifactId>
+        <version>1.6.8</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.runtime</groupId>
+        <artifactId>runtime</artifactId>
+        <version>1.6.8</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write pom: %v", err)
+	}
+
+	got, err := parseBOM(path)
+	if err != nil {
+		t.Fatalf("parseBOM: %v", err)
+	}
+
+	expected := map[string]string{
+		"androidx.compose.ui:ui":                   "1.6.8",
+		"androidx.compose.material3:material3":     "1.2.1",
+		"androidx.compose.foundation:foundation":   "1.6.8",
+		"androidx.compose.runtime:runtime":         "1.6.8",
+	}
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d managed versions, got %d: %v", len(expected), len(got), got)
+	}
+	for key, want := range expected {
+		if got[key] != want {
+			t.Fatalf("managed version for %s: got %q, want %q", key, got[key], want)
+		}
+	}
+}
+
+func TestParseBOMResolvesPropertyVersions(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "firebase-bom-33.1.0.pom")
+	body := `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.google.firebase</groupId>
+  <artifactId>firebase-bom</artifactId>
+  <version>33.1.0</version>
+  <packaging>pom</packaging>
+  <properties>
+    <firebase-analytics.version>22.0.2</firebase-analytics.version>
+    <firebase-auth.version>23.0.0</firebase-auth.version>
+    <firebase-firestore.version>25.0.0</firebase-firestore.version>
+  </properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.google.firebase</groupId>
+        <artifactId>firebase-analytics</artifactId>
+        <version>${firebase-analytics.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.firebase</groupId>
+        <artifactId>firebase-auth</artifactId>
+        <version>${firebase-auth.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.firebase</groupId>
+        <artifactId>firebase-firestore</artifactId>
+        <version>${firebase-firestore.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write pom: %v", err)
+	}
+
+	got, err := parseBOM(path)
+	if err != nil {
+		t.Fatalf("parseBOM: %v", err)
+	}
+
+	expected := map[string]string{
+		"com.google.firebase:firebase-analytics": "22.0.2",
+		"com.google.firebase:firebase-auth":      "23.0.0",
+		"com.google.firebase:firebase-firestore": "25.0.0",
+	}
+	if len(got) != len(expected) {
+		t.Fatalf("expected %d managed versions, got %d: %v", len(expected), len(got), got)
+	}
+	for key, want := range expected {
+		if got[key] != want {
+			t.Fatalf("managed version for %s: got %q, want %q", key, got[key], want)
+		}
+	}
+}
+
+func TestLoadBOMFromCacheLayout(t *testing.T) {
+	t.Parallel()
+
+	cacheRoot := t.TempDir()
+	resolver := New(cacheRoot, t.TempDir(), nil, nil)
+
+	// Set up cache directory structure: group/module/version/hash/artifact.pom
+	coord := Coordinate{Group: "androidx.compose", Module: "compose-bom", Version: "2024.06.00"}
+	base := resolver.moduleBasePath(coord)
+	hashDir := filepath.Join(base, "abc123")
+	if err := os.MkdirAll(hashDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	pom := `<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <groupId>androidx.compose</groupId>
+  <artifactId>compose-bom</artifactId>
+  <version>2024.06.00</version>
+  <packaging>pom</packaging>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>androidx.compose.ui</groupId>
+        <artifactId>ui</artifactId>
+        <version>1.6.8</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.material3</groupId>
+        <artifactId>material3</artifactId>
+        <version>1.2.1</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>`
+	if err := os.WriteFile(filepath.Join(hashDir, "compose-bom-2024.06.00.pom"), []byte(pom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := resolver.loadBOM(coord)
+	if err != nil {
+		t.Fatalf("loadBOM: %v", err)
+	}
+
+	if got["androidx.compose.ui:ui"] != "1.6.8" {
+		t.Fatalf("expected ui version 1.6.8, got %q", got["androidx.compose.ui:ui"])
+	}
+	if got["androidx.compose.material3:material3"] != "1.2.1" {
+		t.Fatalf("expected material3 version 1.2.1, got %q", got["androidx.compose.material3:material3"])
+	}
+}
+
+func TestParseBOMIgnoresDepsWithoutVersion(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "partial-bom.pom")
+	body := `<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <groupId>com.example</groupId>
+  <artifactId>example-bom</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>lib-a</artifactId>
+        <version>2.0.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.example</groupId>
+        <artifactId>lib-b</artifactId>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write pom: %v", err)
+	}
+
+	got, err := parseBOM(path)
+	if err != nil {
+		t.Fatalf("parseBOM: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 managed version (deps without version should be skipped), got %d: %v", len(got), got)
+	}
+	if got["com.example:lib-a"] != "2.0.0" {
+		t.Fatalf("expected lib-a version 2.0.0, got %q", got["com.example:lib-a"])
+	}
+}
+
 func TestParsePOMDepsResolvesProjectVersionPropertyWithParentVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "artifact.pom")
