@@ -7,6 +7,7 @@ import (
 	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/graph"
+	"github.com/kaeawc/grit/internal/tieredcas"
 )
 
 // Scheduler is a minimal execution-graph scheduler stub. It tracks DAG
@@ -20,7 +21,7 @@ type Scheduler struct {
 	stepOrder     map[graph.ActionID]int
 	ready         []graph.ActionID
 	completed     map[graph.ActionID]bool
-	admission     *admission.Controller
+	networkBudget *admission.NetworkBudget
 	remoteProbes  map[graph.ActionID]remoteProbeDecisionCache
 }
 
@@ -56,7 +57,7 @@ func NewScheduler(schedule configmodel.ActionSchedule, controller *admission.Con
 		remainingDeps: make(map[graph.ActionID]int, len(steps)),
 		stepOrder:     make(map[graph.ActionID]int, len(steps)),
 		completed:     make(map[graph.ActionID]bool, len(steps)),
-		admission:     controller,
+		networkBudget: cloneSchedulerNetworkBudget(schedule, controller),
 		remoteProbes:  make(map[graph.ActionID]remoteProbeDecisionCache, len(steps)),
 	}
 	for actionID, ids := range schedule.Dependents {
@@ -87,10 +88,10 @@ func NewScheduler(schedule configmodel.ActionSchedule, controller *admission.Con
 // SetNetworkBudget attaches or replaces the scheduler's bandwidth-aware
 // admission constraint.
 func (s *Scheduler) SetNetworkBudget(nb *admission.NetworkBudget) {
-	if s == nil || s.admission == nil {
+	if s == nil {
 		return
 	}
-	s.admission.SetNetworkBudget(nb)
+	s.networkBudget = nb
 }
 
 // Ready returns the currently ready actions in deterministic scheduler order.
@@ -161,8 +162,8 @@ func (s *Scheduler) CompleteWithActualRemoteBytes(actionID graph.ActionID, actua
 	if s == nil {
 		return fmt.Errorf("scheduler is nil")
 	}
-	if cached, ok := s.remoteProbes[actionID]; ok && s.admission != nil {
-		s.admission.ReconcileRemoteProbe(cached.decision, actualRemoteBytes)
+	if cached, ok := s.remoteProbes[actionID]; ok && s.networkBudget != nil && actualRemoteBytes >= 0 && cached.decision.Eligible && !cached.decision.DeferRemote && actualRemoteBytes < cached.decision.EstimatedBytes {
+		s.networkBudget.Return(cached.decision.EstimatedBytes - actualRemoteBytes)
 	}
 	return s.Complete(actionID)
 }
@@ -172,7 +173,7 @@ func (s *Scheduler) CompleteWithActualRemoteBytes(actionID graph.ActionID, actua
 // deferred. It advances the scheduler to completion; callers should create a
 // fresh scheduler when they need an independent prediction pass.
 func (s *Scheduler) PredictRemoteProbeDeferrals() map[string]bool {
-	if s == nil || s.admission == nil {
+	if s == nil {
 		return nil
 	}
 	decisions := make(map[string]bool, len(s.steps))
@@ -197,9 +198,15 @@ func (s *Scheduler) remoteProbeDecision(actionID graph.ActionID) admission.Remot
 	if cached, ok := s.remoteProbes[actionID]; ok && !s.shouldRefreshRemoteProbeDecision(cached) {
 		return cached.decision
 	}
+	step := s.steps[actionID]
 	decision := admission.RemoteProbeDecision{ActionID: actionID.String()}
-	if s.admission != nil {
-		decision = s.admission.AdmitRemoteProbe(s.steps[actionID])
+	if s.networkBudget != nil && step.Cacheable && tieredcas.HasRemoteProbeTier(step.ProbeOrder) {
+		admit := s.networkBudget.AdmitDetailed(step.EstimatedBytes)
+		decision.Eligible = true
+		decision.EstimatedBytes = step.EstimatedBytes
+		decision.BudgetBeforeBytes = admit.AvailableBefore
+		decision.BudgetAfterBytes = admit.AvailableAfter
+		decision.DeferRemote = !admit.Admitted
 	}
 	cached := remoteProbeDecisionCache{
 		decision: decision,
@@ -209,10 +216,29 @@ func (s *Scheduler) remoteProbeDecision(actionID graph.ActionID) admission.Remot
 }
 
 func (s *Scheduler) shouldRefreshRemoteProbeDecision(cached remoteProbeDecisionCache) bool {
-	if s == nil || s.admission == nil || !cached.decision.DeferRemote {
+	if s == nil || s.networkBudget == nil || !cached.decision.DeferRemote {
 		return false
 	}
-	return s.admission.CanAdmitRemoteProbeEstimate(cached.decision.EstimatedBytes)
+	return s.networkBudget.CanAdmit(cached.decision.EstimatedBytes)
+}
+
+// NetworkBudgetSnapshot returns the scheduler-owned bandwidth budget state, if
+// present.
+func (s *Scheduler) NetworkBudgetSnapshot() *admission.NetworkBudgetSnapshot {
+	if s == nil || s.networkBudget == nil {
+		return nil
+	}
+	snap := s.networkBudget.Snapshot()
+	return &snap
+}
+
+// NetworkBudgetClone returns a deep copy of the scheduler-owned budget so the
+// caller can mirror final accounting without sharing mutable state.
+func (s *Scheduler) NetworkBudgetClone() *admission.NetworkBudget {
+	if s == nil || s.networkBudget == nil {
+		return nil
+	}
+	return s.networkBudget.Clone()
 }
 
 func (s *Scheduler) sortReady() {
@@ -257,4 +283,19 @@ func scheduledSteps(schedule configmodel.ActionSchedule) []configmodel.ActionSch
 		steps = append(steps, batch...)
 	}
 	return steps
+}
+
+func cloneSchedulerNetworkBudget(schedule configmodel.ActionSchedule, controller *admission.Controller) *admission.NetworkBudget {
+	if controller != nil {
+		if cloned := controller.CloneNetworkBudget(); cloned != nil {
+			return cloned
+		}
+	}
+	if schedule.NetworkBudgetConfig == nil {
+		return nil
+	}
+	return admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     schedule.NetworkBudgetConfig.CapacityBytes,
+		RefillBytesPerSec: schedule.NetworkBudgetConfig.RefillBytesPerSec,
+	})
 }

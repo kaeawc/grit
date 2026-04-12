@@ -419,6 +419,18 @@ func (c *Controller) NetworkBudgetSnapshot() *NetworkBudgetSnapshot {
 	return &snap
 }
 
+// CloneNetworkBudget returns a deep copy of the attached bandwidth budget, if
+// present.
+func (c *Controller) CloneNetworkBudget() *NetworkBudget {
+	c.mu.Lock()
+	nb := c.networkBudget
+	c.mu.Unlock()
+	if nb == nil {
+		return nil
+	}
+	return nb.Clone()
+}
+
 // CanAdmitRemoteProbeEstimate reports whether the attached network budget can
 // currently satisfy the given estimated remote-probe size without consuming any
 // bytes. When no budget is attached, remote probing is unconstrained.

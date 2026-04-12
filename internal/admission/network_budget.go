@@ -155,6 +155,26 @@ func (nb *NetworkBudget) Snapshot() NetworkBudgetSnapshot {
 	}
 }
 
+// Clone returns a copy of the budget with the same token state, refill clock,
+// testing hook, and aggregate stats.
+func (nb *NetworkBudget) Clone() *NetworkBudget {
+	if nb == nil {
+		return nil
+	}
+	nb.mu.Lock()
+	defer nb.mu.Unlock()
+	nb.refillLocked()
+	return &NetworkBudget{
+		capacity:      nb.capacity,
+		available:     nb.available,
+		refillRate:    nb.refillRate,
+		lastRefill:    nb.lastRefill,
+		now:           nb.now,
+		totalAdmitted: nb.totalAdmitted,
+		totalDenied:   nb.totalDenied,
+	}
+}
+
 // refillLocked adds tokens based on elapsed time. Must be called with mu held.
 func (nb *NetworkBudget) refillLocked() {
 	now := nb.now()

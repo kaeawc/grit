@@ -1469,6 +1469,67 @@ func TestExecuteBatchDeferRemoteWithAdmissionController(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchWithSchedulerProbeDecisionDoesNotSpendFallbackControllerBudget(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 0},
+	})
+	ac.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     80,
+		RefillBytesPerSec: 0,
+	}))
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	batch := []configmodel.ActionScheduleStep{{
+		Action: graph.Action{
+			ID:   graph.ActionID("action:compile1"),
+			Name: "compileDebug1",
+			Attributes: map[string]string{
+				"operation":   "compile",
+				"modulePath":  ":app",
+				"variantName": "debug",
+			},
+		},
+		WorkerClass:    "kotlin-compile",
+		MaxParallelism: 1,
+		ResourceClass:  "cpu",
+		ResourceCost:   1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}}
+	remoteProbeDecisions := map[string]admission.RemoteProbeDecision{
+		"action:compile1": {
+			ActionID:       "action:compile1",
+			Eligible:       true,
+			DeferRemote:    true,
+			EstimatedBytes: 80,
+		},
+	}
+
+	outcomes, err := svc.executeBatchWithRemoteProbeDecisions(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, 0, batch, remoteProbeDecisions, os.Stdout, os.Stderr)
+	if err != nil {
+		t.Fatalf("executeBatchWithRemoteProbeDecisions returned error: %v", err)
+	}
+	if len(outcomes) != 1 {
+		t.Fatalf("expected 1 outcome, got %d", len(outcomes))
+	}
+	if !outcomes[0].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected forced-progress fallback to honor scheduler defer decision, got %#v", outcomes[0].ActionExecutions[0])
+	}
+	if summary := ac.BandwidthSummary(); summary == nil || summary.BudgetRemainingBytes != 80 || summary.TotalAdmittedBytes != 0 || summary.TotalDeniedBytes != 0 {
+		t.Fatalf("expected fallback launch to avoid spending controller budget when scheduler already decided, got %+v", summary)
+	}
+}
+
 func TestExecuteScheduleUsesSchedulerForStepOnlyDependencies(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)

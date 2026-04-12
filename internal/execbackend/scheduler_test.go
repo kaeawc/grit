@@ -284,6 +284,40 @@ func TestSchedulerCompleteWithActualRemoteBytesRestoresBudgetBeforeUnlockingDepe
 	}
 }
 
+func TestSchedulerClonesControllerNetworkBudget(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 2}},
+		Steps: []configmodel.ActionScheduleStep{
+			schedulerStep("action:first"),
+			schedulerStep("action:second"),
+		},
+	}
+
+	controller := admission.NewController(schedule.ResourceBudgets)
+	controller.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     80,
+		RefillBytesPerSec: 0,
+	}))
+
+	scheduler := NewScheduler(schedule, controller)
+	ready := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(ready) != 2 {
+		t.Fatalf("expected two ready actions, got %#v", ready)
+	}
+	if ready[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected first action to consume scheduler-owned budget, got %#v", ready[0])
+	}
+	if !ready[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected second action to defer after scheduler-owned budget is exhausted, got %#v", ready[1])
+	}
+	if snap := controller.NetworkBudgetSnapshot(); snap == nil || snap.Available != 80 || snap.TotalAdmitted != 0 || snap.TotalDenied != 0 {
+		t.Fatalf("expected controller budget to remain untouched during scheduler prediction, got %+v", snap)
+	}
+	if snap := scheduler.NetworkBudgetSnapshot(); snap == nil || snap.Available != 0 || snap.TotalAdmitted != 80 || snap.TotalDenied != 80 {
+		t.Fatalf("expected scheduler to track its own budget accounting, got %+v", snap)
+	}
+}
+
 func TestSchedulerSetNetworkBudgetOverridesDefaultControllerBudget(t *testing.T) {
 	schedule := configmodel.ActionSchedule{
 		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 1}},

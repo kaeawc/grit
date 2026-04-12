@@ -144,6 +144,39 @@ func TestNetworkBudgetSnapshot(t *testing.T) {
 	}
 }
 
+func TestNetworkBudgetCloneCopiesState(t *testing.T) {
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     200,
+		RefillBytesPerSec: 10,
+	})
+	nb.now = func() time.Time { return fakeNow }
+	nb.lastRefill = fakeNow
+
+	if !nb.Admit(80) {
+		t.Fatal("expected initial admission")
+	}
+	if nb.Admit(200) {
+		t.Fatal("expected denial after initial admission")
+	}
+
+	cloned := nb.Clone()
+	if cloned == nil {
+		t.Fatal("expected non-nil clone")
+	}
+
+	if got, want := cloned.Snapshot(), nb.Snapshot(); got != want {
+		t.Fatalf("expected clone snapshot %+v, got %+v", want, got)
+	}
+
+	if !cloned.Admit(40) {
+		t.Fatal("expected clone to admit without affecting original")
+	}
+	if snap := nb.Snapshot(); snap.Available != 120 || snap.TotalAdmitted != 80 || snap.TotalDenied != 200 {
+		t.Fatalf("expected original budget unchanged after clone admission, got %+v", snap)
+	}
+}
+
 func TestNetworkBudgetAdmitDetailedReportsBeforeAndAfter(t *testing.T) {
 	nb := NewNetworkBudget(NetworkBudgetConfig{
 		CapacityBytes:     100,

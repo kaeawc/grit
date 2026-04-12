@@ -113,9 +113,11 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 			// consulting the network budget for the local-only fallback decision.
 			idx := pending[0]
 			pending = pending[1:]
-			deferRemote := s.admissionController.AdmitRemoteProbe(batch[idx]).DeferRemote
+			deferRemote := false
 			if remoteProbeDecision, ok := remoteProbeDecisionForStep(batch[idx], remoteProbeDecisions); ok {
 				deferRemote = remoteProbeDecision.DeferRemote
+			} else {
+				deferRemote = s.admissionController.AdmitRemoteProbe(batch[idx]).DeferRemote
 			}
 			launch(idx, deferRemote, false)
 			continue
@@ -311,6 +313,7 @@ func (s *Service) executeSchedule(ctx context.Context, prj *project.Project, roo
 	}
 
 	scheduler := execbackend.NewScheduler(schedule, s.admissionController)
+	defer s.syncSchedulerNetworkBudget(scheduler)
 	var outcomes []BuildOutcome
 	for batchIndex := 0; ; batchIndex++ {
 		ready := scheduler.ReadyWithRemoteProbeDecisions()
@@ -340,6 +343,13 @@ func (s *Service) executeSchedule(ctx context.Context, prj *project.Project, roo
 		}
 	}
 	return outcomes, nil
+}
+
+func (s *Service) syncSchedulerNetworkBudget(scheduler *execbackend.Scheduler) {
+	if s == nil || s.admissionController == nil || scheduler == nil {
+		return
+	}
+	s.admissionController.SetNetworkBudget(scheduler.NetworkBudgetClone())
 }
 
 func remoteProbeDecisionForStep(step configmodel.ActionScheduleStep, remoteProbeDecisions map[string]admission.RemoteProbeDecision) (admission.RemoteProbeDecision, bool) {
