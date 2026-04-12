@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/cachepolicy"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/execbackend"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/integration"
@@ -1171,14 +1171,7 @@ func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string
 	if schedule.NetworkBudgetConfig == nil || len(schedule.Batches) == 0 {
 		return nil
 	}
-	controller := admission.NewControllerFromSchedule(schedule)
-	decisions := make(map[string]bool, len(schedule.Steps))
-	for _, batch := range schedule.Batches {
-		for _, step := range batch {
-			decisions[step.Action.ID.String()] = controller.AdmitRemoteProbe(step).DeferRemote
-		}
-	}
-	return decisions
+	return execbackend.NewSchedulerFromSchedule(schedule).PredictRemoteProbeDeferrals()
 }
 
 func (s *Service) VariantProvenance(ctx context.Context, prj *project.Project, modulePath, variantName string) (ProvenanceResult, error) {
