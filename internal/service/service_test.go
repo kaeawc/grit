@@ -1039,6 +1039,97 @@ func TestExecuteBatchUsesResourceCostForWeightedAdmission(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchUsesAdmissionControllerForResourcePacing(t *testing.T) {
+	compiler := &blockingCompiler{
+		started: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	svc := NewWithCompiler(compiler)
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 1},
+	})
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	batch := []configmodel.ActionScheduleStep{
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:a"),
+				Name: "compileA",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "compile",
+			ResourceClass:  "cpu",
+			ResourceCost:   1,
+			MaxParallelism: 2,
+		},
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:b"),
+				Name: "compileB",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "release",
+				},
+			},
+			WorkerClass:    "compile",
+			ResourceClass:  "cpu",
+			ResourceCost:   1,
+			MaxParallelism: 2,
+		},
+	}
+
+	done := make(chan struct{})
+	var (
+		outcomes []BuildOutcome
+		err      error
+	)
+	go func() {
+		outcomes, err = svc.executeBatch(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, 0, batch, os.Stdout, os.Stderr)
+		close(done)
+	}()
+
+	<-compiler.started
+	select {
+	case <-compiler.started:
+		t.Fatal("expected second action to remain queued while the admission controller holds the only cpu slot")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(compiler.release)
+	<-done
+
+	if err != nil {
+		t.Fatalf("executeBatch returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected two batch outcomes, got %#v", outcomes)
+	}
+	if ac.ActiveCount() != 0 {
+		t.Fatalf("expected controller reservations to be released, got %d active", ac.ActiveCount())
+	}
+	var sawQueueWait bool
+	for _, outcome := range outcomes {
+		if len(outcome.ActionExecutions) != 1 {
+			t.Fatalf("expected one action execution per outcome, got %#v", outcomes)
+		}
+		if outcome.ActionExecutions[0].QueueWaitMs > 0 {
+			sawQueueWait = true
+		}
+	}
+	if !sawQueueWait {
+		t.Fatalf("expected admission-controlled pacing to queue one action, got %#v", outcomes)
+	}
+}
+
 func TestBuildAssembleRoutesEveryVariant(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)

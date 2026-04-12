@@ -39,6 +39,83 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 	if len(batch) == 0 {
 		return nil, nil
 	}
+	if s.admissionController != nil {
+		return s.executeBatchWithAdmission(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, stdout, stderr)
+	}
+	return s.executeBatchWithWorkerQueues(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, stdout, stderr)
+}
+
+func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, stdout, stderr *os.File) ([]BuildOutcome, error) {
+	results := make([]actionResult, len(batch))
+	type completedAction struct {
+		index  int
+		result actionResult
+	}
+	done := make(chan completedAction, len(batch))
+	pending := prioritizedBatchIndexes(batch)
+	batchStart := time.Now()
+	running := 0
+	var batchErr error
+
+	launch := func(i int, deferRemote bool, release bool) {
+		running++
+		queueWaitMs := time.Since(batchStart).Milliseconds()
+		if queueWaitMs < 0 {
+			queueWaitMs = 0
+		}
+		go func() {
+			result := s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[i], queueWaitMs, deferRemote, stdout, stderr)
+			if release {
+				if err := s.admissionController.Release(batch[i].Action.ID.String()); err != nil {
+					if result.Err == nil {
+						result.Err = fmt.Errorf("release %s: %w", batch[i].Action.ID.String(), err)
+					} else {
+						result.Err = fmt.Errorf("%v; release %s: %v", result.Err, batch[i].Action.ID.String(), err)
+					}
+				}
+			}
+			done <- completedAction{index: i, result: result}
+		}()
+	}
+
+	for len(pending) > 0 || running > 0 {
+		progressed := false
+		nextPending := pending[:0]
+		for _, idx := range pending {
+			decision := s.admissionController.TryAdmit(batch[idx])
+			if decision.Admitted {
+				launch(idx, decision.DeferRemote, true)
+				progressed = true
+				continue
+			}
+			nextPending = append(nextPending, idx)
+		}
+		pending = nextPending
+		if progressed {
+			continue
+		}
+		if running == 0 && len(pending) > 0 {
+			// A tighter injected controller can make an action unadmittable even
+			// though it is runnable. Preserve forward progress while still
+			// consulting the network budget for the local-only fallback decision.
+			idx := pending[0]
+			pending = pending[1:]
+			deferRemote := s.admissionController.AdmitRemoteProbe(batch[idx]).DeferRemote
+			launch(idx, deferRemote, false)
+			continue
+		}
+
+		completed := <-done
+		running--
+		results[completed.index] = completed.result
+		if batchErr == nil && completed.result.Err != nil {
+			batchErr = completed.result.Err
+		}
+	}
+	return batchOutcomes(results, batchErr)
+}
+
+func (s *Service) executeBatchWithWorkerQueues(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, stdout, stderr *os.File) ([]BuildOutcome, error) {
 	results := make([]actionResult, len(batch))
 
 	// Consult the admission controller for network budget decisions. When set,
@@ -126,14 +203,65 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 		}
 	}
 	wg.Wait()
+	return batchOutcomes(results, nil)
+}
+
+func batchOutcomes(results []actionResult, batchErr error) ([]BuildOutcome, error) {
 	outcomes := make([]BuildOutcome, 0, len(results))
 	for _, result := range results {
 		outcomes = append(outcomes, result.Outcome)
-		if result.Err != nil {
-			return outcomes, result.Err
+		if batchErr == nil && result.Err != nil {
+			batchErr = result.Err
 		}
 	}
-	return outcomes, nil
+	return outcomes, batchErr
+}
+
+func prioritizedBatchIndexes(batch []configmodel.ActionScheduleStep) []int {
+	grouped := make(map[string][]int)
+	for i, step := range batch {
+		grouped[step.WorkerClass] = append(grouped[step.WorkerClass], i)
+	}
+	var workerClasses []string
+	firstIndex := make(map[string]int, len(grouped))
+	classPriority := make(map[string]int, len(grouped))
+	for workerClass, indexes := range grouped {
+		workerClasses = append(workerClasses, workerClass)
+		if len(indexes) == 0 {
+			continue
+		}
+		firstIndex[workerClass] = indexes[0]
+		classPriority[workerClass] = operationPriority(batch[indexes[0]].Action.Attributes["operation"])
+	}
+	sort.Slice(workerClasses, func(i, j int) bool {
+		if classPriority[workerClasses[i]] != classPriority[workerClasses[j]] {
+			return classPriority[workerClasses[i]] < classPriority[workerClasses[j]]
+		}
+		if firstIndex[workerClasses[i]] != firstIndex[workerClasses[j]] {
+			return firstIndex[workerClasses[i]] < firstIndex[workerClasses[j]]
+		}
+		return workerClasses[i] < workerClasses[j]
+	})
+
+	ordered := make([]int, 0, len(batch))
+	for _, workerClass := range workerClasses {
+		indexes := append([]int(nil), grouped[workerClass]...)
+		sort.SliceStable(indexes, func(i, j int) bool {
+			left := batch[indexes[i]]
+			right := batch[indexes[j]]
+			lp := probePriority(left.ProbeHint)
+			rp := probePriority(right.ProbeHint)
+			if lp != rp {
+				return lp < rp
+			}
+			if left.ResourceCost != right.ResourceCost {
+				return left.ResourceCost > right.ResourceCost
+			}
+			return false
+		})
+		ordered = append(ordered, indexes...)
+	}
+	return ordered
 }
 
 func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, step configmodel.ActionScheduleStep, queueWaitMs int64, deferRemote bool, stdout, stderr *os.File) actionResult {

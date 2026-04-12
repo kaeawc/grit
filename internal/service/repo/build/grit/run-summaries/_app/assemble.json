@@ -403,7 +403,7 @@
     "bandwidth": {
       "totalCacheableActions": 2,
       "budgetCapacityBytes": 52428800,
-      "budgetRemainingBytes": 18874585,
+      "budgetRemainingBytes": 18874851,
       "budgetRefillRate": 10485760,
       "totalAdmittedBytes": 33554432
     }
@@ -734,5 +734,5 @@
       "detail": "1 reused substeps"
     }
   ],
-  "writtenAt": "2026-04-12T15:05:26Z"
+  "writtenAt": "2026-04-12T15:09:29Z"
 }
