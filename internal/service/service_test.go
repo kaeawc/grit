@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/integration"
@@ -675,7 +676,7 @@ func TestExecuteActionRoutesAndroidTestInstallAndUninstallOps(t *testing.T) {
 				"variantName": "debug",
 			},
 		},
-	}, 0, os.Stdout, os.Stderr)
+	}, 0, false, os.Stdout, os.Stderr)
 	if install.Err != nil || !install.Outcome.Installed || install.Outcome.Message != "androidTest APK installed" {
 		t.Fatalf("unexpected install result: %#v", install)
 	}
@@ -690,7 +691,7 @@ func TestExecuteActionRoutesAndroidTestInstallAndUninstallOps(t *testing.T) {
 				"variantName": "debug",
 			},
 		},
-	}, 0, os.Stdout, os.Stderr)
+	}, 0, false, os.Stdout, os.Stderr)
 	if uninstall.Err != nil || uninstall.Outcome.Message != "androidTest APK uninstalled" {
 		t.Fatalf("unexpected uninstall result: %#v", uninstall)
 	}
@@ -1243,5 +1244,84 @@ func TestResolveExecutionPlanInvokesHooksWithReadOnlyModel(t *testing.T) {
 	}
 	if len(plan.Actions) == 0 || plan.Actions[0].Kind == graph.ActionKindUnknown {
 		t.Fatalf("expected planned graph actions, got %#v", plan.Actions)
+	}
+}
+
+func TestExecuteBatchDeferRemoteWithAdmissionController(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+
+	// Create an admission controller with a tiny network budget (100 bytes, no refill).
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 100},
+	})
+	ac.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:    100,
+		RefillBytesPerSec: 0,
+	}))
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	// Two cacheable compile actions with remote probes. First fits in budget,
+	// second exceeds it and should have DeferRemote set.
+	batch := []configmodel.ActionScheduleStep{
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:compile1"),
+				Name: "compileDebug1",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "kotlin-compile",
+			MaxParallelism: 4,
+			ResourceClass:  "cpu",
+			ResourceCost:   1,
+			Cacheable:      true,
+			ProbeOrder:     []string{"local-overlay", "remote"},
+			EstimatedBytes: 80,
+		},
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:compile2"),
+				Name: "compileDebug2",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "kotlin-compile",
+			MaxParallelism: 4,
+			ResourceClass:  "cpu",
+			ResourceCost:   1,
+			Cacheable:      true,
+			ProbeOrder:     []string{"local-overlay", "remote"},
+			EstimatedBytes: 80,
+		},
+	}
+
+	outcomes, err := svc.executeBatch(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, 0, batch, os.Stdout, os.Stderr)
+	if err != nil {
+		t.Fatalf("executeBatch returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected 2 outcomes, got %d", len(outcomes))
+	}
+
+	// First action should NOT have DeferRemote (80 bytes fits in 100-byte budget).
+	if outcomes[0].ActionExecutions[0].DeferRemote {
+		t.Error("expected first action DeferRemote=false, got true")
+	}
+	// Second action SHOULD have DeferRemote (only 20 bytes remaining < 80 needed).
+	if !outcomes[1].ActionExecutions[0].DeferRemote {
+		t.Error("expected second action DeferRemote=true, got false")
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
@@ -32,10 +33,11 @@ type Compiler interface {
 }
 
 type Service struct {
-	compiler        Compiler
-	compilerFactory func() Compiler
-	models          *configmodel.Store
-	hooks           []integration.Hook
+	compiler            Compiler
+	compilerFactory     func() Compiler
+	models              *configmodel.Store
+	hooks               []integration.Hook
+	admissionController *admission.Controller
 }
 
 type BuildPlan struct {
@@ -163,6 +165,11 @@ type ActionExecution struct {
 	Timings         *perf.TimingData                   `json:"timings,omitempty"`
 	CacheProbe      *responsepayload.CacheProbe        `json:"cacheProbe,omitempty"`
 	CacheProbeTrail []responsepayload.CacheProbeRecord `json:"cacheProbeTrail,omitempty"`
+
+	// DeferRemote is true when the admission controller's network budget
+	// denied the remote cache probe for this action. When set, the action
+	// was resolved using only local cache tiers.
+	DeferRemote bool `json:"deferRemote,omitempty"`
 }
 
 func New() *Service {
@@ -181,6 +188,13 @@ func NewWithCompiler(compiler Compiler) *Service {
 		compilerFactory: func() Compiler { return compiler },
 		models:          configmodel.NewStore(nil),
 	}
+}
+
+// SetAdmissionController attaches a runtime admission controller. When set,
+// executeBatch consults it for network budget decisions and propagates the
+// DeferRemote flag to individual action executions.
+func (s *Service) SetAdmissionController(ac *admission.Controller) {
+	s.admissionController = ac
 }
 
 func (s *Service) newCompiler() Compiler {

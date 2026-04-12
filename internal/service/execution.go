@@ -39,6 +39,23 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 		return nil, nil
 	}
 	results := make([]actionResult, len(batch))
+
+	// Consult the admission controller for network budget decisions. When set,
+	// the controller determines which actions should defer remote cache probes.
+	deferRemoteFlags := make([]bool, len(batch))
+	if s.admissionController != nil {
+		for i, step := range batch {
+			decision := s.admissionController.TryAdmit(step)
+			if decision.Admitted {
+				deferRemoteFlags[i] = decision.DeferRemote
+			}
+			// Release immediately — resource parallelism is still managed by the
+			// semaphore in this method. We only use the controller for the
+			// DeferRemote signal from the network budget here.
+			_ = s.admissionController.Release(step.Action.ID.String())
+		}
+	}
+
 	grouped := make(map[string][]int)
 	for i, step := range batch {
 		grouped[step.WorkerClass] = append(grouped[step.WorkerClass], i)
@@ -84,7 +101,7 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 		}
 		if limit == 1 {
 			for _, idx := range indexes {
-				results[idx] = s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[idx], 0, stdout, stderr)
+				results[idx] = s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[idx], 0, deferRemoteFlags[idx], stdout, stderr)
 			}
 			continue
 		}
@@ -110,7 +127,7 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 						<-sem
 					}
 				}()
-				results[i] = s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[i], queueWaitMs, stdout, stderr)
+				results[i] = s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[i], queueWaitMs, deferRemoteFlags[i], stdout, stderr)
 			}(idx)
 		}
 	}
@@ -125,7 +142,7 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 	return outcomes, nil
 }
 
-func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, step configmodel.ActionScheduleStep, queueWaitMs int64, stdout, stderr *os.File) actionResult {
+func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, step configmodel.ActionScheduleStep, queueWaitMs int64, deferRemote bool, stdout, stderr *os.File) actionResult {
 	action := step.Action
 	variantName := action.Attributes["variantName"]
 	modulePath := action.Attributes["modulePath"]
@@ -161,6 +178,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		Dependencies:    stringifyActionIDs(step.Dependencies),
 		InputArtifacts:  stringifyArtifactIDs(action.Inputs),
 		OutputArtifacts: stringifyArtifactIDs(action.Outputs),
+		DeferRemote:     deferRemote,
 		Status:          "success",
 	}
 	actionExplanation := explain.ForGraphAction(semanticGraph, action)
