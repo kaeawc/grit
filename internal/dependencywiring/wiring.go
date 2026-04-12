@@ -348,6 +348,13 @@ func (m *stackMaterializer) Materialize(ctx context.Context, resolved *m2local.R
 }
 
 func (m *stackMaterializer) lockfilePins(resolved *m2local.Resolved) ([]lockfile.Pin, error) {
+	// Fast path: if a persisted lockfile exists and the resolved output
+	// has not changed since it was written, reuse it directly. This
+	// avoids re-hashing every file on disk via produce.Produce.
+	if cached, ok := loadCachedLockfile(m.workRoot, resolved); ok {
+		return cached.Pins, nil
+	}
+
 	inputs, err := m2localbridge.FromResolved(resolved, gradlecache.ID)
 	if err != nil || len(inputs) == 0 {
 		inputs, err = m.inputsFromReplay(resolved)
@@ -365,6 +372,11 @@ func (m *stackMaterializer) lockfilePins(resolved *m2local.Resolved) ([]lockfile
 	if err != nil {
 		return nil, err
 	}
+
+	// Persist the lockfile so subsequent builds with the same resolved
+	// output can skip the produce step entirely.
+	_ = saveLockfile(m.workRoot, lf, resolved)
+
 	return lf.Pins, nil
 }
 
