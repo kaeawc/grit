@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kaeawc/grit/internal/griterr"
 )
 
 func findFile(root, suffix string) (string, error) {
@@ -91,7 +93,7 @@ func (r *Resolver) normalizeArtifact(path string) (string, *AndroidLibrary, erro
 		}
 		return androidLibrary.ClassesJar, &androidLibrary, nil
 	default:
-		return "", nil, fmt.Errorf("unsupported artifact %s", path)
+		return "", nil, griterr.Newf(griterr.ErrUnsupported, "artifact %s", path)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/service"
@@ -62,12 +63,16 @@ func (c commandState) fail(code int, err error) int {
 }
 
 func (c commandState) failWithResult(code int, err error, result json.RawMessage) int {
+	re := &responseError{Message: err.Error()}
+	if kind, ok := griterr.KindOf(err); ok {
+		re.Kind = string(kind)
+	}
 	return writeResponse(c.stdout, response{
 		Success:    false,
 		Command:    c.name,
 		DurationMs: time.Since(c.start).Milliseconds(),
 		Result:     result,
-		Error:      &responseError{Message: err.Error()},
+		Error:      re,
 		PerfTiming: c.tracker.GetTimings(),
 	}, code, c.stderr)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
+	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/integration"
 	"github.com/kaeawc/grit/internal/nativecompile"
 	"github.com/kaeawc/grit/internal/perf"
@@ -359,7 +360,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 	case "uninstallDebugAndroidTest", "uninstall-android-tests":
 		return outcome, nil
 	default:
-		return outcome, fmt.Errorf("unsupported command %s", req.Command)
+		return outcome, griterr.Newf(griterr.ErrUnsupported, "command %s", req.Command)
 	}
 }
 

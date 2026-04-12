@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/kaeawc/grit/internal/griterr"
 )
 
 type ModuleKind string
@@ -201,7 +203,7 @@ func normalizeTask(task string, kind ModuleKind) (string, string, bool, error) {
 				return "compile-" + variant, variant, true, nil
 			}
 		}
-		return "", "", false, fmt.Errorf("unsupported task %q", task)
+		return "", "", false, griterr.Newf(griterr.ErrUnsupported, "task %q", task)
 	}
 }
 

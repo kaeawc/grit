@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/pathutil"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -27,7 +28,7 @@ func (r *Resolver) fetchModuleMetadata(coord Coordinate) (string, error) {
 
 func (r *Resolver) fetchArtifact(coord Coordinate, ext string) (string, error) {
 	if ext != ".jar" && ext != ".aar" {
-		return "", fmt.Errorf("unsupported artifact extension %q", ext)
+		return "", griterr.Newf(griterr.ErrUnsupported, "artifact extension %q", ext)
 	}
 	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + coord.Version + ext
 	outPath := filepath.Join(r.moduleBasePath(coord), "downloaded", coord.Module+"-"+coord.Version+ext)

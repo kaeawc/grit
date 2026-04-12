@@ -25,6 +25,7 @@ type response struct {
 }
 
 type responseError struct {
+	Kind    string `json:"kind,omitempty"`
 	Message string `json:"message"`
 }
 

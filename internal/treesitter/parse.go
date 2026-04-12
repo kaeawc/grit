@@ -1,8 +1,7 @@
 package treesitter
 
 import (
-	"fmt"
-
+	"github.com/kaeawc/grit/internal/griterr"
 	tskotlin "github.com/kaeawc/grit/internal/treesitter/kotlin"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	tsjava "github.com/tree-sitter/tree-sitter-java/bindings/go"
@@ -39,6 +38,6 @@ func languageFor(lang Language) (*sitter.Language, error) {
 	case Java:
 		return sitter.NewLanguage(tsjava.Language()), nil
 	default:
-		return nil, fmt.Errorf("unsupported tree-sitter language %q", lang)
+		return nil, griterr.Newf(griterr.ErrUnsupported, "tree-sitter language %q", lang)
 	}
 }

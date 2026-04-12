@@ -14,6 +14,7 @@ import (
 	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
+	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/responsepayload"
@@ -256,7 +257,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
 		return actionResult{Outcome: outcome, Err: err}
 	default:
-		err := fmt.Errorf("unsupported graph action operation %s", action.Attributes["operation"])
+		err := griterr.Newf(griterr.ErrUnsupported, "graph action operation %s", action.Attributes["operation"])
 		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
