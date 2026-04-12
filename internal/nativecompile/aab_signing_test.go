@@ -145,3 +145,75 @@ func TestRestoreSharedSignedAABReturnsFalseWhenMissing(t *testing.T) {
 		t.Fatal("expected false for missing cache")
 	}
 }
+
+func TestRestoreSharedSignedAABPreviewReturnsTrueWhenCacheExists(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create a fake unsigned AAB and keystore so the cache path can be computed.
+	unsigned := filepath.Join(tmp, "app-unsigned.aab")
+	keystore := filepath.Join(tmp, "release.jks")
+	if err := os.WriteFile(unsigned, []byte("fake-aab"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keystore, []byte("fake-keystore"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	signing := project.SigningConfig{
+		StoreFile: keystore,
+		KeyAlias:  "key0",
+	}
+
+	// Before cache exists, preview should return false.
+	if restoreSharedSignedAABPreview(unsigned, "release", signing) {
+		t.Fatal("expected false before cache is populated")
+	}
+
+	// Create the signed AAB in the shared cache location.
+	sharedPath := sharedSignedAABPath(unsigned, "release", signing)
+	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sharedPath, []byte("signed-aab"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Preview should now return true.
+	if !restoreSharedSignedAABPreview(unsigned, "release", signing) {
+		t.Fatal("expected true when shared cache exists")
+	}
+}
+
+func TestRestoreSharedSignedAABPreviewDoesNotCopyFile(t *testing.T) {
+	tmp := t.TempDir()
+
+	unsigned := filepath.Join(tmp, "app-unsigned.aab")
+	keystore := filepath.Join(tmp, "release.jks")
+	if err := os.WriteFile(unsigned, []byte("fake-aab"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keystore, []byte("fake-keystore"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	signing := project.SigningConfig{
+		StoreFile: keystore,
+		KeyAlias:  "key0",
+	}
+
+	// Populate the shared cache.
+	sharedPath := sharedSignedAABPath(unsigned, "release", signing)
+	if err := os.MkdirAll(filepath.Dir(sharedPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sharedPath, []byte("signed-aab"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Call preview — it should NOT create any output file.
+	finalAAB := filepath.Join(tmp, "app.aab")
+	_ = restoreSharedSignedAABPreview(unsigned, "release", signing)
+	if pathIsFile(finalAAB) {
+		t.Fatal("preview should not copy the cached file to the output path")
+	}
+}

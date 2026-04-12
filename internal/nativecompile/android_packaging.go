@@ -419,7 +419,7 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 			} else {
 				recordCacheProbe(tracker, "signAAB", false, "cache-miss", "final AAB required unsigned copy")
 			}
-		} else if restoreSharedSignedAAB(finalAAB, sharedSignedAABPath(unsignedAAB, signingName, signing)) {
+		} else if restoreSharedSignedAABPreview(unsignedAAB, signingName, signing) {
 			recordCacheProbe(tracker, "signAAB", true, "shared-cache-hit", "restored signed AAB from shared cache")
 		} else if outputsNewerThanInputs(finalAAB, []string{unsignedAAB, signing.StoreFile}) {
 			recordCacheProbe(tracker, "signAAB", true, "local-up-to-date", "signed AAB newer than unsigned AAB and keystore")

@@ -130,3 +130,12 @@ func signAAB(ctx context.Context, mod *project.Module, variant project.BuildType
 	_ = saveSharedSignedAAB(finalAAB, sharedSignedAAB)
 	return nil
 }
+
+// restoreSharedSignedAABPreview checks whether a shared-cache entry exists for
+// the signed AAB without actually copying it. This is used in cache-probe
+// recording so the tracker section remains side-effect-free — the real restore
+// happens inside signAAB.
+func restoreSharedSignedAABPreview(unsignedAAB, signingName string, signing project.SigningConfig) bool {
+	sharedSignedAAB := sharedSignedAABPath(unsignedAAB, signingName, signing)
+	return pathIsFile(sharedSignedAAB)
+}
