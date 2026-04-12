@@ -216,6 +216,7 @@ type ResolvedVariant struct {
 	TaskAliases               []string                  `json:"taskAliases,omitempty"`
 	ModelSelectors            []string                  `json:"modelSelectors,omitempty"`
 	SyncFragments             []string                  `json:"syncFragments,omitempty"`
+	LintBaselinePath          string                    `json:"lintBaselinePath,omitempty"`
 	InstallTask               string                    `json:"installTask,omitempty"`
 	UninstallTask             string                    `json:"uninstallTask,omitempty"`
 }
