@@ -116,6 +116,47 @@ func saveSharedSignedAPK(finalAPK, sharedAPK string) error {
 	return os.Rename(tmpDir, filepath.Dir(sharedAPK))
 }
 
+func sharedSignedAABPath(unsignedAAB, signingName string, signing project.SigningConfig) string {
+	sum := sha256.New()
+	sum.Write([]byte("signed-aab-v1"))
+	sum.Write([]byte{0})
+	sum.Write([]byte(cacheIdentityForInput(unsignedAAB)))
+	sum.Write([]byte{0})
+	sum.Write([]byte(cacheIdentityForInput(signing.StoreFile)))
+	sum.Write([]byte{0})
+	sum.Write([]byte(signingName))
+	sum.Write([]byte{0})
+	sum.Write([]byte(signing.KeyAlias))
+	sum.Write([]byte{0})
+	sum.Write([]byte(toolIdentity("jarsigner")))
+	sum.Write([]byte{0})
+	return filepath.Join(sharedNativeCacheRoot(), "aab", "signed", hex.EncodeToString(sum.Sum(nil)), "app.aab")
+}
+
+func restoreSharedSignedAAB(finalAAB, sharedAAB string) bool {
+	if !pathIsFile(sharedAAB) {
+		return false
+	}
+	return copyFile(sharedAAB, finalAAB) == nil
+}
+
+func saveSharedSignedAAB(finalAAB, sharedAAB string) error {
+	if pathIsFile(sharedAAB) {
+		return nil
+	}
+	tmpDir := filepath.Dir(sharedAAB) + ".tmp"
+	if err := os.RemoveAll(tmpDir); err != nil {
+		return err
+	}
+	if err := copyFile(finalAAB, filepath.Join(tmpDir, "app.aab")); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(filepath.Dir(sharedAAB)); err != nil {
+		return err
+	}
+	return os.Rename(tmpDir, filepath.Dir(sharedAAB))
+}
+
 func restoreSharedCompileCache(classesDir, moduleJar, cacheDir string) bool {
 	cachedClasses := filepath.Join(cacheDir, "classes")
 	cachedJar := filepath.Join(cacheDir, "module-classes.jar")

@@ -88,3 +88,45 @@ func defaultDebugSigningConfig() project.SigningConfig {
 		KeyPassword:   "android",
 	}
 }
+
+// signAAB signs an AAB file using jarsigner. If the module has no signing
+// config for the given variant, the unsigned AAB is copied as-is.
+// AABs use jarsigner (not apksigner) because they are standard JAR/ZIP
+// archives consumed by Google Play, not installed directly on devices.
+func signAAB(ctx context.Context, mod *project.Module, variant project.BuildType, unsignedAAB, finalAAB string, stdout, stderr *os.File) error {
+	signingName, signing := selectSigningConfig(mod, variant)
+	if signingName == "" {
+		if outputsNewerThanInputs(finalAAB, []string{unsignedAAB}) {
+			return nil
+		}
+		if err := copyFile(unsignedAAB, finalAAB); err != nil {
+			return err
+		}
+		return nil
+	}
+	if signing.StoreFile == "" {
+		return fmt.Errorf("signing config %s missing storeFile", signingName)
+	}
+	sharedSignedAAB := sharedSignedAABPath(unsignedAAB, signingName, signing)
+	if restoreSharedSignedAAB(finalAAB, sharedSignedAAB) {
+		return nil
+	}
+	if outputsNewerThanInputs(finalAAB, []string{unsignedAAB, signing.StoreFile}) {
+		return nil
+	}
+	if err := copyFile(unsignedAAB, finalAAB); err != nil {
+		return err
+	}
+	args := []string{
+		"-keystore", signing.StoreFile,
+		"-storepass", signing.StorePassword,
+		"-keypass", signing.KeyPassword,
+		finalAAB,
+		signing.KeyAlias,
+	}
+	if err := runCmd(ctx, "jarsigner", args, stdout, stderr); err != nil {
+		return fmt.Errorf("jarsigner failed to sign AAB: %w", err)
+	}
+	_ = saveSharedSignedAAB(finalAAB, sharedSignedAAB)
+	return nil
+}
