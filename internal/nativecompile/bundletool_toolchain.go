@@ -2,6 +2,8 @@ package nativecompile
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,6 +41,11 @@ func loadBundletoolToolchain() (*bundletoolToolchain, error) {
 
 	// 3. Android SDK build-tools bundled copy.
 	if tc := bundletoolFromSDK(); tc != nil {
+		return tc, nil
+	}
+
+	// 4. Auto-download from Maven Central.
+	if tc, err := downloadBundletool(); err == nil {
 		return tc, nil
 	}
 
@@ -96,6 +103,83 @@ func bundletoolVersionFromPath(p string) string {
 		return strings.TrimPrefix(base, "bundletool-")
 	}
 	return "unknown"
+}
+
+// defaultBundletoolVersion is the version downloaded when no local copy is
+// found. Override with the BUNDLETOOL_VERSION environment variable.
+const defaultBundletoolVersion = "1.17.2"
+
+// bundletoolDownloadURL returns the Maven Central URL for the bundletool
+// all-in-one JAR at the given version.
+func bundletoolDownloadURL(version string) string {
+	return fmt.Sprintf(
+		"https://repo1.maven.org/maven2/com/android/tools/build/bundletool/%s/bundletool-all-%s.jar",
+		version, version,
+	)
+}
+
+// bundletoolCacheJarPath returns the local cache path where the
+// auto-downloaded bundletool JAR is stored.
+func bundletoolCacheJarPath(version string) string {
+	return filepath.Join(sharedNativeCacheRoot(), "bundletool", fmt.Sprintf("bundletool-all-%s.jar", version))
+}
+
+// downloadBundletool downloads the bundletool JAR from Maven Central
+// into the grit cache and returns a toolchain pointing at it.
+func downloadBundletool() (*bundletoolToolchain, error) {
+	version := strings.TrimSpace(os.Getenv("BUNDLETOOL_VERSION"))
+	if version == "" {
+		version = defaultBundletoolVersion
+	}
+
+	jarPath := bundletoolCacheJarPath(version)
+
+	// Already downloaded.
+	if pathIsFile(jarPath) {
+		return &bundletoolToolchain{Version: version, JarPath: jarPath}, nil
+	}
+
+	url := bundletoolDownloadURL(version)
+	if err := downloadFile(url, jarPath); err != nil {
+		return nil, fmt.Errorf("download bundletool %s: %w", version, err)
+	}
+	return &bundletoolToolchain{Version: version, JarPath: jarPath}, nil
+}
+
+// downloadFile fetches url and writes the response body to dst. The
+// destination directory is created if it does not exist. A partial
+// download is cleaned up on error.
+func downloadFile(url, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+
+	resp, err := http.Get(url) //nolint:gosec // URL is constructed internally from a known base.
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d for %s", resp.StatusCode, url)
+	}
+
+	// Write to a temp file first so a partial download never looks valid.
+	tmp := dst + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dst)
 }
 
 func (t *bundletoolToolchain) validate() error {
