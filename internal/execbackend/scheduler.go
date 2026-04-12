@@ -138,6 +138,7 @@ func (s *Scheduler) Complete(actionID graph.ActionID) error {
 	}
 	s.completed[actionID] = true
 	s.ready = removeActionID(s.ready, actionID)
+	delete(s.remoteProbes, actionID)
 	for _, dependent := range s.dependents[actionID] {
 		if s.completed[dependent] {
 			continue
@@ -151,6 +152,20 @@ func (s *Scheduler) Complete(actionID graph.ActionID) error {
 	}
 	s.sortReady()
 	return nil
+}
+
+// CompleteWithActualRemoteBytes reconciles the scheduler's cached remote-probe
+// admission decision against the measured remote bytes before unblocking
+// dependents. This lets newly-ready actions observe returned bandwidth budget
+// immediately after an upstream action completes.
+func (s *Scheduler) CompleteWithActualRemoteBytes(actionID graph.ActionID, actualRemoteBytes int64) error {
+	if s == nil {
+		return fmt.Errorf("scheduler is nil")
+	}
+	if cached, ok := s.remoteProbes[actionID]; ok && s.admission != nil {
+		s.admission.ReconcileRemoteProbe(cached.decision, actualRemoteBytes)
+	}
+	return s.Complete(actionID)
 }
 
 // PredictRemoteProbeDeferrals walks the scheduler in readiness order and asks

@@ -394,6 +394,75 @@ func TestAdmitRemoteProbeSkipsBudgetForSharedMachineTier(t *testing.T) {
 	}
 }
 
+func TestReconcileRemoteProbeReturnsUnusedEstimate(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 1},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	step := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+
+	decision := c.AdmitRemoteProbe(step)
+	if decision.DeferRemote {
+		t.Fatalf("expected admitted remote probe, got %+v", decision)
+	}
+	if snap := nb.Snapshot(); snap.Available != 20 {
+		t.Fatalf("expected 20 bytes remaining after admission, got %+v", snap)
+	}
+
+	c.ReconcileRemoteProbe(decision, 30)
+
+	if snap := nb.Snapshot(); snap.Available != 70 {
+		t.Fatalf("expected reconcile to return 50 unused bytes, got %+v", snap)
+	}
+}
+
+func TestReconcileRemoteProbeSkipsDeferredDecision(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 1},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     50,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	step := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+
+	decision := c.AdmitRemoteProbe(step)
+	if !decision.DeferRemote {
+		t.Fatalf("expected deferred remote probe, got %+v", decision)
+	}
+
+	c.ReconcileRemoteProbe(decision, 0)
+
+	if snap := nb.Snapshot(); snap.Available != 50 {
+		t.Fatalf("expected deferred reconcile to leave budget unchanged, got %+v", snap)
+	}
+}
+
 func TestReleaseWithActualReturnsSurplus(t *testing.T) {
 	c := NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "jvm-process", Capacity: 10},

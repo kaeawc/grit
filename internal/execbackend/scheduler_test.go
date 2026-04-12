@@ -222,6 +222,55 @@ func TestSchedulerReadyWithRemoteProbeDecisionsRetriesDeferredActionsAfterBudget
 	}
 }
 
+func TestSchedulerCompleteWithActualRemoteBytesRestoresBudgetBeforeUnlockingDependents(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 1}},
+		Steps: []configmodel.ActionScheduleStep{
+			schedulerStep("action:first"),
+			schedulerStep("action:second", "action:first"),
+		},
+		Dependencies: map[graph.ActionID][]graph.ActionID{
+			"action:second": {"action:first"},
+		},
+		Dependents: map[graph.ActionID][]graph.ActionID{
+			"action:first": {"action:second"},
+		},
+	}
+
+	scheduler := NewSchedulerFromSchedule(schedule)
+	nb := admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     80,
+		RefillBytesPerSec: 0,
+	})
+	scheduler.SetNetworkBudget(nb)
+
+	firstReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(firstReady) != 1 || firstReady[0].Step.Action.ID != "action:first" {
+		t.Fatalf("expected only first action ready, got %#v", firstReady)
+	}
+	if firstReady[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected first action to consume initial budget, got %#v", firstReady[0])
+	}
+	if snap := nb.Snapshot(); snap.Available != 0 {
+		t.Fatalf("expected first action to consume full budget, got %+v", snap)
+	}
+
+	if err := scheduler.CompleteWithActualRemoteBytes("action:first", 0); err != nil {
+		t.Fatalf("complete with actual bytes: %v", err)
+	}
+
+	secondReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(secondReady) != 1 || secondReady[0].Step.Action.ID != "action:second" {
+		t.Fatalf("expected dependent action ready after completion, got %#v", secondReady)
+	}
+	if secondReady[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected returned budget to admit dependent remote probe, got %#v", secondReady[0])
+	}
+	if secondReady[0].RemoteProbeDecision.BudgetBeforeBytes != 80 || secondReady[0].RemoteProbeDecision.BudgetAfterBytes != 0 {
+		t.Fatalf("expected dependent action to observe restored budget, got %#v", secondReady[0].RemoteProbeDecision)
+	}
+}
+
 func TestSchedulerSetNetworkBudgetOverridesDefaultControllerBudget(t *testing.T) {
 	schedule := configmodel.ActionSchedule{
 		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 1}},
