@@ -109,6 +109,39 @@ func TestActionFromVariant_SourceContentAffectsCacheKey(t *testing.T) {
 	}
 }
 
+func TestActionFromVariant_ManifestContentAffectsCacheKey(t *testing.T) {
+	root := t.TempDir()
+	manifest := filepath.Join(root, "src", "main", "AndroidManifest.xml")
+	mustWriteLintFile(t, manifest, "<manifest package=\"one\"/>")
+
+	v := project.ResolvedVariant{
+		ManifestPaths: []string{manifest},
+	}
+	before := ActionFromVariant(v).CacheKey()
+	mustWriteLintFile(t, manifest, "<manifest package=\"two\"/>")
+	after := ActionFromVariant(v).CacheKey()
+	if before == after {
+		t.Fatal("changing manifest content must change cache key")
+	}
+}
+
+func TestActionFromVariant_ResourceDirContentAffectsCacheKey(t *testing.T) {
+	root := t.TempDir()
+	resDir := filepath.Join(root, "src", "main", "res")
+	resource := filepath.Join(resDir, "layout", "main.xml")
+	mustWriteLintFile(t, resource, "<LinearLayout/>")
+
+	v := project.ResolvedVariant{
+		ResourceArtifactPaths: []string{resDir},
+	}
+	before := ActionFromVariant(v).CacheKey()
+	mustWriteLintFile(t, resource, "<FrameLayout/>")
+	after := ActionFromVariant(v).CacheKey()
+	if before == after {
+		t.Fatal("changing resource directory content must change cache key")
+	}
+}
+
 func TestActionFromVariantInModule_DiscoversLintFiles(t *testing.T) {
 	moduleDir := t.TempDir()
 	mustWriteLintFile(t, filepath.Join(moduleDir, "lint.xml"), "<lint/>")
@@ -120,6 +153,32 @@ func TestActionFromVariantInModule_DiscoversLintFiles(t *testing.T) {
 	}
 	if got, want := action.Baseline, filepath.Join(moduleDir, "lint-baseline.xml"); got != want {
 		t.Fatalf("Baseline = %q, want %q", got, want)
+	}
+}
+
+func TestActionFromVariantInModule_LintConfigContentAffectsCacheKey(t *testing.T) {
+	moduleDir := t.TempDir()
+	lintConfig := filepath.Join(moduleDir, "lint.xml")
+	mustWriteLintFile(t, lintConfig, "<lint/>")
+
+	before := ActionFromVariantInModule(project.ResolvedVariant{}, moduleDir).CacheKey()
+	mustWriteLintFile(t, lintConfig, "<lint checkDependencies=\"true\"/>")
+	after := ActionFromVariantInModule(project.ResolvedVariant{}, moduleDir).CacheKey()
+	if before == after {
+		t.Fatal("changing lint config content must change cache key")
+	}
+}
+
+func TestActionFromVariantInModule_BaselineContentAffectsCacheKey(t *testing.T) {
+	moduleDir := t.TempDir()
+	baseline := filepath.Join(moduleDir, "lint-baseline.xml")
+	mustWriteLintFile(t, baseline, "<issues/>")
+
+	before := ActionFromVariantInModule(project.ResolvedVariant{}, moduleDir).CacheKey()
+	mustWriteLintFile(t, baseline, "<issues><issue id=\"NewApi\"/></issues>")
+	after := ActionFromVariantInModule(project.ResolvedVariant{}, moduleDir).CacheKey()
+	if before == after {
+		t.Fatal("changing baseline content must change cache key")
 	}
 }
 

@@ -8,15 +8,18 @@ package lint
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/kaeawc/grit/internal/cas"
 )
 
 // LintAction is the declared shape of a lint invocation.
 //
-// Actions are value types. Two Actions that canonicalize to equal fields
-// must produce the same CacheKey.
+// Actions are value types. Two actions with equal declared fields and equal
+// on-disk contents for their path-based inputs must produce the same CacheKey.
 type LintAction struct {
 	// Sources is the set of source files to lint. Order is not part of
 	// identity: sources are sorted during canonicalization.
@@ -87,18 +90,24 @@ func (a LintAction) canonicalBytes() []byte {
 
 	resDirs := append([]string(nil), a.ResourceDirs...)
 	sort.Strings(resDirs)
+	resourceInputs := make([]pathInput, 0, len(resDirs))
+	for _, dir := range resDirs {
+		if input := canonicalDirectoryInput(dir); input != nil {
+			resourceInputs = append(resourceInputs, *input)
+		}
+	}
 
 	c := canonicalAction{
 		Version:          canonicalVersion,
 		Sources:          sources,
-		ResourceDirs:     resDirs,
-		ManifestPath:     a.ManifestPath,
+		ResourceDirs:     resourceInputs,
 		CompileClasspath: classpath,
 		LintRules:        rules,
-		LintConfig:       a.LintConfig,
-		Baseline:         a.Baseline,
 		ToolVersion:      a.ToolVersion,
 	}
+	c.Manifest = canonicalFileInput(a.ManifestPath)
+	c.LintConfig = canonicalFileInput(a.LintConfig)
+	c.Baseline = canonicalFileInput(a.Baseline)
 	data, err := json.Marshal(c)
 	if err != nil {
 		panic("lint: canonical action failed to marshal: " + err.Error())
@@ -106,16 +115,94 @@ func (a LintAction) canonicalBytes() []byte {
 	return data
 }
 
-const canonicalVersion = 1
+const canonicalVersion = 2
 
 type canonicalAction struct {
 	Version          int         `json:"version"`
 	Sources          []FileInput `json:"sources,omitempty"`
-	ResourceDirs     []string    `json:"resourceDirs,omitempty"`
-	ManifestPath     string      `json:"manifestPath,omitempty"`
+	ResourceDirs     []pathInput `json:"resourceDirs,omitempty"`
+	Manifest         *pathInput  `json:"manifest,omitempty"`
 	CompileClasspath []FileInput `json:"compileClasspath,omitempty"`
 	LintRules        []FileInput `json:"lintRules,omitempty"`
-	LintConfig       string      `json:"lintConfig,omitempty"`
-	Baseline         string      `json:"baseline,omitempty"`
+	LintConfig       *pathInput  `json:"lintConfig,omitempty"`
+	Baseline         *pathInput  `json:"baseline,omitempty"`
 	ToolVersion      string      `json:"toolVersion"`
+}
+
+type pathInput struct {
+	Path   string   `json:"path"`
+	Hash   cas.Hash `json:"hash"`
+	Exists bool     `json:"exists,omitempty"`
+}
+
+func canonicalFileInput(path string) *pathInput {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return &pathInput{Path: path}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return &pathInput{Path: path, Exists: true}
+	}
+	return &pathInput{
+		Path:   path,
+		Hash:   cas.HashBytes(data),
+		Exists: true,
+	}
+}
+
+func canonicalDirectoryInput(path string) *pathInput {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return &pathInput{Path: path}
+	}
+	files := directoryFileInputs(path)
+	data, err := json.Marshal(struct {
+		Version int         `json:"version"`
+		Files   []FileInput `json:"files,omitempty"`
+	}{
+		Version: 1,
+		Files:   files,
+	})
+	if err != nil {
+		panic("lint: canonical resource directory failed to marshal: " + err.Error())
+	}
+	return &pathInput{
+		Path:   path,
+		Hash:   cas.HashBytes(data),
+		Exists: true,
+	}
+}
+
+func directoryFileInputs(root string) []FileInput {
+	out := make([]FileInput, 0)
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		out = append(out, FileInput{
+			Path: path,
+			Hash: cas.HashBytes(data),
+		})
+		return nil
+	})
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Path != out[j].Path {
+			return out[i].Path < out[j].Path
+		}
+		return out[i].Hash.String() < out[j].Hash.String()
+	})
+	return out
 }
