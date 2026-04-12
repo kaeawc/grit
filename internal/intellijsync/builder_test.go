@@ -408,6 +408,141 @@ func TestBuildVariantProjectsLibraryOrderEntriesFromGraphClasspathInputs(t *test
 	}
 }
 
+func TestBuildVariantOrderEntriesMergesFallbackModuleDependenciesWithGraphClasspathInputs(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "app")
+	libDir := filepath.Join(root, "lib")
+	for _, path := range []string{
+		filepath.Join(appDir, "src", "main"),
+		filepath.Join(appDir, "src", "debug"),
+		filepath.Join(libDir, "src", "main"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	app := project.Module{
+		Path:       ":app",
+		Dir:        appDir,
+		BuildFile:  filepath.Join(appDir, "build.gradle.kts"),
+		Type:       "android-application",
+		CompileSDK: "34",
+		DefaultConfig: project.DefaultConfig{
+			ApplicationID: "com.example.app",
+		},
+		BuildTypes: map[string]project.BuildType{
+			"debug": {Name: "debug"},
+		},
+	}
+
+	g := graph.New()
+	appModule := graph.LogicalModule{
+		ID:   graph.LogicalModuleID("module.app"),
+		Path: app.Path,
+		Kind: graph.ModuleKindAndroidApplication,
+	}
+	libModule := graph.LogicalModule{
+		ID:   graph.LogicalModuleID("module.lib"),
+		Path: ":lib",
+		Kind: graph.ModuleKindAndroidLibrary,
+	}
+	if err := g.AddLogicalModule(appModule); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddLogicalModule(libModule); err != nil {
+		t.Fatal(err)
+	}
+	appVariant := graph.Variant{
+		ID:        graph.VariantID("variant.app.debug"),
+		ModuleID:  appModule.ID,
+		Name:      "debug",
+		BuildType: "debug",
+	}
+	libVariant := graph.Variant{
+		ID:        graph.VariantID("variant.lib.debug"),
+		ModuleID:  libModule.ID,
+		Name:      "debug",
+		BuildType: "debug",
+	}
+	if err := g.AddVariant(appVariant); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddVariant(libVariant); err != nil {
+		t.Fatal(err)
+	}
+	appMaterialization := graph.Materialization{
+		ID:          graph.MaterializationID("materialization.app.debug"),
+		ModuleID:    appModule.ID,
+		VariantID:   appVariant.ID,
+		Kind:        graph.MaterializationKindSourceBacked,
+		SourceRoots: []string{filepath.Join(appDir, "src", "main"), filepath.Join(appDir, "src", "debug")},
+		Attributes: map[string]string{
+			"mode": "source_backed",
+		},
+	}
+	libMaterialization := graph.Materialization{
+		ID:          graph.MaterializationID("materialization.lib.debug"),
+		ModuleID:    libModule.ID,
+		VariantID:   libVariant.ID,
+		Kind:        graph.MaterializationKindSourceBacked,
+		SourceRoots: []string{filepath.Join(libDir, "src", "main")},
+		Attributes: map[string]string{
+			"mode": "source_backed",
+		},
+	}
+	if err := g.AddMaterialization(appMaterialization); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddMaterialization(libMaterialization); err != nil {
+		t.Fatal(err)
+	}
+	externalArtifact := graph.Artifact{
+		ID:   graph.ArtifactID("artifact.gson"),
+		Kind: graph.ArtifactKindJar,
+		Path: "/Users/jason/.gradle/caches/modules-2/files-2.1/gson-2.10.jar",
+	}
+	if err := g.AddArtifact(externalArtifact); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.AddEdge(graph.Edge{
+		From: appVariant.Ref(),
+		To:   libVariant.Ref(),
+		Kind: graph.EdgeKindDependsOn,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddAction(graph.Action{
+		ID:        graph.ActionID("action.app.compile"),
+		ModuleID:  appModule.ID,
+		VariantID: appVariant.ID,
+		Name:      "compileDebugSources",
+		Kind:      graph.ActionKindCompile,
+		Inputs:    []graph.ArtifactID{externalArtifact.ID},
+		Attributes: map[string]string{
+			"operation":   "compile",
+			"variantName": "debug",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	projected := buildVariant(nil, g, app, appVariant)
+
+	if len(projected.OrderEntries) != 3 {
+		t.Fatalf("expected SDK, module, and library order entries, got %#v", projected.OrderEntries)
+	}
+	if projected.OrderEntries[0].Kind != OrderEntryKindSDK || projected.OrderEntries[0].Name != "Android API 34" {
+		t.Fatalf("expected SDK order entry first, got %#v", projected.OrderEntries)
+	}
+	if projected.OrderEntries[1].Kind != OrderEntryKindModule || projected.OrderEntries[1].ModulePath != ":lib" || projected.OrderEntries[1].Name != ":lib/debug" {
+		t.Fatalf("expected fallback module dependency to be preserved, got %#v", projected.OrderEntries[1])
+	}
+	if projected.OrderEntries[2].Kind != OrderEntryKindLibrary || projected.OrderEntries[2].Classes != externalArtifact.Path {
+		t.Fatalf("expected graph classpath library entry to be preserved, got %#v", projected.OrderEntries[2])
+	}
+}
+
 func TestBuilderProjectsRepositoryMetadata(t *testing.T) {
 	prj := sampleSyncProject(t)
 	prj.Repositories = []project.Repository{

@@ -421,6 +421,7 @@ func buildVariant(cfg *configmodel.Model, g *graph.Graph, mod project.Module, va
 }
 
 func buildVariantOrderEntries(g *graph.Graph, variant graph.Variant, projected Variant) []OrderEntry {
+	fallback := VariantOrderEntries(projected)
 	if record, ok := classpathRecordForGraphVariant(g, variant); ok {
 		entries := ClasspathRecordToOrderEntries(record, ClasspathOrderEntryOptions{
 			CompileSDK:      projected.CompileSDK,
@@ -429,10 +430,45 @@ func buildVariantOrderEntries(g *graph.Graph, variant graph.Variant, projected V
 			VariantNames:    graphVariantNames(g),
 		})
 		if len(entries) > 0 {
-			return entries
+			return mergeOrderEntries(fallback, entries)
 		}
 	}
-	return VariantOrderEntries(projected)
+	return fallback
+}
+
+func mergeOrderEntries(fallback, resolved []OrderEntry) []OrderEntry {
+	if len(fallback) == 0 {
+		return append([]OrderEntry(nil), resolved...)
+	}
+	if len(resolved) == 0 {
+		return append([]OrderEntry(nil), fallback...)
+	}
+
+	resolvedByKey := make(map[string]OrderEntry, len(resolved))
+	for _, entry := range resolved {
+		resolvedByKey[orderEntryModelKey(entry)] = entry
+	}
+
+	out := make([]OrderEntry, 0, len(fallback)+len(resolved))
+	seen := make(map[string]struct{}, len(fallback)+len(resolved))
+	for _, entry := range fallback {
+		key := orderEntryModelKey(entry)
+		if resolvedEntry, ok := resolvedByKey[key]; ok {
+			out = append(out, resolvedEntry)
+		} else {
+			out = append(out, entry)
+		}
+		seen[key] = struct{}{}
+	}
+	for _, entry := range resolved {
+		key := orderEntryModelKey(entry)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		out = append(out, entry)
+		seen[key] = struct{}{}
+	}
+	return out
 }
 
 func classpathRecordForGraphVariant(g *graph.Graph, variant graph.Variant) (classpath.Record, bool) {

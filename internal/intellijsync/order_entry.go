@@ -184,6 +184,15 @@ func orderEntryKey(e ClasspathEntry) string {
 	return "library:" + e.Name
 }
 
+func orderEntryModelKey(entry OrderEntry) string {
+	return orderEntryKey(ClasspathEntry{
+		Kind:       entry.Kind,
+		Name:       entry.Name,
+		ModulePath: entry.ModulePath,
+		Classes:    entry.Classes,
+	})
+}
+
 // sortOrderEntries sorts by kind priority (sdk < module < library), then
 // alphabetically by name within each kind.
 func sortOrderEntries(entries []OrderEntry) {
