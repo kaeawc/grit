@@ -1,6 +1,7 @@
 package modulebuild
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -67,5 +68,61 @@ func TestActivePlugins_EmptyRegistry(t *testing.T) {
 	reg := NewPluginRegistry()
 	if got := reg.ActivePlugins("debug"); len(got) != 0 {
 		t.Errorf("expected 0 plugins from empty registry, got %d", len(got))
+	}
+}
+
+func TestRegisterClonesPluginDescriptor(t *testing.T) {
+	reg := NewPluginRegistry()
+	plugin := CompilerPlugin{
+		ID:        "com.example.custom",
+		Classpath: []string{"/jars/custom.jar"},
+		Options:   map[string]string{"mode": "strict"},
+		Variants:  []string{"debug"},
+	}
+
+	reg.Register(plugin)
+
+	plugin.Classpath[0] = "/jars/changed.jar"
+	plugin.Options["mode"] = "lenient"
+	plugin.Variants[0] = "release"
+
+	got := reg.ActivePlugins("debug")
+	want := []CompilerPlugin{{
+		ID:        "com.example.custom",
+		Classpath: []string{"/jars/custom.jar"},
+		Options:   map[string]string{"mode": "strict"},
+		Variants:  []string{"debug"},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("registry should preserve registered values: got %#v want %#v", got, want)
+	}
+}
+
+func TestActivePluginsReturnsClonedDescriptors(t *testing.T) {
+	reg := NewPluginRegistry()
+	reg.Register(CompilerPlugin{
+		ID:        "com.example.custom",
+		Classpath: []string{"/jars/custom.jar"},
+		Options:   map[string]string{"mode": "strict"},
+		Variants:  []string{"debug"},
+	})
+
+	first := reg.ActivePlugins("debug")
+	if len(first) != 1 {
+		t.Fatalf("expected one active plugin, got %#v", first)
+	}
+	first[0].Classpath[0] = "/jars/changed.jar"
+	first[0].Options["mode"] = "lenient"
+	first[0].Variants[0] = "release"
+
+	second := reg.ActivePlugins("debug")
+	want := []CompilerPlugin{{
+		ID:        "com.example.custom",
+		Classpath: []string{"/jars/custom.jar"},
+		Options:   map[string]string{"mode": "strict"},
+		Variants:  []string{"debug"},
+	}}
+	if !reflect.DeepEqual(second, want) {
+		t.Fatalf("active plugins should be returned as copies: got %#v want %#v", second, want)
 	}
 }

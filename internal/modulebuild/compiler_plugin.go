@@ -17,6 +17,23 @@ type CompilerPlugin struct {
 	Variants []string
 }
 
+func cloneCompilerPlugin(p CompilerPlugin) CompilerPlugin {
+	cloned := p
+	if len(p.Classpath) > 0 {
+		cloned.Classpath = append([]string(nil), p.Classpath...)
+	}
+	if len(p.Variants) > 0 {
+		cloned.Variants = append([]string(nil), p.Variants...)
+	}
+	if len(p.Options) > 0 {
+		cloned.Options = make(map[string]string, len(p.Options))
+		for key, value := range p.Options {
+			cloned.Options[key] = value
+		}
+	}
+	return cloned
+}
+
 // PluginRegistry holds a set of compiler plugins for a module.
 type PluginRegistry struct {
 	plugins []CompilerPlugin
@@ -29,7 +46,7 @@ func NewPluginRegistry() *PluginRegistry {
 
 // Register adds a compiler plugin to the registry.
 func (r *PluginRegistry) Register(p CompilerPlugin) {
-	r.plugins = append(r.plugins, p)
+	r.plugins = append(r.plugins, cloneCompilerPlugin(p))
 }
 
 // ActivePlugins returns the plugins applicable to the given variant.
@@ -39,12 +56,12 @@ func (r *PluginRegistry) ActivePlugins(variant string) []CompilerPlugin {
 	var result []CompilerPlugin
 	for _, p := range r.plugins {
 		if len(p.Variants) == 0 {
-			result = append(result, p)
+			result = append(result, cloneCompilerPlugin(p))
 			continue
 		}
 		for _, v := range p.Variants {
 			if v == variant {
-				result = append(result, p)
+				result = append(result, cloneCompilerPlugin(p))
 				break
 			}
 		}
