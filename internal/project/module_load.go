@@ -57,6 +57,7 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 		UsesCompose:               strings.Contains(body, "compose = true") || strings.Contains(body, "compose-compiler"),
 		UsesKotlinSerialization:   strings.Contains(body, "libs.plugins.kotlin.serialization"),
 		UsesMetro:                 strings.Contains(body, "libs.plugins.metro"),
+		BuildFeatures:             parseBuildFeatures(body),
 		TestInstrumentationRunner: parseAssignment(body, `testInstrumentationRunner\s*=\s*"([^"]+)"`),
 		KotlinFreeCompilerArgs:    parseFreeCompilerArgs(body),
 		LintDisabledChecks:        parseLintDisabledChecks(body),

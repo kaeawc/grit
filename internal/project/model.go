@@ -59,6 +59,7 @@ type Module struct {
 	UsesCompose               bool
 	UsesKotlinSerialization   bool
 	UsesMetro                 bool
+	BuildFeatures             BuildFeatures
 	KotlinFreeCompilerArgs    []string
 	LintDisabledChecks        []string
 	ConsumerProguardFiles     []string
@@ -67,6 +68,14 @@ type Module struct {
 	FlavorDimensions          []string
 	ProductFlavors            map[string]ProductFlavor
 	BuildTypes                map[string]BuildType
+}
+
+// BuildFeatures represents the android { buildFeatures { } } block.
+type BuildFeatures struct {
+	Compose     bool
+	ViewBinding bool
+	DataBinding bool
+	BuildConfig bool
 }
 
 type VariantOptimization struct {
