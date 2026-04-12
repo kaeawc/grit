@@ -270,10 +270,6 @@
         "capacity": 2
       }
     ],
-    "networkBudgetConfig": {
-      "capacityBytes": 52428800,
-      "refillBytesPerSec": 10485760
-    },
     "batches": [
       {
         "actions": [
@@ -399,14 +395,7 @@
           "reused": 2
         }
       }
-    ],
-    "bandwidth": {
-      "totalCacheableActions": 2,
-      "budgetCapacityBytes": 52428800,
-      "budgetRemainingBytes": 52428800,
-      "budgetRefillRate": 10485760,
-      "totalAdmittedBytes": 33554432
-    }
+    ]
   },
   "toolSummary": {
     "operations": [
@@ -734,5 +723,5 @@
       "detail": "1 reused substeps"
     }
   ],
-  "writtenAt": "2026-04-12T15:28:34Z"
+  "writtenAt": "2026-04-12T15:32:57Z"
 }

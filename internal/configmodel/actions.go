@@ -8,6 +8,7 @@ import (
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/responsepayload"
+	"github.com/kaeawc/grit/internal/tieredcas"
 )
 
 type ActionSchedule struct {
@@ -434,12 +435,12 @@ func defaultResourceBudgets() []ResourceBudget {
 }
 
 // defaultNetworkBudgetConfig returns a network budget config only when the
-// schedule contains cacheable actions with remote probe tiers. When there
-// are no such actions, returning nil avoids creating a budget that would
-// never be consulted. Defaults: 50 MiB burst, 10 MiB/s refill.
+// schedule contains cacheable actions with true remote probe tiers. Local CAS
+// tiers such as worktree overlay and shared-machine storage should not enable
+// bandwidth admission on their own. Defaults: 50 MiB burst, 10 MiB/s refill.
 func defaultNetworkBudgetConfig(actions []graph.Action) *ScheduleNetworkBudget {
 	for _, a := range actions {
-		if actionCacheable(a) && len(probeOrderForAction(a)) > 1 {
+		if actionCacheable(a) && tieredcas.HasRemoteProbeTier(probeOrderForAction(a)) {
 			return &ScheduleNetworkBudget{
 				CapacityBytes:     50 * 1024 * 1024,
 				RefillBytesPerSec: 10 * 1024 * 1024,

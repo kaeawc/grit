@@ -359,6 +359,35 @@ func TestAdmitRemoteProbeConsumesOnlyNetworkBudget(t *testing.T) {
 	}
 }
 
+func TestAdmitRemoteProbeSkipsBudgetForSharedMachineTier(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 1},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	step := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "shared-machine"},
+		EstimatedBytes: 80,
+	}
+
+	if decision := c.AdmitRemoteProbe(step); decision.ActionID != "a1" || decision.DeferRemote {
+		t.Fatalf("expected shared-machine probe to bypass remote deferral, got %+v", decision)
+	}
+	if snap := nb.Snapshot(); snap.Available != 100 || snap.TotalAdmitted != 0 || snap.TotalDenied != 0 {
+		t.Fatalf("expected shared-machine probe to leave network budget untouched, got %+v", snap)
+	}
+}
+
 func TestReleaseWithActualReturnsSurplus(t *testing.T) {
 	c := NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "jvm-process", Capacity: 10},

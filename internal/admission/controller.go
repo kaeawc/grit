@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/kaeawc/grit/internal/configmodel"
+	"github.com/kaeawc/grit/internal/tieredcas"
 )
 
 // Decision describes the outcome of an admission attempt.
@@ -395,7 +396,7 @@ func (c *Controller) ensurePool(resourceClass string) *pool {
 }
 
 func (c *Controller) admitRemoteProbeLocked(step configmodel.ActionScheduleStep) (deferRemote bool, estimatedBytes int64) {
-	if c.networkBudget == nil || !step.Cacheable || !hasRemoteTier(step.ProbeOrder) {
+	if c.networkBudget == nil || !step.Cacheable || !tieredcas.HasRemoteProbeTier(step.ProbeOrder) {
 		return false, 0
 	}
 	estimatedBytes = step.EstimatedBytes
@@ -430,18 +431,6 @@ func (c *Controller) snapshotPoolsLocked() []PoolSnapshot {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ResourceClass < out[j].ResourceClass })
 	return out
-}
-
-// hasRemoteTier returns true if the probe order includes any tier beyond
-// local-only tiers. Any tier name that is not "local-overlay" is treated as
-// remote.
-func hasRemoteTier(probeOrder []string) bool {
-	for _, tier := range probeOrder {
-		if tier != "local-overlay" {
-			return true
-		}
-	}
-	return false
 }
 
 func (c *Controller) snapshotWorkersLocked() []WorkerSnapshot {

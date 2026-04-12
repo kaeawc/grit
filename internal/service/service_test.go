@@ -228,8 +228,8 @@ func TestBuildRoutesToCompiler(t *testing.T) {
 	if outcome.SchedulerSummary == nil || outcome.SchedulerSummary.ExecutedBatchCount != 1 || outcome.SchedulerSummary.CriticalPathActions != 1 {
 		t.Fatalf("expected scheduler summary on outcome, got %#v", outcome.SchedulerSummary)
 	}
-	if outcome.SchedulerSummary.Bandwidth == nil || outcome.SchedulerSummary.Bandwidth.TotalCacheableActions != 1 || outcome.SchedulerSummary.Bandwidth.DeferredActions != 0 || outcome.SchedulerSummary.Bandwidth.BudgetCapacityBytes == 0 {
-		t.Fatalf("expected bandwidth-aware scheduler summary on outcome, got %#v", outcome.SchedulerSummary)
+	if outcome.SchedulerSummary.Bandwidth != nil {
+		t.Fatalf("expected local-only schedule to omit bandwidth summary, got %#v", outcome.SchedulerSummary)
 	}
 	if outcome.SchedulerSummary.CacheResultCounts["reused"] != 1 || len(outcome.SchedulerSummary.WorkerClasses) != 1 || outcome.SchedulerSummary.WorkerClasses[0].Key == "" || outcome.SchedulerSummary.WorkerClasses[0].CacheResultCounts["reused"] != 1 {
 		t.Fatalf("expected worker-class cache-result scheduler breakdown on outcome, got %#v", outcome.SchedulerSummary)
@@ -362,7 +362,7 @@ func TestBuildRoutesToCompiler(t *testing.T) {
 			TotalQueueWaitMs    int64          `json:"totalQueueWaitMs"`
 			WaitReasonCounts    map[string]int `json:"waitReasonCounts"`
 			CacheResultCounts   map[string]int `json:"cacheResultCounts"`
-			Bandwidth           struct {
+			Bandwidth           *struct {
 				DeferredActions       int   `json:"deferredActions"`
 				TotalCacheableActions int   `json:"totalCacheableActions"`
 				EstimatedBytesSaved   int64 `json:"estimatedBytesSaved"`
@@ -505,8 +505,8 @@ func TestBuildRoutesToCompiler(t *testing.T) {
 	if summary.SchedulerSummary.ExecutedBatchCount != 1 || summary.SchedulerSummary.CriticalPathActions != 1 || summary.SchedulerSummary.QueueWaitActions != 0 || summary.SchedulerSummary.TotalQueueWaitMs != 0 {
 		t.Fatalf("unexpected scheduler summary in run summary: %s", data)
 	}
-	if summary.SchedulerSummary.Bandwidth.TotalCacheableActions != 1 || summary.SchedulerSummary.Bandwidth.DeferredActions != 0 || summary.SchedulerSummary.Bandwidth.BudgetCapacityBytes == 0 {
-		t.Fatalf("unexpected bandwidth summary in run summary: %s", data)
+	if summary.SchedulerSummary.Bandwidth != nil {
+		t.Fatalf("expected local-only run summary to omit bandwidth summary: %s", data)
 	}
 	if summary.SchedulerSummary.CacheResultCounts["reused"] != 1 || len(summary.SchedulerSummary.WorkerClasses) != 1 || summary.SchedulerSummary.WorkerClasses[0].Key == "" || summary.SchedulerSummary.WorkerClasses[0].ActionCount != 1 || summary.SchedulerSummary.WorkerClasses[0].CacheResultCounts["reused"] != 1 {
 		t.Fatalf("unexpected worker-class scheduler breakdown in run summary: %s", data)

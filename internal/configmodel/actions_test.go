@@ -288,19 +288,13 @@ func TestActionsForResolvedCommandUsesFlavorAwareDebugVariants(t *testing.T) {
 	}
 }
 
-func TestDefaultNetworkBudgetConfigIncludedWhenCacheableActionsExist(t *testing.T) {
+func TestDefaultNetworkBudgetConfigNilWhenCacheableActionsOnlyUseLocalTiers(t *testing.T) {
 	actions := []graph.Action{
 		{ID: graph.ActionID("a1"), Attributes: map[string]string{"operation": "compile"}},
 	}
 	cfg := defaultNetworkBudgetConfig(actions)
-	if cfg == nil {
-		t.Fatal("expected non-nil NetworkBudgetConfig for cacheable actions")
-	}
-	if cfg.CapacityBytes <= 0 {
-		t.Fatalf("expected positive CapacityBytes, got %d", cfg.CapacityBytes)
-	}
-	if cfg.RefillBytesPerSec <= 0 {
-		t.Fatalf("expected positive RefillBytesPerSec, got %d", cfg.RefillBytesPerSec)
+	if cfg != nil {
+		t.Fatalf("expected nil NetworkBudgetConfig when probe order is local-only, got %+v", cfg)
 	}
 }
 
