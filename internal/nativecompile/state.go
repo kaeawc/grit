@@ -22,6 +22,9 @@ type compileState struct {
 	toolchainOnce     sync.Once
 	toolchain         *kotlinToolchain
 	toolchainErr      error
+	bundletoolOnce    sync.Once
+	bundletool        *bundletoolToolchain
+	bundletoolErr     error
 }
 
 type inFlightCompile struct {

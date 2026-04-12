@@ -583,19 +583,53 @@ func materializedAndroidLibrary(coord lockfile.Coordinate, outDir string) m2loca
 }
 
 func sourceDownloaders(repos []project.Repository) []downloader.Downloader {
+	// Gradle cache is an internal cache (not a declared repository) so it
+	// always comes first as a fast local source.
 	var sources []downloader.Downloader
 	if root := ResolverCacheRoot(); root != "" {
 		sources = append(sources, gradlecache.New(root))
 	}
-	if root := mavenread.DefaultRoot(); root != "" {
-		sources = append(sources, mavenread.New(root))
-	}
+
+	// Build declared repository downloaders in declaration order.
+	hasDeclaredMavenLocal := false
 	for _, repo := range repos {
+		if repo.Kind == "mavenLocal" {
+			hasDeclaredMavenLocal = true
+		}
 		if dl := downloaderForRepository(repo); dl != nil {
 			sources = append(sources, dl)
 		}
 	}
-	return sources
+
+	// If no repository explicitly declares mavenLocal(), add it as an
+	// implicit fallback after declared repositories for backward
+	// compatibility with projects that rely on ~/.m2/repository without
+	// declaring it.
+	if !hasDeclaredMavenLocal {
+		if root := mavenread.DefaultRoot(); root != "" {
+			sources = append(sources, mavenread.New(root))
+		}
+	}
+
+	return deduplicateDownloaders(sources)
+}
+
+// deduplicateDownloaders removes duplicate downloaders by ID, keeping the
+// first occurrence. This prevents the same source (e.g. maven-local at
+// the default root) from appearing twice in the chain when it is both
+// implicitly added and explicitly declared.
+func deduplicateDownloaders(sources []downloader.Downloader) []downloader.Downloader {
+	seen := map[string]bool{}
+	out := make([]downloader.Downloader, 0, len(sources))
+	for _, dl := range sources {
+		id := dl.ID()
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, dl)
+	}
+	return out
 }
 
 func downloaderForRepository(repo project.Repository) downloader.Downloader {
