@@ -316,6 +316,159 @@ func TestAdmitBatchWithDecisionsEmptyInput(t *testing.T) {
 	}
 }
 
+func TestReleaseWithActualReturnsSurplus(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 10},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     1000,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	s := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 10,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 400,
+	}
+	d := c.TryAdmit(s)
+	if !d.Admitted || d.DeferRemote {
+		t.Fatalf("expected admitted without defer, got %+v", d)
+	}
+
+	// Budget should have 600 remaining (1000 - 400).
+	snap := nb.Snapshot()
+	if snap.Available != 600 {
+		t.Fatalf("expected 600 available after admit, got %d", snap.Available)
+	}
+
+	// Release reporting only 100 actual bytes used; surplus of 300 returned.
+	if err := c.ReleaseWithActual("a1", 100); err != nil {
+		t.Fatal(err)
+	}
+	snap = nb.Snapshot()
+	if snap.Available != 900 {
+		t.Fatalf("expected 900 available after surplus return, got %d", snap.Available)
+	}
+}
+
+func TestReleaseDeferredActionDoesNotReturnTokens(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 10},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	s := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 10,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 200, // exceeds 100-byte budget
+	}
+	d := c.TryAdmit(s)
+	if !d.Admitted {
+		t.Fatal("expected admission")
+	}
+	if !d.DeferRemote {
+		t.Fatal("expected DeferRemote=true for action exceeding budget")
+	}
+
+	// Budget was denied, so no tokens were taken — still at 100.
+	snap := nb.Snapshot()
+	if snap.Available != 100 {
+		t.Fatalf("expected 100 available (denied actions don't consume), got %d", snap.Available)
+	}
+
+	// Release deferred action — budget should remain unchanged.
+	if err := c.Release("a1"); err != nil {
+		t.Fatal(err)
+	}
+	snap = nb.Snapshot()
+	if snap.Available != 100 {
+		t.Fatalf("expected 100 available after deferred release, got %d", snap.Available)
+	}
+}
+
+func TestFullSnapshotIncludesNetworkBudget(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 4},
+	})
+
+	// Without network budget.
+	snap := c.FullSnapshot()
+	if snap.NetworkBudget != nil {
+		t.Fatal("expected nil NetworkBudget when none attached")
+	}
+	if len(snap.Pools) != 1 {
+		t.Fatalf("expected 1 pool, got %d", len(snap.Pools))
+	}
+
+	// Attach a network budget.
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     5000,
+		RefillBytesPerSec: 100,
+	})
+	c.SetNetworkBudget(nb)
+
+	snap = c.FullSnapshot()
+	if snap.NetworkBudget == nil {
+		t.Fatal("expected non-nil NetworkBudget after attaching")
+	}
+	if snap.NetworkBudget.Capacity != 5000 {
+		t.Fatalf("expected capacity 5000, got %d", snap.NetworkBudget.Capacity)
+	}
+	if snap.NetworkBudget.RefillRate != 100 {
+		t.Fatalf("expected refill rate 100, got %d", snap.NetworkBudget.RefillRate)
+	}
+	if snap.Active != 0 {
+		t.Fatalf("expected 0 active, got %d", snap.Active)
+	}
+}
+
+func TestReleaseWithActualZeroBytesReturnsFullEstimate(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 10},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     1000,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	s := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 10,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 300,
+	}
+	c.TryAdmit(s)
+
+	// Report zero actual bytes — full 300 returned.
+	if err := c.ReleaseWithActual("a1", 0); err != nil {
+		t.Fatal(err)
+	}
+	snap := nb.Snapshot()
+	if snap.Available != 1000 {
+		t.Fatalf("expected 1000 available after full return, got %d", snap.Available)
+	}
+}
+
 func TestResourceCostGreaterThanOne(t *testing.T) {
 	c := NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "jvm-process", Capacity: 4},

@@ -83,9 +83,11 @@ type workerSlot struct {
 }
 
 type admittedAction struct {
-	resourceClass string
-	resourceCost  int
-	workerClass   string
+	resourceClass  string
+	resourceCost   int
+	workerClass    string
+	estimatedBytes int64
+	deferRemote    bool
 }
 
 // NewController creates a Controller pre-loaded with the given resource budgets.
@@ -170,18 +172,23 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 	// Admit the action.
 	p.used += step.ResourceCost
 	w.active++
-	c.admitted[actionID] = admittedAction{
-		resourceClass: step.ResourceClass,
-		resourceCost:  step.ResourceCost,
-		workerClass:   step.WorkerClass,
-	}
 
 	// Check network budget for cacheable actions with remote probe tiers.
 	deferRemote := false
+	var estimatedBytes int64
 	if c.networkBudget != nil && step.Cacheable && hasRemoteTier(step.ProbeOrder) {
+		estimatedBytes = step.EstimatedBytes
 		if !c.networkBudget.Admit(step.EstimatedBytes) {
 			deferRemote = true
 		}
+	}
+
+	c.admitted[actionID] = admittedAction{
+		resourceClass:  step.ResourceClass,
+		resourceCost:   step.ResourceCost,
+		workerClass:    step.WorkerClass,
+		estimatedBytes: estimatedBytes,
+		deferRemote:    deferRemote,
 	}
 
 	return Decision{
@@ -196,10 +203,29 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 
 // Release frees the resources held by a previously admitted action. It returns
 // an error if the action was not currently admitted.
+//
+// When the action was admitted with DeferRemote=true, the estimated bytes are
+// returned to the network budget because the remote tier was never used.
 func (c *Controller) Release(actionID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.releaseLocked(actionID, -1)
+}
 
+// ReleaseWithActual frees resources and reconciles the network budget against
+// the actual bytes transferred. If the action used fewer bytes than estimated,
+// the surplus is returned to the budget. If actualBytes is zero and the action
+// was deferred (DeferRemote=true), the full estimate is returned.
+func (c *Controller) ReleaseWithActual(actionID string, actualBytes int64) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.releaseLocked(actionID, actualBytes)
+}
+
+// releaseLocked is the shared implementation for Release and ReleaseWithActual.
+// An actualBytes value of -1 signals the basic Release path (auto-return for
+// deferred actions only).
+func (c *Controller) releaseLocked(actionID string, actualBytes int64) error {
 	entry, ok := c.admitted[actionID]
 	if !ok {
 		return fmt.Errorf("action %s not admitted", actionID)
@@ -218,6 +244,19 @@ func (c *Controller) Release(actionID string) error {
 			w.active = 0
 		}
 	}
+
+	// Return unused bandwidth to the network budget.
+	if c.networkBudget != nil && entry.estimatedBytes > 0 {
+		if entry.deferRemote {
+			// Action was deferred — no remote bytes consumed at all. The
+			// budget already denied the request so no tokens were taken,
+			// nothing to return.
+		} else if actualBytes >= 0 && actualBytes < entry.estimatedBytes {
+			// Action used fewer bytes than estimated; return the surplus.
+			c.networkBudget.Return(entry.estimatedBytes - actualBytes)
+		}
+	}
+
 	return nil
 }
 
@@ -265,6 +304,33 @@ func (c *Controller) Snapshot() ([]PoolSnapshot, []WorkerSnapshot) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.snapshotPoolsLocked(), c.snapshotWorkersLocked()
+}
+
+// FullSnapshot returns the current state of all resource pools, worker slots,
+// and the network budget (if attached). This gives callers a single consistent
+// view of every admission constraint.
+func (c *Controller) FullSnapshot() ControllerSnapshot {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	snap := ControllerSnapshot{
+		Pools:   c.snapshotPoolsLocked(),
+		Workers: c.snapshotWorkersLocked(),
+		Active:  len(c.admitted),
+	}
+	if c.networkBudget != nil {
+		nbs := c.networkBudget.Snapshot()
+		snap.NetworkBudget = &nbs
+	}
+	return snap
+}
+
+// ControllerSnapshot captures the full state of the admission controller at a
+// point in time, including resource pools, worker slots, and the network budget.
+type ControllerSnapshot struct {
+	Pools          []PoolSnapshot         `json:"pools"`
+	Workers        []WorkerSnapshot       `json:"workers"`
+	Active         int                    `json:"active"`
+	NetworkBudget  *NetworkBudgetSnapshot `json:"networkBudget,omitempty"`
 }
 
 // ActiveCount returns the number of currently admitted actions.
