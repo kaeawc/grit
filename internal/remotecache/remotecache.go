@@ -102,6 +102,7 @@ func (c *Client) GetBlob(ctx context.Context, hash cas.Hash) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("remotecache: read body: %w", err)
 	}
+	observeReadBytes(ctx, int64(len(data)))
 	if got := cas.HashBytes(data); got != hash {
 		return nil, fmt.Errorf("%w: GET /cas/%s returned content hashing to %s", cas.ErrHashMismatch, hash, got)
 	}
@@ -198,8 +199,13 @@ func (c *Client) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.
 	default:
 		return cas.ActionResult{}, fmt.Errorf("remotecache: GET /action/%s: %s", actionHash, statusError(resp))
 	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return cas.ActionResult{}, fmt.Errorf("remotecache: read action result: %w", err)
+	}
+	observeReadBytes(ctx, int64(len(body)))
 	var result cas.ActionResult
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return cas.ActionResult{}, fmt.Errorf("remotecache: decode action result: %w", err)
 	}
 	if result.ActionHash != actionHash {

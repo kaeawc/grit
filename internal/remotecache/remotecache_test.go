@@ -195,6 +195,59 @@ func TestHasBlob(t *testing.T) {
 	}
 }
 
+func TestReadCounterTracksDownloadedBytesOnly(t *testing.T) {
+	client, _, cleanup := startTestServer(t)
+	defer cleanup()
+
+	blobPayload := []byte("blob bytes")
+	blobHash := cas.HashBytes(blobPayload)
+	actionResult := cas.ActionResult{
+		ActionHash: cas.HashBytes([]byte("action")),
+		Outputs: []cas.NamedOutput{
+			{Role: "main", Blob: cas.BlobInfo{Hash: blobHash, Size: int64(len(blobPayload))}},
+		},
+	}
+	actionBytes, err := json.Marshal(actionResult)
+	if err != nil {
+		t.Fatalf("json.Marshal: %v", err)
+	}
+
+	ctx, counter := WithReadCounter(context.Background())
+	if err := client.PutBlob(ctx, blobHash, blobPayload); err != nil {
+		t.Fatalf("PutBlob: %v", err)
+	}
+	if err := client.PutActionResult(ctx, actionResult); err != nil {
+		t.Fatalf("PutActionResult: %v", err)
+	}
+	if got := counter.Bytes(); got != 0 {
+		t.Fatalf("expected uploads to avoid read accounting, got %d", got)
+	}
+
+	has, err := client.HasBlob(ctx, blobHash)
+	if err != nil || !has {
+		t.Fatalf("HasBlob: has=%v err=%v", has, err)
+	}
+	has, err = client.HasActionResult(ctx, actionResult.ActionHash)
+	if err != nil || !has {
+		t.Fatalf("HasActionResult: has=%v err=%v", has, err)
+	}
+	if got := counter.Bytes(); got != 0 {
+		t.Fatalf("expected HEAD probes to avoid read accounting, got %d", got)
+	}
+
+	if _, err := client.GetBlob(ctx, blobHash); err != nil {
+		t.Fatalf("GetBlob: %v", err)
+	}
+	if _, err := client.GetActionResult(ctx, actionResult.ActionHash); err != nil {
+		t.Fatalf("GetActionResult: %v", err)
+	}
+
+	want := int64(len(blobPayload) + len(actionBytes) + 1)
+	if got := counter.Bytes(); got != want {
+		t.Fatalf("expected %d downloaded bytes, got %d", want, got)
+	}
+}
+
 func TestPutBlobRejectsClientSideHashMismatch(t *testing.T) {
 	client, _, cleanup := startTestServer(t)
 	defer cleanup()

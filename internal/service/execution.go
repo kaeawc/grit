@@ -17,14 +17,16 @@ import (
 	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
+	"github.com/kaeawc/grit/internal/remotecache"
 	"github.com/kaeawc/grit/internal/responsepayload"
 	"github.com/kaeawc/grit/internal/tieredcas"
 	"github.com/kaeawc/grit/internal/tooldiag"
 )
 
 type actionResult struct {
-	Outcome BuildOutcome
-	Err     error
+	Outcome           BuildOutcome
+	Err               error
+	ActualRemoteBytes int64
 }
 
 type androidTestInstaller interface {
@@ -66,7 +68,7 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 		go func() {
 			result := s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[i], queueWaitMs, deferRemote, stdout, stderr)
 			if release {
-				if err := s.admissionController.Release(batch[i].Action.ID.String()); err != nil {
+				if err := s.admissionController.ReleaseWithActual(batch[i].Action.ID.String(), result.ActualRemoteBytes); err != nil {
 					if result.Err == nil {
 						result.Err = fmt.Errorf("release %s: %w", batch[i].Action.ID.String(), err)
 					} else {
@@ -265,6 +267,8 @@ func prioritizedBatchIndexes(batch []configmodel.ActionScheduleStep) []int {
 }
 
 func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, step configmodel.ActionScheduleStep, queueWaitMs int64, deferRemote bool, stdout, stderr *os.File) actionResult {
+	ctx, remoteReads := remotecache.WithReadCounter(ctx)
+
 	// When the admission controller defers remote probes (bandwidth budget
 	// exhausted), constrain the context so that tieredcas.Store methods
 	// called through the generic cas.Store interface automatically limit
@@ -335,7 +339,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "install":
 		outcome.Installed = true
 		outcome.Message = "APK installed"
@@ -344,7 +348,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "assemble":
 		outcome.Message = "APK assembled"
 		err := compiler.AssembleVariant(ctx, prj, modulePath, variantName, stdout, stderr)
@@ -352,7 +356,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "test":
 		outcome.Tested = true
 		outcome.Message = "unit tests completed"
@@ -361,7 +365,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "compile-tests":
 		outcome.Compiled = true
 		outcome.Message = "debug unit test sources compiled"
@@ -370,7 +374,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "compile-android-tests":
 		outcome.Compiled = true
 		outcome.Message = "debug androidTest sources compiled"
@@ -379,7 +383,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "install-android-tests":
 		outcome.Installed = true
 		outcome.Message = "androidTest APK installed"
@@ -392,7 +396,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	case "uninstall-android-tests":
 		outcome.Message = "androidTest APK uninstalled"
 		uninstaller, ok := compiler.(androidTestUninstaller)
@@ -404,14 +408,14 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	default:
 		err := griterr.Newf(griterr.ErrUnsupported, "graph action operation %s", action.Attributes["operation"])
 		attachToolDiagnostics(&outcome.ActionExecutions[0], prj.RootDir, diagCollector.Records())
 		completeActionExecution(&outcome.ActionExecutions[0], &outcome.ActionExplanations[0], actionTracker.GetTimings(), start, err)
 		outcome.CacheProbes = refreshOutcomeCacheProbes(outcome.ActionExecutions)
 		outcome.CacheProbeRecords = refreshOutcomeCacheProbeRecords(outcome.ActionExecutions)
-		return actionResult{Outcome: outcome, Err: err}
+		return actionResult{Outcome: outcome, Err: err, ActualRemoteBytes: remoteReads.Bytes()}
 	}
 }
 

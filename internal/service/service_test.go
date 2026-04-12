@@ -1436,6 +1436,89 @@ func TestExecuteBatchDeferRemoteWithAdmissionController(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchRestoresNetworkBudgetFromMeasuredRemoteBytes(t *testing.T) {
+	svc := NewWithCompiler(&testsupport.CompilerRecorder{})
+
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 1},
+	})
+	ac.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	}))
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	batch := []configmodel.ActionScheduleStep{
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:compile1"),
+				Name: "compileDebug1",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "kotlin-compile",
+			MaxParallelism: 1,
+			ResourceClass:  "cpu",
+			ResourceCost:   1,
+			Cacheable:      true,
+			ProbeOrder:     []string{"local-overlay", "remote"},
+			EstimatedBytes: 80,
+		},
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:compile2"),
+				Name: "compileDebug2",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "kotlin-compile",
+			MaxParallelism: 1,
+			ResourceClass:  "cpu",
+			ResourceCost:   1,
+			Cacheable:      true,
+			ProbeOrder:     []string{"local-overlay", "remote"},
+			EstimatedBytes: 80,
+		},
+	}
+
+	outcomes, err := svc.executeBatch(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, 0, batch, os.Stdout, os.Stderr)
+	if err != nil {
+		t.Fatalf("executeBatch returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected 2 outcomes, got %d", len(outcomes))
+	}
+	if outcomes[0].ActionExecutions[0].DeferRemote {
+		t.Fatal("expected first action DeferRemote=false")
+	}
+	if outcomes[1].ActionExecutions[0].DeferRemote {
+		t.Fatal("expected second action DeferRemote=false after first action returned its unused estimate")
+	}
+
+	summary := ac.BandwidthSummary()
+	if summary == nil {
+		t.Fatal("expected bandwidth summary")
+	}
+	if summary.BudgetRemainingBytes != 100 {
+		t.Fatalf("expected budget to refill to full capacity, got %d", summary.BudgetRemainingBytes)
+	}
+	if summary.TotalAdmittedBytes != 160 {
+		t.Fatalf("expected both actions to consume estimated budget before reconciliation, got %d", summary.TotalAdmittedBytes)
+	}
+}
+
 func TestBuildSchedulerSummaryIncludesBandwidthAccounting(t *testing.T) {
 	ac := admission.NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "cpu", Capacity: 2},
