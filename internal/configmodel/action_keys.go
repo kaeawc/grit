@@ -58,7 +58,11 @@ func lintActionCacheKey(m *Model, action graph.Action) string {
 	if !ok {
 		return ""
 	}
-	return lint.ActionFromVariant(resolved).CacheKey().String()
+	moduleDir := ""
+	if mod, ok := m.Module(modulePath); ok {
+		moduleDir = mod.Dir
+	}
+	return lint.ActionFromVariantInModule(resolved, moduleDir).CacheKey().String()
 }
 
 func defaultActionCacheKey(action graph.Action) string {
