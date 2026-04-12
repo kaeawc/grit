@@ -165,6 +165,28 @@ func TestVariantOrderEntriesIgnoresOpaqueSnapshotIDs(t *testing.T) {
 	}
 }
 
+func TestVariantOrderEntriesIgnoresDocumentationSnapshotJars(t *testing.T) {
+	v := Variant{
+		Name:       "debug",
+		CompileSDK: "34",
+		Materialization: Materialization{
+			ClasspathSnapshotIDs: []string{
+				"/caches/transforms/okhttp-4.12.0-sources.jar",
+				"/caches/transforms/okhttp-4.12.0-javadoc.jar",
+				"/caches/transforms/okhttp-4.12.0.jar",
+			},
+		},
+	}
+
+	got := VariantOrderEntries(v)
+	if len(got) != 2 {
+		t.Fatalf("expected sdk + binary library entries, got %d: %#v", len(got), got)
+	}
+	if got[1].Kind != OrderEntryKindLibrary || got[1].Classes != "/caches/transforms/okhttp-4.12.0.jar" {
+		t.Fatalf("expected only the binary jar to project as a library entry, got %#v", got[1])
+	}
+}
+
 func TestClasspathEntryFromSnapshotIDInfersCompanionJars(t *testing.T) {
 	entry := classpathEntryFromSnapshotID("/repo/libs/retrofit-2.9.0.jar")
 	if entry.Kind != OrderEntryKindLibrary {
@@ -339,5 +361,39 @@ func TestClasspathSnapshotToOrderEntriesUsesToolchainFallback(t *testing.T) {
 	}
 	if got[1].Kind != OrderEntryKindLibrary || got[1].Scope != "runtime" {
 		t.Fatalf("expected runtime-scoped library entry, got %#v", got[1])
+	}
+}
+
+func TestClasspathRecordToOrderEntriesIgnoresDocumentationArtifacts(t *testing.T) {
+	record := classpath.Record{
+		Scope: classpath.ScopeCompile,
+		Entries: []classpath.EntryRecord{
+			{
+				Order:          0,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0-sources.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0-sources.jar",
+				Origin:         classpath.OriginArtifact,
+			},
+			{
+				Order:          1,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0-javadoc.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0-javadoc.jar",
+				Origin:         classpath.OriginGenerated,
+			},
+			{
+				Order:          2,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0.jar",
+				Origin:         classpath.OriginArtifact,
+			},
+		},
+	}
+
+	got := ClasspathRecordToOrderEntries(record, ClasspathOrderEntryOptions{CompileSDK: "34"})
+	if len(got) != 2 {
+		t.Fatalf("expected sdk + binary library entries, got %d: %#v", len(got), got)
+	}
+	if got[1].Kind != OrderEntryKindLibrary || got[1].Classes != "/Users/jason/.gradle/caches/modules-2/files-2.1/okhttp-4.12.0.jar" {
+		t.Fatalf("expected only the binary artifact to project as a library entry, got %#v", got[1])
 	}
 }

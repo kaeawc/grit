@@ -245,12 +245,18 @@ func classpathEntryFromSnapshotID(id string) ClasspathEntry {
 func libraryNameFromPath(path string) string {
 	base := filepath.Base(path)
 	ext := filepath.Ext(base)
-	return strings.TrimSuffix(base, ext)
+	name := strings.TrimSuffix(base, ext)
+	name = strings.TrimSuffix(name, "-sources")
+	name = strings.TrimSuffix(name, "-javadoc")
+	return name
 }
 
 func looksLikeLibrarySnapshotPath(id string) bool {
 	id = strings.TrimSpace(id)
 	if id == "" {
+		return false
+	}
+	if isLibraryDocumentationPath(id) {
 		return false
 	}
 	switch strings.ToLower(filepath.Ext(id)) {
@@ -282,6 +288,9 @@ func orderEntryFromClasspathRecordEntry(entry classpath.EntryRecord, options Cla
 	case classpath.OriginArtifact, classpath.OriginGenerated:
 		classesPath := firstNonEmptyString(strings.TrimSpace(entry.NormalizedPath), strings.TrimSpace(entry.Path))
 		if classesPath == "" {
+			return ClasspathEntry{}, false
+		}
+		if isLibraryDocumentationPath(classesPath) {
 			return ClasspathEntry{}, false
 		}
 		projected := classpathEntryFromSnapshotID(classesPath)
@@ -367,4 +376,9 @@ func sdkEntry(compileSDK, toolchainID string) OrderEntry {
 		Name:  name,
 		Scope: "compile",
 	}
+}
+
+func isLibraryDocumentationPath(path string) bool {
+	lower := strings.ToLower(strings.TrimSpace(path))
+	return strings.HasSuffix(lower, "-sources.jar") || strings.HasSuffix(lower, "-javadoc.jar")
 }
