@@ -90,6 +90,7 @@ func ClasspathSnapshotToOrderEntries(snapshot classpath.Snapshot, options Classp
 func ClasspathRecordToOrderEntries(record classpath.Record, options ClasspathOrderEntryOptions) []OrderEntry {
 	var out []OrderEntry
 	seen := map[string]struct{}{}
+	companionsByFamilyKey, companionsByStem := collectRecordCompanionArtifacts(record.Entries)
 	if sdk := sdkEntry(options.CompileSDK, record.ToolchainID); sdk.Name != "" {
 		key := orderEntryKey(ClasspathEntry{Kind: sdk.Kind, Name: sdk.Name})
 		seen[key] = struct{}{}
@@ -100,6 +101,7 @@ func ClasspathRecordToOrderEntries(record classpath.Record, options ClasspathOrd
 		if !ok {
 			continue
 		}
+		projected = applyRecordCompanionArtifacts(projected, entry, companionsByFamilyKey, companionsByStem)
 		key := orderEntryKey(projected)
 		if _, exists := seen[key]; exists {
 			continue
@@ -350,6 +352,80 @@ func libraryNameForRecordEntry(entry classpath.EntryRecord, fallback string) str
 	return fallback
 }
 
+type companionArtifacts struct {
+	Sources string
+	Javadoc string
+}
+
+func collectRecordCompanionArtifacts(entries []classpath.EntryRecord) (map[string]companionArtifacts, map[string]companionArtifacts) {
+	byFamilyKey := map[string]companionArtifacts{}
+	byStem := map[string]companionArtifacts{}
+	for _, entry := range entries {
+		path := firstNonEmptyString(strings.TrimSpace(entry.NormalizedPath), strings.TrimSpace(entry.Path))
+		kind := libraryDocumentationKind(path)
+		if kind == "" {
+			continue
+		}
+		if familyKey := strings.TrimSpace(entry.FamilyKey); familyKey != "" {
+			byFamilyKey[familyKey] = mergeCompanionArtifact(byFamilyKey[familyKey], kind, path)
+		}
+		if stem := libraryArtifactStem(path); stem != "" {
+			byStem[stem] = mergeCompanionArtifact(byStem[stem], kind, path)
+		}
+	}
+	return byFamilyKey, byStem
+}
+
+func applyRecordCompanionArtifacts(
+	entry ClasspathEntry,
+	recordEntry classpath.EntryRecord,
+	companionsByFamilyKey map[string]companionArtifacts,
+	companionsByStem map[string]companionArtifacts,
+) ClasspathEntry {
+	if entry.Kind != OrderEntryKindLibrary {
+		return entry
+	}
+
+	var companions companionArtifacts
+	if familyKey := strings.TrimSpace(recordEntry.FamilyKey); familyKey != "" {
+		companions = mergeCompanionArtifacts(companions, companionsByFamilyKey[familyKey])
+	}
+	if stem := libraryArtifactStem(entry.Classes); stem != "" {
+		companions = mergeCompanionArtifacts(companions, companionsByStem[stem])
+	}
+	if companions.Sources != "" {
+		entry.Sources = companions.Sources
+	}
+	if companions.Javadoc != "" {
+		entry.Javadoc = companions.Javadoc
+	}
+	return entry
+}
+
+func mergeCompanionArtifact(existing companionArtifacts, kind, path string) companionArtifacts {
+	switch kind {
+	case "sources":
+		if existing.Sources == "" {
+			existing.Sources = path
+		}
+	case "javadoc":
+		if existing.Javadoc == "" {
+			existing.Javadoc = path
+		}
+	}
+	return existing
+}
+
+func mergeCompanionArtifacts(base, overlay companionArtifacts) companionArtifacts {
+	if base.Sources == "" {
+		base.Sources = overlay.Sources
+	}
+	if base.Javadoc == "" {
+		base.Javadoc = overlay.Javadoc
+	}
+	return base
+}
+
 func scopeFromClasspathScope(scope classpath.Scope) string {
 	switch scope {
 	case classpath.ScopeRuntime:
@@ -379,6 +455,37 @@ func sdkEntry(compileSDK, toolchainID string) OrderEntry {
 }
 
 func isLibraryDocumentationPath(path string) bool {
+	return libraryDocumentationKind(path) != ""
+}
+
+func libraryDocumentationKind(path string) string {
 	lower := strings.ToLower(strings.TrimSpace(path))
-	return strings.HasSuffix(lower, "-sources.jar") || strings.HasSuffix(lower, "-javadoc.jar")
+	switch {
+	case strings.HasSuffix(lower, "-sources.jar"):
+		return "sources"
+	case strings.HasSuffix(lower, "-javadoc.jar"):
+		return "javadoc"
+	default:
+		return ""
+	}
+}
+
+func libraryArtifactStem(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	lower := strings.ToLower(path)
+	switch {
+	case strings.HasSuffix(lower, "-sources.jar"):
+		return path[:len(path)-len("-sources.jar")]
+	case strings.HasSuffix(lower, "-javadoc.jar"):
+		return path[:len(path)-len("-javadoc.jar")]
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".jar", ".aar":
+		return strings.TrimSuffix(path, filepath.Ext(path))
+	default:
+		return ""
+	}
 }

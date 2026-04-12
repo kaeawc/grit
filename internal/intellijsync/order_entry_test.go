@@ -397,3 +397,46 @@ func TestClasspathRecordToOrderEntriesIgnoresDocumentationArtifacts(t *testing.T
 		t.Fatalf("expected only the binary artifact to project as a library entry, got %#v", got[1])
 	}
 }
+
+func TestClasspathRecordToOrderEntriesUsesExplicitCompanionArtifacts(t *testing.T) {
+	record := classpath.Record{
+		Scope: classpath.ScopeCompile,
+		Entries: []classpath.EntryRecord{
+			{
+				Order:          0,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-sources/okhttp-4.12.0-sources.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-sources/okhttp-4.12.0-sources.jar",
+				Origin:         classpath.OriginArtifact,
+				FamilyKey:      "com.squareup.okhttp3:okhttp",
+			},
+			{
+				Order:          1,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-javadoc/okhttp-4.12.0-javadoc.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-javadoc/okhttp-4.12.0-javadoc.jar",
+				Origin:         classpath.OriginArtifact,
+				FamilyKey:      "com.squareup.okhttp3:okhttp",
+			},
+			{
+				Order:          2,
+				Path:           "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-binary/okhttp-4.12.0.jar",
+				NormalizedPath: "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-binary/okhttp-4.12.0.jar",
+				Origin:         classpath.OriginArtifact,
+				FamilyKey:      "com.squareup.okhttp3:okhttp",
+			},
+		},
+	}
+
+	got := ClasspathRecordToOrderEntries(record, ClasspathOrderEntryOptions{CompileSDK: "34"})
+	if len(got) != 2 {
+		t.Fatalf("expected sdk + binary library entries, got %d: %#v", len(got), got)
+	}
+	if got[1].Kind != OrderEntryKindLibrary || got[1].Classes != "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-binary/okhttp-4.12.0.jar" {
+		t.Fatalf("expected only the binary artifact to project as a library entry, got %#v", got[1])
+	}
+	if got[1].Sources != "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-sources/okhttp-4.12.0-sources.jar" {
+		t.Fatalf("expected explicit sources jar to override inferred convention, got %#v", got[1])
+	}
+	if got[1].Javadoc != "/Users/jason/.gradle/caches/modules-2/files-2.1/com.squareup.okhttp3/okhttp/4.12.0/hash-javadoc/okhttp-4.12.0-javadoc.jar" {
+		t.Fatalf("expected explicit javadoc jar to override inferred convention, got %#v", got[1])
+	}
+}
