@@ -232,6 +232,12 @@ dependencies {
 	if got, want := appDebug.DependencyProvenance[0].DependencyLevel, "variant"; got != want {
 		t.Fatalf("unexpected dependency provenance level: got %q want %q", got, want)
 	}
+	if got, want := appDebug.DependencyProvenance[0].RealizationKind, "source_backed"; got != want {
+		t.Fatalf("unexpected dependency provenance realization kind: got %q want %q", got, want)
+	}
+	if got, want := appDebug.DependencyProvenance[0].LogicalModuleKind, "android_library"; got != want {
+		t.Fatalf("unexpected dependency provenance logical module kind: got %q want %q", got, want)
+	}
 }
 
 func TestSemanticGraphSummaryIncludesDependencyClosure(t *testing.T) {

@@ -852,13 +852,22 @@ func variantDependencyProvenanceFromGraph(g *graph.Graph, variantID graph.Varian
 			continue
 		}
 		modulePath := ""
+		moduleKind := ""
 		if module, ok := g.LogicalModule(upstream.ModuleID); ok {
 			modulePath = module.Path
+			moduleKind = string(module.Kind)
+		}
+		realizationKind := ""
+		for _, mat := range g.VariantMaterializations(graph.VariantID(edge.To.ID)) {
+			realizationKind = string(mat.Kind)
+			break
 		}
 		out = append(out, project.SemanticDependencyProvenance{
-			ModulePath:      modulePath,
-			VariantName:     upstream.Name,
-			DependencyLevel: edge.Attributes["dependencyLevel"],
+			ModulePath:        modulePath,
+			VariantName:       upstream.Name,
+			DependencyLevel:   edge.Attributes["dependencyLevel"],
+			RealizationKind:   realizationKind,
+			LogicalModuleKind: moduleKind,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

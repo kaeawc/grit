@@ -604,10 +604,12 @@ func (v *ModelView) DependencyRealizationsForVariant(modulePath, variantName str
 	}
 	for _, dep := range variant.DependencyProvenance {
 		item := DependencyRealization{
-			ModulePath:      dep.ModulePath,
-			VariantName:     dep.VariantName,
-			DependencyLevel: dep.DependencyLevel,
-			SelectionReason: "semantic dependency provenance",
+			ModulePath:        dep.ModulePath,
+			VariantName:       dep.VariantName,
+			DependencyLevel:   dep.DependencyLevel,
+			RealizationKind:   dep.RealizationKind,
+			LogicalModuleKind: dep.LogicalModuleKind,
+			SelectionReason:   "semantic dependency provenance",
 		}
 		if strings.TrimSpace(dep.DependencyLevel) != "" {
 			item.SelectionReasons = []string{"dependency level: " + dep.DependencyLevel}

@@ -85,9 +85,11 @@ type SemanticVariantSummary struct {
 }
 
 type SemanticDependencyProvenance struct {
-	ModulePath      string `json:"modulePath,omitempty"`
-	VariantName     string `json:"variantName,omitempty"`
-	DependencyLevel string `json:"dependencyLevel,omitempty"`
+	ModulePath        string `json:"modulePath,omitempty"`
+	VariantName       string `json:"variantName,omitempty"`
+	DependencyLevel   string `json:"dependencyLevel,omitempty"`
+	RealizationKind   string `json:"realizationKind,omitempty"`
+	LogicalModuleKind string `json:"logicalModuleKind,omitempty"`
 }
 
 type SemanticMaterializationSummary struct {
@@ -546,13 +548,22 @@ func variantDependencyProvenance(g *graph.Graph, variantID graph.VariantID) []Se
 			continue
 		}
 		modulePath := ""
+		moduleKind := ""
 		if module, ok := g.LogicalModule(upstream.ModuleID); ok {
 			modulePath = module.Path
+			moduleKind = string(module.Kind)
+		}
+		realizationKind := ""
+		for _, mat := range g.VariantMaterializations(graph.VariantID(edge.To.ID)) {
+			realizationKind = string(mat.Kind)
+			break
 		}
 		out = append(out, SemanticDependencyProvenance{
-			ModulePath:      modulePath,
-			VariantName:     upstream.Name,
-			DependencyLevel: edge.Attributes["dependencyLevel"],
+			ModulePath:        modulePath,
+			VariantName:       upstream.Name,
+			DependencyLevel:   edge.Attributes["dependencyLevel"],
+			RealizationKind:   realizationKind,
+			LogicalModuleKind: moduleKind,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {

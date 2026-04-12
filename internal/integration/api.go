@@ -390,6 +390,8 @@ type DependencyRealization struct {
 	ModulePath            string                        `json:"modulePath,omitempty"`
 	VariantName           string                        `json:"variantName,omitempty"`
 	DependencyLevel       string                        `json:"dependencyLevel,omitempty"`
+	RealizationKind       string                        `json:"realizationKind,omitempty"`
+	LogicalModuleKind     string                        `json:"logicalModuleKind,omitempty"`
 	SelectionReason       string                        `json:"selectionReason,omitempty"`
 	SelectionReasons      []string                      `json:"selectionReasons,omitempty"`
 	ModuleID              string                        `json:"moduleId,omitempty"`

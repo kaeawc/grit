@@ -742,6 +742,12 @@ func TestModelViewDependencyRealizationQueries(t *testing.T) {
 	if dep.ModulePath != ":app" || dep.VariantName != "debug" || dep.DependencyLevel != "variant" {
 		t.Fatalf("unexpected dependency realization coordinates: %#v", dep)
 	}
+	if dep.RealizationKind != "source_backed" {
+		t.Fatalf("expected realization kind source_backed, got %q", dep.RealizationKind)
+	}
+	if dep.LogicalModuleKind != "android_application" {
+		t.Fatalf("expected logical module kind android_application, got %q", dep.LogicalModuleKind)
+	}
 	if dep.ModuleID == "" || dep.VariantID != string(variantID) || dep.MaterializationID != string(materializationID) {
 		t.Fatalf("expected realized dependency identity data, got %#v", dep)
 	}
@@ -923,9 +929,11 @@ func testModelView(t *testing.T) (*ModelView, graph.LogicalModuleID, graph.Varia
 						SourceSetNames: []string{"main", "debug"},
 						DependencyProvenance: []project.SemanticDependencyProvenance{
 							{
-								ModulePath:      ":app",
-								VariantName:     "debug",
-								DependencyLevel: "variant",
+								ModulePath:        ":app",
+								VariantName:       "debug",
+								DependencyLevel:   "variant",
+								RealizationKind:   "source_backed",
+								LogicalModuleKind: "android_application",
 							},
 						},
 						Actions: []project.SemanticActionSummary{
