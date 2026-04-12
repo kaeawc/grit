@@ -380,14 +380,21 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 		return "", err
 	}
 
+	// Discover optional BundleConfig.
+	bundleConfigPath := findBundleConfig(mod.Dir)
+
 	// Run bundletool build-bundle.
 	if err := tracker.Track("bundletoolBuildBundle", func() error {
-		if outputsNewerThanInputs(unsignedAAB, []string{baseZip}) {
+		inputs := []string{baseZip}
+		if bundleConfigPath != "" {
+			inputs = append(inputs, bundleConfigPath)
+		}
+		if outputsNewerThanInputs(unsignedAAB, inputs) {
 			recordCacheProbe(tracker, "bundletoolBuildBundle", true, "local-up-to-date", "unsigned AAB newer than module zip")
 			return nil
 		}
 		recordCacheProbe(tracker, "bundletoolBuildBundle", false, "cache-miss", "unsigned AAB required bundletool execution")
-		return runBundletoolBuildBundle(ctx, tc, []string{baseZip}, unsignedAAB, "", stdout, stderr)
+		return runBundletoolBuildBundle(ctx, tc, []string{baseZip}, unsignedAAB, bundleConfigPath, stdout, stderr)
 	}); err != nil {
 		return "", err
 	}
