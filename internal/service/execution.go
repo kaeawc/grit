@@ -16,6 +16,7 @@ import (
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/perf"
+	"github.com/kaeawc/grit/internal/tieredcas"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/responsepayload"
 	"github.com/kaeawc/grit/internal/tooldiag"
@@ -143,6 +144,14 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 }
 
 func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, step configmodel.ActionScheduleStep, queueWaitMs int64, deferRemote bool, stdout, stderr *os.File) actionResult {
+	// When the admission controller defers remote probes (bandwidth budget
+	// exhausted), constrain the context so that tieredcas.Store methods
+	// called through the generic cas.Store interface automatically limit
+	// probing to local tiers only.
+	if deferRemote {
+		ctx = tieredcas.WithLocalOnly(ctx)
+	}
+
 	action := step.Action
 	variantName := action.Attributes["variantName"]
 	modulePath := action.Attributes["modulePath"]

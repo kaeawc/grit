@@ -198,6 +198,10 @@ func (s *Store) getFromTiers(ctx context.Context, h cas.Hash, tiers []cas.Store)
 // tiers typically don't track it and the extra round trip is not
 // worthwhile for a promotion step.
 func (s *Store) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
+	if mt := maxTierFromContext(ctx); mt > 0 {
+		rc, _, err := s.GetWithOptions(ctx, h, ProbeOptions{MaxTier: mt})
+		return rc, err
+	}
 	rc, _, err := s.GetWithProbeRecords(ctx, h)
 	return rc, err
 }
@@ -302,6 +306,10 @@ func (s *Store) PutActionResult(ctx context.Context, result cas.ActionResult) er
 // result is promoted to the primary tier before returning so subsequent
 // lookups are served locally.
 func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, error) {
+	if mt := maxTierFromContext(ctx); mt > 0 {
+		result, _, err := s.GetActionResultWithOptions(ctx, actionHash, ProbeOptions{MaxTier: mt})
+		return result, err
+	}
 	result, _, err := s.GetActionResultWithProbeRecords(ctx, actionHash)
 	return result, err
 }
