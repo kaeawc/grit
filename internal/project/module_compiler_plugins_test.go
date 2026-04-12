@@ -120,6 +120,14 @@ grit {
 		t.Fatalf("expected indexed option assignment to be parsed, got %q", got)
 	}
 
+	compositeDebugPlugins := mod.ActiveCompilerPlugins("freeDebug")
+	if got, want := len(compositeDebugPlugins), 2; got != want {
+		t.Fatalf("unexpected composite debug plugin count: got %d want %d (%#v)", got, want, compositeDebugPlugins)
+	}
+	if got, want := compositeDebugPlugins[0].ID, "com.example.wire"; got != want {
+		t.Fatalf("unexpected composite debug scoped plugin id: got %q want %q", got, want)
+	}
+
 	releasePlugins := mod.ActiveCompilerPlugins("release")
 	if got, want := len(releasePlugins), 1; got != want {
 		t.Fatalf("unexpected release plugin count: got %d want %d (%#v)", got, want, releasePlugins)

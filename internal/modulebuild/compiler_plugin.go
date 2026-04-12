@@ -1,5 +1,10 @@
 package modulebuild
 
+import (
+	"strings"
+	"unicode"
+)
+
 // CompilerPlugin describes a compiler plugin applied during compilation.
 // Examples: KSP, kapt, Compose, kotlinx-serialization, custom annotation processors.
 type CompilerPlugin struct {
@@ -51,20 +56,72 @@ func (r *PluginRegistry) Register(p CompilerPlugin) {
 
 // ActivePlugins returns the plugins applicable to the given variant.
 // A plugin matches if its Variants list is empty (applies to all) or
-// contains the requested variant name.
+// contains the requested variant name or one of its variant components
+// such as a flavor/build type token in a composite name like "freeDebug".
 func (r *PluginRegistry) ActivePlugins(variant string) []CompilerPlugin {
 	var result []CompilerPlugin
 	for _, p := range r.plugins {
-		if len(p.Variants) == 0 {
+		if p.appliesToVariant(variant) {
 			result = append(result, cloneCompilerPlugin(p))
-			continue
-		}
-		for _, v := range p.Variants {
-			if v == variant {
-				result = append(result, cloneCompilerPlugin(p))
-				break
-			}
 		}
 	}
 	return result
+}
+
+func (p CompilerPlugin) appliesToVariant(variant string) bool {
+	if len(p.Variants) == 0 {
+		return true
+	}
+	for _, scope := range p.Variants {
+		if variantScopeMatches(scope, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+func variantScopeMatches(scope, variant string) bool {
+	scope = strings.TrimSpace(scope)
+	variant = strings.TrimSpace(variant)
+	if scope == "" || variant == "" {
+		return false
+	}
+	if strings.EqualFold(scope, variant) {
+		return true
+	}
+	scope = strings.ToLower(scope)
+	for _, token := range variantScopeTokens(variant) {
+		if token == scope {
+			return true
+		}
+	}
+	return false
+}
+
+func variantScopeTokens(variant string) []string {
+	variant = strings.TrimSpace(variant)
+	if variant == "" {
+		return nil
+	}
+	var tokens []string
+	var current []rune
+	flush := func() {
+		if len(current) == 0 {
+			return
+		}
+		tokens = append(tokens, strings.ToLower(string(current)))
+		current = current[:0]
+	}
+	for i, r := range variant {
+		if r == '-' || r == '_' || unicode.IsSpace(r) {
+			flush()
+			continue
+		}
+		if i > 0 && unicode.IsUpper(r) && len(current) > 0 {
+			flush()
+		}
+		current = append(current, r)
+	}
+	flush()
+	return tokens
 }

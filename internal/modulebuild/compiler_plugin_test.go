@@ -64,6 +64,33 @@ func TestActivePlugins_MultipleVariantScopes(t *testing.T) {
 	}
 }
 
+func TestActivePlugins_MatchesCompositeVariantComponents(t *testing.T) {
+	reg := NewPluginRegistry()
+	reg.Register(CompilerPlugin{
+		ID:       "com.example.debug-only",
+		Variants: []string{"debug"},
+	})
+	reg.Register(CompilerPlugin{
+		ID:       "com.example.free-only",
+		Variants: []string{"free"},
+	})
+	reg.Register(CompilerPlugin{
+		ID:       "com.example.qa-only",
+		Variants: []string{"qa"},
+	})
+
+	got := reg.ActivePlugins("freeDebug")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 plugins for freeDebug, got %#v", got)
+	}
+	if got[0].ID != "com.example.debug-only" {
+		t.Fatalf("expected first plugin to match debug scope, got %q", got[0].ID)
+	}
+	if got[1].ID != "com.example.free-only" {
+		t.Fatalf("expected second plugin to match flavor scope, got %q", got[1].ID)
+	}
+}
+
 func TestActivePlugins_EmptyRegistry(t *testing.T) {
 	reg := NewPluginRegistry()
 	if got := reg.ActivePlugins("debug"); len(got) != 0 {
