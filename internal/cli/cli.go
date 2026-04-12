@@ -124,6 +124,7 @@ const usageText = `grit is a constrained Android/JVM build runner aimed at event
 	  - install-debug
 	  - install --variant <name>
 	  - test-debug-unit
+	  - gc
 
 Examples:
 	  grit inspect --repo ~/path/to/android-repo
@@ -224,6 +225,8 @@ Examples:
 	  grit install-debug --repo ~/path/to/android-repo
 	  grit install --repo ~/path/to/android-repo --variant debug
 	  grit test-debug-unit --repo ~/path/to/android-repo
+	  grit gc --cache-dir ~/.grit/cas --max-age 720h
+	  grit gc --cache-dir ~/.grit/cas --max-size 1073741824
 `
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -473,6 +476,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "install")
 	case "test-debug-unit":
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "test-debug-unit")
+	case "gc":
+		return runGC(ctx, args[1:], stdout, stderr, tracker, start)
 	case "-h", "--help", "help":
 		return writeResponse(stdout, response{
 			Success:    true,

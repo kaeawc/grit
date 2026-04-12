@@ -265,6 +265,81 @@ func (s *FilesystemStore) GetActionResult(ctx context.Context, actionHash Hash) 
 	return result, nil
 }
 
+// ListBlobs returns every blob in the store along with its provenance
+// timestamp. Blobs whose provenance cannot be read use the zero time.
+func (s *FilesystemStore) ListBlobs(ctx context.Context) ([]BlobEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	blobRoot := filepath.Join(s.root, "blobs")
+	var entries []BlobEntry
+	err := filepath.WalkDir(blobRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		// Skip temp files created during put.
+		if name := d.Name(); len(name) > 0 && name[0] == '.' {
+			return nil
+		}
+		rel, err := filepath.Rel(blobRoot, path)
+		if err != nil {
+			return err
+		}
+		// rel is "<hh>/<remaining>" — reconstruct the 64-char hex hash.
+		dir := filepath.Dir(rel)
+		base := filepath.Base(rel)
+		hexStr := dir + base
+		h, err := ParseHash(hexStr)
+		if err != nil {
+			return nil // skip unparseable entries
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil // skip unreadable entries
+		}
+		var createdAt time.Time
+		prov, provErr := s.Provenance(ctx, h)
+		if provErr == nil {
+			createdAt = prov.CreatedAt
+		}
+		entries = append(entries, BlobEntry{Hash: h, Size: info.Size(), CreatedAt: createdAt})
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	return entries, err
+}
+
+// BlobEntry is a blob with its metadata, used for listing and retention.
+type BlobEntry struct {
+	Hash      Hash
+	Size      int64
+	CreatedAt time.Time
+}
+
+// RemoveBlob removes a blob and its provenance record from the store.
+func (s *FilesystemStore) RemoveBlob(ctx context.Context, h Hash) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	blobPath := s.blobPath(h)
+	if err := os.Remove(blobPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	provPath := s.provenancePath(h)
+	if err := os.Remove(provPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func copyAndHash(w io.Writer, r io.Reader) (Hash, int64, error) {
 	h := sha256.New()
 	tee := io.TeeReader(r, h)
