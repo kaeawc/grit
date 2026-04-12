@@ -124,7 +124,7 @@ func (s *Store) PutBytesExpected(ctx context.Context, data []byte, expected cas.
 // a deterministic probe timeline. The timeline contains one record per
 // tier probe, with the hit record marked when promotion occurred.
 func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadCloser, []ProbeRecord, error) {
-	return s.getFromTiers(ctx, h, s.tiers)
+	return s.getFromTiers(ctx, h, s.effectiveProbeTiers(ctx, ProbeOptions{}))
 }
 
 // getFromTiers is the shared implementation for Get-family methods. It
@@ -198,10 +198,6 @@ func (s *Store) getFromTiers(ctx context.Context, h cas.Hash, tiers []cas.Store)
 // tiers typically don't track it and the extra round trip is not
 // worthwhile for a promotion step.
 func (s *Store) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
-	if mt := maxTierFromContext(ctx); mt > 0 {
-		rc, _, err := s.GetWithOptions(ctx, h, ProbeOptions{MaxTier: mt})
-		return rc, err
-	}
 	rc, _, err := s.GetWithProbeRecords(ctx, h)
 	return rc, err
 }
@@ -211,7 +207,7 @@ func (s *Store) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
 // allowing the caller to skip remote tiers (e.g. when the bandwidth
 // budget is exhausted and the admission controller sets DeferRemote).
 func (s *Store) GetWithOptions(ctx context.Context, h cas.Hash, opts ProbeOptions) (io.ReadCloser, []ProbeRecord, error) {
-	tiers := s.probeTiers(opts)
+	tiers := s.effectiveProbeTiers(ctx, opts)
 	return s.getFromTiers(ctx, h, tiers)
 }
 
@@ -219,8 +215,20 @@ func (s *Store) GetWithOptions(ctx context.Context, h cas.Hash, opts ProbeOption
 // result, respecting ProbeOptions. When opts.MaxTier is set, only tiers
 // with index < MaxTier are probed.
 func (s *Store) GetActionResultWithOptions(ctx context.Context, actionHash cas.Hash, opts ProbeOptions) (cas.ActionResult, []ProbeRecord, error) {
-	tiers := s.probeTiers(opts)
+	tiers := s.effectiveProbeTiers(ctx, opts)
 	return s.getActionResultFromTiers(ctx, actionHash, tiers)
+}
+
+// effectiveProbeTiers resolves the final tier subset for a read or metadata
+// probe. A context-carried max tier is treated as an upper bound on any
+// explicit ProbeOptions.MaxTier so scheduler-forced local-only execution
+// cannot accidentally reach remote tiers through alternate APIs.
+func (s *Store) effectiveProbeTiers(ctx context.Context, opts ProbeOptions) []cas.Store {
+	maxTier := opts.MaxTier
+	if ctxMaxTier := maxTierFromContext(ctx); ctxMaxTier > 0 && (maxTier <= 0 || ctxMaxTier < maxTier) {
+		maxTier = ctxMaxTier
+	}
+	return s.probeTiers(ProbeOptions{MaxTier: maxTier})
 }
 
 // probeTiers returns the subset of tiers to probe given the options.
@@ -234,7 +242,7 @@ func (s *Store) probeTiers(opts ProbeOptions) []cas.Store {
 // Stat returns the first found blob info, probing tiers in order. It
 // does not promote.
 func (s *Store) Stat(ctx context.Context, h cas.Hash) (cas.BlobInfo, error) {
-	for i, tier := range s.tiers {
+	for i, tier := range s.effectiveProbeTiers(ctx, ProbeOptions{}) {
 		info, err := tier.Stat(ctx, h)
 		if err == nil {
 			return info, nil
@@ -249,7 +257,7 @@ func (s *Store) Stat(ctx context.Context, h cas.Hash) (cas.BlobInfo, error) {
 // Has returns true as soon as any tier reports the blob present. It
 // does not promote.
 func (s *Store) Has(ctx context.Context, h cas.Hash) (bool, error) {
-	for i, tier := range s.tiers {
+	for i, tier := range s.effectiveProbeTiers(ctx, ProbeOptions{}) {
 		has, err := tier.Has(ctx, h)
 		if err != nil {
 			return false, fmt.Errorf("tieredcas: tier %d Has: %w", i, err)
@@ -265,7 +273,7 @@ func (s *Store) Has(ctx context.Context, h cas.Hash) (bool, error) {
 // identified by actionHash. Tiers that expose a dedicated metadata query
 // use it directly; tiers that do not fall back to GetActionResult.
 func (s *Store) HasActionResult(ctx context.Context, actionHash cas.Hash) (bool, error) {
-	for i, tier := range s.tiers {
+	for i, tier := range s.effectiveProbeTiers(ctx, ProbeOptions{}) {
 		if haver, ok := tier.(actionResultHaver); ok {
 			has, err := haver.HasActionResult(ctx, actionHash)
 			if err != nil {
@@ -306,10 +314,6 @@ func (s *Store) PutActionResult(ctx context.Context, result cas.ActionResult) er
 // result is promoted to the primary tier before returning so subsequent
 // lookups are served locally.
 func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, error) {
-	if mt := maxTierFromContext(ctx); mt > 0 {
-		result, _, err := s.GetActionResultWithOptions(ctx, actionHash, ProbeOptions{MaxTier: mt})
-		return result, err
-	}
 	result, _, err := s.GetActionResultWithProbeRecords(ctx, actionHash)
 	return result, err
 }
@@ -317,7 +321,7 @@ func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.A
 // GetActionResultWithProbeRecords probes tiers in order and returns the
 // cached action result plus a deterministic probe timeline.
 func (s *Store) GetActionResultWithProbeRecords(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, []ProbeRecord, error) {
-	return s.getActionResultFromTiers(ctx, actionHash, s.tiers)
+	return s.getActionResultFromTiers(ctx, actionHash, s.effectiveProbeTiers(ctx, ProbeOptions{}))
 }
 
 // getActionResultFromTiers is the shared implementation for
