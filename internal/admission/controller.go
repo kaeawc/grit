@@ -34,6 +34,13 @@ type Decision struct {
 	DeferRemote bool
 }
 
+// RemoteProbeDecision describes whether a cacheable action should skip remote
+// cache probes because the network budget is exhausted.
+type RemoteProbeDecision struct {
+	ActionID    string
+	DeferRemote bool
+}
+
 // PoolSnapshot captures the state of a single resource pool at a point in time.
 type PoolSnapshot struct {
 	ResourceClass string
@@ -191,14 +198,7 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 	w.active++
 
 	// Check network budget for cacheable actions with remote probe tiers.
-	deferRemote := false
-	var estimatedBytes int64
-	if c.networkBudget != nil && step.Cacheable && hasRemoteTier(step.ProbeOrder) {
-		estimatedBytes = step.EstimatedBytes
-		if !c.networkBudget.Admit(step.EstimatedBytes) {
-			deferRemote = true
-		}
-	}
+	deferRemote, estimatedBytes := c.admitRemoteProbeLocked(step)
 
 	c.admitted[actionID] = admittedAction{
 		resourceClass:  step.ResourceClass,
@@ -215,6 +215,20 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 		DeferRemote: deferRemote,
 		PoolUsage:   c.snapshotPoolsLocked(),
 		WorkerUsage: c.snapshotWorkersLocked(),
+	}
+}
+
+// AdmitRemoteProbe consults only the bandwidth-aware admission path for a
+// step's remote cache probe. Unlike TryAdmit, it does not reserve worker or
+// resource capacity; it only consumes network budget for eligible remote
+// probes so the scheduler can decide whether to force local-only resolution.
+func (c *Controller) AdmitRemoteProbe(step configmodel.ActionScheduleStep) RemoteProbeDecision {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	deferRemote, _ := c.admitRemoteProbeLocked(step)
+	return RemoteProbeDecision{
+		ActionID:    step.Action.ID.String(),
+		DeferRemote: deferRemote,
 	}
 }
 
@@ -344,10 +358,10 @@ func (c *Controller) FullSnapshot() ControllerSnapshot {
 // ControllerSnapshot captures the full state of the admission controller at a
 // point in time, including resource pools, worker slots, and the network budget.
 type ControllerSnapshot struct {
-	Pools          []PoolSnapshot         `json:"pools"`
-	Workers        []WorkerSnapshot       `json:"workers"`
-	Active         int                    `json:"active"`
-	NetworkBudget  *NetworkBudgetSnapshot `json:"networkBudget,omitempty"`
+	Pools         []PoolSnapshot         `json:"pools"`
+	Workers       []WorkerSnapshot       `json:"workers"`
+	Active        int                    `json:"active"`
+	NetworkBudget *NetworkBudgetSnapshot `json:"networkBudget,omitempty"`
 }
 
 // ActiveCount returns the number of currently admitted actions.
@@ -364,6 +378,17 @@ func (c *Controller) ensurePool(resourceClass string) *pool {
 		c.pools[resourceClass] = p
 	}
 	return p
+}
+
+func (c *Controller) admitRemoteProbeLocked(step configmodel.ActionScheduleStep) (deferRemote bool, estimatedBytes int64) {
+	if c.networkBudget == nil || !step.Cacheable || !hasRemoteTier(step.ProbeOrder) {
+		return false, 0
+	}
+	estimatedBytes = step.EstimatedBytes
+	if !c.networkBudget.Admit(step.EstimatedBytes) {
+		return true, estimatedBytes
+	}
+	return false, estimatedBytes
 }
 
 func (c *Controller) ensureWorker(workerClass string, maxParallelism int) *workerSlot {

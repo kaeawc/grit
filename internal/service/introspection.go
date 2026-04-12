@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/cachepolicy"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/dependencywiring"
@@ -64,6 +65,8 @@ type InspectPlannedAction struct {
 	Cacheable      bool                        `json:"cacheable,omitempty"`
 	ProbeOrder     []string                    `json:"probeOrder,omitempty"`
 	ExecuteOnMiss  bool                        `json:"executeOnMiss,omitempty"`
+	EstimatedBytes int64                       `json:"estimatedBytes,omitempty"`
+	DeferRemote    bool                        `json:"deferRemote,omitempty"`
 	ProbeHint      *responsepayload.CacheProbe `json:"probeHint,omitempty"`
 	RetentionClass string                      `json:"retentionClass,omitempty"`
 	Shareability   string                      `json:"shareability,omitempty"`
@@ -73,9 +76,9 @@ type InspectPlannedAction struct {
 }
 
 type PlanScheduleResult struct {
-	ResourceBudgets    []PlanResourceBudget        `json:"resourceBudgets,omitempty"`
-	NetworkBudgetConfig *PlanNetworkBudget          `json:"networkBudgetConfig,omitempty"`
-	Batches            []PlanScheduleBatch          `json:"batches,omitempty"`
+	ResourceBudgets     []PlanResourceBudget `json:"resourceBudgets,omitempty"`
+	NetworkBudgetConfig *PlanNetworkBudget   `json:"networkBudgetConfig,omitempty"`
+	Batches             []PlanScheduleBatch  `json:"batches,omitempty"`
 }
 
 // PlanNetworkBudget surfaces the bandwidth-aware admission parameters in the
@@ -1070,6 +1073,7 @@ func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *pr
 	for _, action := range plan.Actions {
 		result.ActionIDs = append(result.ActionIDs, action.ID.String())
 	}
+	remoteDecisions := plannedRemoteProbeDecisions(plan.Schedule)
 	for _, step := range plan.Schedule.Steps {
 		result.Actions = append(result.Actions, InspectPlannedAction{
 			ID:             step.Action.ID.String(),
@@ -1085,6 +1089,8 @@ func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *pr
 			Cacheable:      step.Cacheable,
 			ProbeOrder:     append([]string(nil), step.ProbeOrder...),
 			ExecuteOnMiss:  step.ExecuteOnMiss,
+			EstimatedBytes: step.EstimatedBytes,
+			DeferRemote:    remoteDecisions[step.Action.ID.String()],
 			ProbeHint:      step.ProbeHint,
 			RetentionClass: step.RetentionClass,
 			Shareability:   step.Shareability,
@@ -1101,6 +1107,7 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 		ResourceBudgets: make([]PlanResourceBudget, 0, len(schedule.ResourceBudgets)),
 		Batches:         make([]PlanScheduleBatch, 0, len(schedule.Batches)),
 	}
+	remoteDecisions := plannedRemoteProbeDecisions(schedule)
 	for _, budget := range schedule.ResourceBudgets {
 		out.ResourceBudgets = append(out.ResourceBudgets, PlanResourceBudget{
 			ResourceClass: budget.ResourceClass,
@@ -1130,6 +1137,8 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 				Cacheable:      step.Cacheable,
 				ProbeOrder:     append([]string(nil), step.ProbeOrder...),
 				ExecuteOnMiss:  step.ExecuteOnMiss,
+				EstimatedBytes: step.EstimatedBytes,
+				DeferRemote:    remoteDecisions[step.Action.ID.String()],
 				ProbeHint:      step.ProbeHint,
 				RetentionClass: step.RetentionClass,
 				Shareability:   step.Shareability,
@@ -1156,6 +1165,20 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 		})
 	}
 	return out
+}
+
+func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string]bool {
+	if schedule.NetworkBudgetConfig == nil || len(schedule.Batches) == 0 {
+		return nil
+	}
+	controller := admission.NewControllerFromSchedule(schedule)
+	decisions := make(map[string]bool, len(schedule.Steps))
+	for _, batch := range schedule.Batches {
+		for _, step := range batch {
+			decisions[step.Action.ID.String()] = controller.AdmitRemoteProbe(step).DeferRemote
+		}
+	}
+	return decisions
 }
 
 func (s *Service) VariantProvenance(ctx context.Context, prj *project.Project, modulePath, variantName string) (ProvenanceResult, error) {

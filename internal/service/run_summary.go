@@ -268,6 +268,10 @@ func clonePlanScheduleResult(summary *PlanScheduleResult) *PlanScheduleResult {
 		ResourceBudgets: append([]PlanResourceBudget(nil), summary.ResourceBudgets...),
 		Batches:         make([]PlanScheduleBatch, 0, len(summary.Batches)),
 	}
+	if summary.NetworkBudgetConfig != nil {
+		cfg := *summary.NetworkBudgetConfig
+		cloned.NetworkBudgetConfig = &cfg
+	}
 	for _, batch := range summary.Batches {
 		cloned.Batches = append(cloned.Batches, PlanScheduleBatch{
 			Actions:   append([]InspectPlannedAction(nil), batch.Actions...),

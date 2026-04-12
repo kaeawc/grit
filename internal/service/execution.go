@@ -46,14 +46,7 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 	deferRemoteFlags := make([]bool, len(batch))
 	if s.admissionController != nil {
 		for i, step := range batch {
-			decision := s.admissionController.TryAdmit(step)
-			if decision.Admitted {
-				deferRemoteFlags[i] = decision.DeferRemote
-			}
-			// Release immediately — resource parallelism is still managed by the
-			// semaphore in this method. We only use the controller for the
-			// DeferRemote signal from the network budget here.
-			_ = s.admissionController.Release(step.Action.ID.String())
+			deferRemoteFlags[i] = s.admissionController.AdmitRemoteProbe(step).DeferRemote
 		}
 	}
 

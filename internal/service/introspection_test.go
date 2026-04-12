@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/kaeawc/grit/internal/catalog"
+	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/explain"
+	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/perf"
@@ -1200,6 +1202,63 @@ func TestDiagnosticsReadbackNormalizesPersistedRecords(t *testing.T) {
 	}
 	if summary.Summary.Total != 2 || len(summary.Summary.ByOrigin) != 1 || summary.Summary.ByOrigin[0].Key != "tool" {
 		t.Fatalf("expected recomputed normalized summary, got %#v", summary.Summary)
+	}
+}
+
+func TestToPlanScheduleResultPredictsDeferredRemoteProbes(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		NetworkBudgetConfig: &configmodel.ScheduleNetworkBudget{
+			CapacityBytes:     100,
+			RefillBytesPerSec: 0,
+		},
+		Batches: [][]configmodel.ActionScheduleStep{{
+			{
+				Action: graph.Action{
+					ID:         "action:first",
+					Name:       "compileDebugKotlin",
+					Attributes: map[string]string{"operation": "compile", "modulePath": ":app", "variantName": "debug"},
+				},
+				WorkerClass:    "kotlin-compile",
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				MaxParallelism: 1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				ExecuteOnMiss:  true,
+				EstimatedBytes: 80,
+			},
+			{
+				Action: graph.Action{
+					ID:         "action:second",
+					Name:       "compileDebugJava",
+					Attributes: map[string]string{"operation": "compile", "modulePath": ":app", "variantName": "debug"},
+				},
+				WorkerClass:    "javac",
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				MaxParallelism: 1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				ExecuteOnMiss:  true,
+				EstimatedBytes: 80,
+			},
+		}},
+	}
+
+	result := toPlanScheduleResult(schedule)
+	if len(result.Batches) != 1 || len(result.Batches[0].Actions) != 2 {
+		t.Fatalf("unexpected planned batches: %#v", result)
+	}
+	first := result.Batches[0].Actions[0]
+	second := result.Batches[0].Actions[1]
+	if first.EstimatedBytes != 80 || second.EstimatedBytes != 80 {
+		t.Fatalf("expected estimated bytes to be surfaced in plan schedule, got first=%#v second=%#v", first, second)
+	}
+	if first.DeferRemote {
+		t.Fatalf("expected first action to keep remote probes enabled, got %#v", first)
+	}
+	if !second.DeferRemote {
+		t.Fatalf("expected second action to predict deferred remote probes, got %#v", second)
 	}
 }
 

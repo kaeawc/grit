@@ -316,6 +316,49 @@ func TestAdmitBatchWithDecisionsEmptyInput(t *testing.T) {
 	}
 }
 
+func TestAdmitRemoteProbeConsumesOnlyNetworkBudget(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "jvm-process", Capacity: 1},
+	})
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+	c.SetNetworkBudget(nb)
+
+	first := configmodel.ActionScheduleStep{
+		Action:         graph.Action{ID: "a1", Attributes: map[string]string{"operation": "compile"}},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+	second := first
+	second.Action.ID = "a2"
+
+	if decision := c.AdmitRemoteProbe(first); decision.ActionID != "a1" || decision.DeferRemote {
+		t.Fatalf("expected first remote probe to consume budget without deferral, got %+v", decision)
+	}
+	if c.ActiveCount() != 0 {
+		t.Fatalf("expected remote-probe admission to avoid action reservations, got %d active", c.ActiveCount())
+	}
+	snap := nb.Snapshot()
+	if snap.Available != 20 {
+		t.Fatalf("expected 20 bytes remaining after first remote probe, got %d", snap.Available)
+	}
+
+	if decision := c.AdmitRemoteProbe(second); decision.ActionID != "a2" || !decision.DeferRemote {
+		t.Fatalf("expected second remote probe to defer, got %+v", decision)
+	}
+	snap = nb.Snapshot()
+	if snap.Available != 20 {
+		t.Fatalf("expected denied remote probe to leave budget unchanged, got %d", snap.Available)
+	}
+}
+
 func TestReleaseWithActualReturnsSurplus(t *testing.T) {
 	c := NewController([]configmodel.ResourceBudget{
 		{ResourceClass: "jvm-process", Capacity: 10},
