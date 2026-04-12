@@ -10,13 +10,24 @@
 #   scripts/roadmap-loop.sh [--max N] [--until MINUTES] [--cluster NAME]
 #                           [--dry-run]
 #
-# The loop never pushes. If signing isn't available (1Password locked)
-# it stops before doing work that can't be committed.
+# Lifecycle:
+#   Each concept file has a **Status:** line with one of three values:
+#     planned      → never been worked on
+#     in_progress  → has been worked on, not yet complete
+#     shipped      → substantially implemented per its Shape section
+#
+#   The loop picks in_progress items first (finish what's started), then
+#   planned items (start new work). After each successful iteration,
+#   claude's output is checked for a CONCEPT_STATUS line to determine
+#   whether the concept is done or needs more work.
 #
 # Iteration priority:
-#   1. Cadence-driven large task (cache-and-storage / scheduler /
-#      project-model).
-#   2. Normal next-undone concept file, round-robin across clusters.
+#   1. in_progress items from any cluster (finish partially-done work)
+#   2. Cadence-driven large task for planned items
+#   3. Normal next planned concept, round-robin across clusters
+#
+# The loop never pushes. If signing isn't available (1Password locked)
+# it stops before doing work that can't be committed.
 #
 # Exit codes:
 #   0   loop completed (either all items consumed or --max / --until hit)
@@ -25,10 +36,7 @@
 #
 # The loop never uses `git reset --hard`. Failed iterations leave their
 # changes in the working tree — the next iteration proceeds on top of
-# whatever state exists. Every item is recorded in .loop/done.txt
-# regardless of outcome so the next run moves on rather than retrying.
-# If build+test passes despite accumulated leftover changes, `git add -A`
-# commits everything together, which is safe because the tests gated it.
+# whatever state exists.
 
 set -o pipefail
 
@@ -40,10 +48,8 @@ CLUSTER_FILTER=""
 DRY_RUN=0
 
 # Cadence for preferring a "large" (architectural / infrastructure)
-# concept over a regular per-feature concept. Every iteration we
-# increment ITER_SINCE_LARGE; when it reaches a value chosen uniformly
-# from [LARGE_CADENCE_MIN, LARGE_CADENCE_MAX], the next pick tries the
-# large pool first.
+# concept over a regular per-feature concept when picking from the
+# planned pool. Does not affect in_progress priority.
 LARGE_CADENCE_MIN=5
 LARGE_CADENCE_MAX=12
 LARGE_CLUSTERS=(cache-and-storage scheduler project-model transforms)
@@ -106,8 +112,7 @@ log()  { printf '[%(%H:%M:%S)T] %s\n' -1 "$*" | tee -a "$RUN_LOG"; }
 warn() { log "WARN: $*"; }
 die()  { log "FATAL: $*"; exit 2; }
 
-# Prune done.txt and progress.txt entries whose files no longer exist
-# (renamed/moved).
+# Prune done.txt and progress.txt entries whose files no longer exist.
 for _prune_file in "$DONE_FILE" "$PROGRESS_FILE"; do
     if [ -s "$_prune_file" ]; then
         _before=$(wc -l < "$_prune_file" | tr -d ' ')
@@ -193,6 +198,31 @@ START_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 START_SHA=$(git rev-parse HEAD)
 log "preflight: starting on $START_BRANCH @ ${START_SHA:0:12}"
 
+# ---------- concept status helpers ----------
+
+# Read the **Status:** line from a concept file. Returns one of:
+# planned, in_progress, shipped, or "unknown".
+get_item_status() {
+    local file="$1"
+    local status
+    status=$(sed -n 's/.*\*\*Status:\*\* \([a-z_]*\).*/\1/p' "$file" 2>/dev/null | head -1)
+    printf '%s' "${status:-unknown}"
+}
+
+# Returns 0 if the item is eligible for picking:
+# - not in done.txt (shipped)
+# - not in progress.txt (being worked on right now)
+# - Status is not "shipped"
+is_item_pickable() {
+    local item="$1"
+    grep -qxF "$item" "$DONE_FILE" 2>/dev/null && return 1
+    grep -qxF "$item" "$PROGRESS_FILE" 2>/dev/null && return 1
+    local status
+    status=$(get_item_status "$item")
+    [ "$status" = "shipped" ] && return 1
+    return 0
+}
+
 # ---------- item selection ----------
 
 collect_items_for_cluster() {
@@ -241,20 +271,15 @@ collect_items() {
     fi
 }
 
-is_item_pending() {
-    local item="$1"
-    ! grep -qxF "$item" "$DONE_FILE" 2>/dev/null \
-        && ! grep -qxF "$item" "$PROGRESS_FILE" 2>/dev/null
-}
-
-pick_first_undone() {
-    local sub="${1:-}"
+# Pick the first item with the given Status value.
+pick_first_with_status() {
+    local sub="${1:-}" target_status="${2:?}"
     local item
     while IFS= read -r item; do
-        if is_item_pending "$item"; then
-            printf '%s\n' "$item"
-            return 0
-        fi
+        is_item_pickable "$item" || continue
+        local status
+        status=$(get_item_status "$item")
+        [ "$status" = "$target_status" ] && { printf '%s\n' "$item"; return 0; }
     done < <(collect_items "$sub")
     return 1
 }
@@ -269,10 +294,11 @@ is_large_item() {
     return 1
 }
 
-pick_first_large_undone() {
+pick_first_large_with_status() {
+    local target_status="${1:?}"
     local cluster
     for cluster in "${LARGE_CLUSTERS[@]}"; do
-        if item=$(pick_first_undone "$cluster"); then
+        if item=$(pick_first_with_status "$cluster" "$target_status"); then
             printf '%s\n' "$item"
             return 0
         fi
@@ -293,7 +319,7 @@ recent_commit_count() {
     fi
     tail -n "$window" "$STATE_LOG" \
         | jq -r '.status' \
-        | grep -c '^committed$' || true
+        | grep -c '^committed' || true
 }
 
 ITER_SINCE_LARGE=0
@@ -306,13 +332,27 @@ pick_item() {
     PICK_RESULT=""
     PICK_IS_LARGE=0
 
-    # Cluster filter overrides large-cadence logic.
+    # --- Priority 1: in_progress items (finish what's started) ---
+    # These always come first regardless of cadence or cluster filter.
+
     if [ -n "$CLUSTER_FILTER" ]; then
-        if PICK_RESULT=$(pick_first_undone "$CLUSTER_FILTER"); then
+        if PICK_RESULT=$(pick_first_with_status "$CLUSTER_FILTER" "in_progress"); then
+            return 0
+        fi
+        if PICK_RESULT=$(pick_first_with_status "$CLUSTER_FILTER" "planned"); then
             return 0
         fi
         return 1
     fi
+
+    # Try in_progress from any cluster first.
+    if PICK_RESULT=$(pick_first_with_status "" "in_progress"); then
+        is_large_item "$PICK_RESULT" && PICK_IS_LARGE=1
+        return 0
+    fi
+
+    # --- Priority 2: planned items (start new work) ---
+    # Large-cadence logic applies here.
 
     local force_large=0
     if [ "$ITER_SINCE_LARGE" -ge "$NEXT_LARGE_AT" ]; then
@@ -329,7 +369,7 @@ pick_item() {
     fi
 
     if [ "$force_large" -eq 1 ]; then
-        if PICK_RESULT=$(pick_first_large_undone); then
+        if PICK_RESULT=$(pick_first_large_with_status "planned"); then
             PICK_IS_LARGE=1
             ITER_SINCE_LARGE=0
             NEXT_LARGE_AT=$(rand_between "$LARGE_CADENCE_MIN" "$LARGE_CADENCE_MAX")
@@ -337,10 +377,10 @@ pick_item() {
         fi
         ITER_SINCE_LARGE=0
         NEXT_LARGE_AT=$(rand_between "$LARGE_CADENCE_MIN" "$LARGE_CADENCE_MAX")
-        log "pick: no large item ready; falling back (next large at +$NEXT_LARGE_AT)"
+        log "pick: no large planned item ready; falling back (next large at +$NEXT_LARGE_AT)"
     fi
 
-    if PICK_RESULT=$(pick_first_undone ""); then
+    if PICK_RESULT=$(pick_first_with_status "" "planned"); then
         return 0
     fi
     return 1
@@ -348,15 +388,13 @@ pick_item() {
 
 # ---------- prompt assembly ----------
 
-build_prompt_standard() {
+build_prompt_planned() {
     local item="$1"
     cat <<PROMPT
 You are iterating on grit, an Android/JVM build runner written in Go.
 The roadmap concept file below describes a component or feature that
-needs implementation. Make ONE reasonable, landable piece of progress
-on it in a single iteration. Read the "Immediate next step" section
-and do exactly that step if it's achievable. If it's already done,
-pick the next cheapest high-value step.
+needs implementation. This is the FIRST iteration on this concept.
+Read the "Immediate next step" section and do exactly that step.
 
 Prefer steps that are:
   1. Testable — add or extend tests alongside implementation.
@@ -386,12 +424,73 @@ CONCEPT FILE: $item
 $(cat "$item")
 --- END CONCEPT ---
 
-LIFECYCLE:
-  This item's path has been written to .loop/progress.txt (in-progress).
-  When the surrounding script verifies your changes pass build+test, it
-  will move the path to .loop/done.txt and update the concept file's
-  Status line from "planned" to "shipped". You do not need to do either
-  of those — just make the code work.
+COMPLETENESS CHECK:
+  After listing your changes, end your response with exactly one of
+  these lines (no other text on that line):
+    CONCEPT_STATUS: in_progress
+    CONCEPT_STATUS: shipped
+  Use "in_progress" if the concept's Shape section has more work beyond
+  what you just did. Use "shipped" ONLY if the Shape section is now
+  substantially implemented and tested — not just the Immediate next
+  step, but the full scope described in Shape.
+
+When done, briefly list the files you created or modified. Do not commit;
+the surrounding script handles git.
+PROMPT
+}
+
+build_prompt_in_progress() {
+    local item="$1"
+    cat <<PROMPT
+You are iterating on grit, an Android/JVM build runner written in Go.
+The roadmap concept file below describes a component or feature that
+has ALREADY had previous iterations. Some of its Shape is implemented;
+some remains.
+
+Your job: read the Shape section, look at what code already exists for
+this concept (check the packages and types mentioned in Shape), and
+implement the NEXT piece that isn't done yet. If the "Immediate next
+step" has already been completed, pick the next cheapest high-value
+step from the Shape section.
+
+Do NOT redo work that already exists. Read the existing files first.
+
+Prefer steps that are:
+  1. Testable — add or extend tests alongside implementation.
+  2. Incremental — one coherent slice, not a sprawling multi-concern diff.
+  3. Compilable — the tree must build and test cleanly when you finish.
+
+VERIFY AND FIX:
+  After making your changes, run these commands IN ORDER and fix any
+  issues they surface before finishing:
+    go build ./...
+    go vet ./...
+    go test ./internal/... -count=1
+  If a build error or test failure appears, diagnose and fix it — do not
+  leave broken code. Iterate until all three commands pass cleanly.
+
+HARD CONSTRAINTS:
+  - All three verify commands MUST pass when you finish.
+  - Do not modify code unrelated to this concept.
+  - Do not create new roadmap/ files.
+  - Do not touch .loop/ or scripts/roadmap-loop.sh.
+  - Follow the project CLAUDE.md conventions if one exists.
+  - Keep the diff small and reviewable.
+
+CONCEPT FILE: $item
+
+--- BEGIN CONCEPT ---
+$(cat "$item")
+--- END CONCEPT ---
+
+COMPLETENESS CHECK:
+  After listing your changes, end your response with exactly one of
+  these lines (no other text on that line):
+    CONCEPT_STATUS: in_progress
+    CONCEPT_STATUS: shipped
+  Use "in_progress" if the concept's Shape section has more work beyond
+  what exists now (including what you just added). Use "shipped" ONLY
+  if the Shape section is now substantially implemented and tested.
 
 When done, briefly list the files you created or modified. Do not commit;
 the surrounding script handles git.
@@ -400,12 +499,15 @@ PROMPT
 
 build_prompt_large() {
     local item="$1"
+    local status
+    status=$(get_item_status "$item")
     cat <<PROMPT
 You are iterating on grit, an Android/JVM build runner written in Go.
 The roadmap concept file below describes an ARCHITECTURAL task,
 infrastructure component, or cross-cutting feature. The roadmap loop
-elevated this item deliberately because we've been focused on smaller
-work and want one bigger step.
+elevated this item deliberately because we want one bigger step.
+
+$([ "$status" = "in_progress" ] && echo "This concept has had previous iterations. Read what exists before adding new code." || echo "This is the first iteration on this concept.")
 
 Make one MEANINGFUL, multi-file step toward the concept. You are
 allowed (and expected) to touch more than one file:
@@ -445,16 +547,17 @@ CONCEPT FILE: $item
 $(cat "$item")
 --- END CONCEPT ---
 
-LIFECYCLE:
-  This item's path has been written to .loop/progress.txt (in-progress).
-  When the surrounding script verifies your changes pass build+test, it
-  will move the path to .loop/done.txt and update the concept file's
-  Status line from "planned" to "shipped". You do not need to do either
-  of those — just make the code work.
+COMPLETENESS CHECK:
+  After listing your changes, end your response with exactly one of
+  these lines (no other text on that line):
+    CONCEPT_STATUS: in_progress
+    CONCEPT_STATUS: shipped
+  Use "in_progress" if the concept's Shape section has more work beyond
+  what exists now. Use "shipped" ONLY if the Shape section is now
+  substantially implemented and tested.
 
 When done, briefly list the files you created or modified and what
-followup an implementer would need. Do not commit; the surrounding
-script handles git.
+followup remains. Do not commit; the surrounding script handles git.
 PROMPT
 }
 
@@ -462,38 +565,66 @@ build_prompt() {
     local item="$1"
     if is_large_item "$item"; then
         build_prompt_large "$item"
-    else
-        build_prompt_standard "$item"
+        return
     fi
+    local status
+    status=$(get_item_status "$item")
+    if [ "$status" = "in_progress" ]; then
+        build_prompt_in_progress "$item"
+    else
+        build_prompt_planned "$item"
+    fi
+}
+
+# ---------- completeness detection ----------
+
+# Parse claude's output for CONCEPT_STATUS: line. Returns "in_progress"
+# or "shipped". Defaults to "in_progress" if not found (conservative).
+detect_concept_status() {
+    local outfile="$1"
+    if [ ! -f "$outfile" ]; then
+        printf 'in_progress'
+        return
+    fi
+    local status
+    status=$(grep -o 'CONCEPT_STATUS: [a-z_]*' "$outfile" 2>/dev/null | tail -1 | awk '{print $2}')
+    case "$status" in
+        shipped)     printf 'shipped' ;;
+        in_progress) printf 'in_progress' ;;
+        *)           printf 'in_progress' ;;
+    esac
 }
 
 # ---------- iteration body ----------
 
+LAST_OUTPUT_FILE=""
+
 run_iteration() {
     local item="$1"
-    local outfile
-    outfile=$(mktemp -t grit-loop-XXXXXX.txt)
+    LAST_OUTPUT_FILE=$(mktemp -t grit-loop-XXXXXX.txt)
 
     log "claude exec on $item"
     if [ "$DRY_RUN" -eq 1 ]; then
         log "  dry-run: skipping claude"
-        rm -f "$outfile"
         return 0
     fi
 
     if ! build_prompt "$item" | claude \
             --dangerously-skip-permissions \
             -p \
-            > "$outfile" 2>>"$RUN_LOG"; then
+            > "$LAST_OUTPUT_FILE" 2>>"$RUN_LOG"; then
         warn "claude returned non-zero for $item"
-        rm -f "$outfile"
         return 1
     fi
 
     log "claude finished; output head:"
-    head -10 "$outfile" 2>/dev/null | tee -a "$RUN_LOG"
-    rm -f "$outfile"
+    head -10 "$LAST_OUTPUT_FILE" 2>/dev/null | tee -a "$RUN_LOG"
     return 0
+}
+
+cleanup_output() {
+    [ -n "$LAST_OUTPUT_FILE" ] && rm -f "$LAST_OUTPUT_FILE"
+    LAST_OUTPUT_FILE=""
 }
 
 verify_build_and_tests() {
@@ -532,14 +663,39 @@ try_commit() {
     return 1
 }
 
-mark_item_done() {
+# Transition: planned → in_progress (first successful iteration)
+# or keep in_progress (subsequent iterations, not yet complete)
+mark_item_in_progress() {
     local item="$1"
+    if [ -f "$REPO_ROOT/$item" ]; then
+        sedi 's/\*\*Status:\*\* planned/**Status:** in_progress/' "$REPO_ROOT/$item"
+    fi
+    # Remove from progress.txt (concurrent-run guard, not lifecycle)
+    if [ -f "$PROGRESS_FILE" ]; then
+        local tmp
+        tmp=$(mktemp)
+        grep -vxF "$item" "$PROGRESS_FILE" > "$tmp" 2>/dev/null || true
+        mv "$tmp" "$PROGRESS_FILE"
+    fi
+}
+
+# Transition: in_progress → shipped (concept substantially complete)
+mark_item_shipped() {
+    local item="$1"
+    if [ -f "$REPO_ROOT/$item" ]; then
+        sedi 's/\*\*Status:\*\* in_progress/**Status:** shipped/; s/\*\*Status:\*\* planned/**Status:** shipped/' \
+            "$REPO_ROOT/$item"
+    fi
+    # Add to done.txt so the loop never picks it again.
     if ! grep -qxF "$item" "$DONE_FILE" 2>/dev/null; then
         printf '%s\n' "$item" >> "$DONE_FILE"
     fi
-    # Update the concept file's status line: planned → shipped
-    if [ -f "$REPO_ROOT/$item" ]; then
-        sedi 's/\*\*Status:\*\* planned/**Status:** shipped/' "$REPO_ROOT/$item"
+    # Remove from progress.txt.
+    if [ -f "$PROGRESS_FILE" ]; then
+        local tmp
+        tmp=$(mktemp)
+        grep -vxF "$item" "$PROGRESS_FILE" > "$tmp" 2>/dev/null || true
+        mv "$tmp" "$PROGRESS_FILE"
     fi
 }
 
@@ -547,14 +703,17 @@ record_state() {
     local item="$1" status="$2"
     local large=false
     is_large_item "$item" && large=true
+    local concept_status
+    concept_status=$(get_item_status "$item")
     jq -cn \
         --arg ts "$(date -u +%FT%TZ)" \
         --arg item "$item" \
         --arg status "$status" \
+        --arg concept_status "$concept_status" \
         --arg sha "$(git rev-parse HEAD)" \
         --argjson large "$large" \
         --argjson iter "$iter" \
-        '{ts:$ts,iter:$iter,item:$item,status:$status,large:$large,sha:$sha}' \
+        '{ts:$ts,iter:$iter,item:$item,status:$status,concept_status:$concept_status,large:$large,sha:$sha}' \
         >>"$STATE_LOG"
 }
 
@@ -568,6 +727,14 @@ trap 'INTERRUPTED=1; log "SIGINT received — will stop after this iteration"' I
 log "loop: starting"
 START_TS=$(date +%s)
 iter=0
+
+# Count pickable items for the log.
+_planned=$(grep -rl '\*\*Status:\*\* planned' roadmap/clusters/ 2>/dev/null | wc -l | tr -d ' ')
+_in_progress=$(grep -rl '\*\*Status:\*\* in_progress' roadmap/clusters/ 2>/dev/null | wc -l | tr -d ' ')
+_shipped=$(grep -rl '\*\*Status:\*\* shipped' roadmap/clusters/ 2>/dev/null | wc -l | tr -d ' ')
+log "pool: ${_in_progress} in_progress, ${_planned} planned, ${_shipped} shipped"
+unset _planned _in_progress _shipped
+
 while :; do
     iter=$((iter + 1))
 
@@ -590,21 +757,28 @@ while :; do
         break
     fi
     item="$PICK_RESULT"
+    item_status=$(get_item_status "$item")
 
     if [ "$PICK_IS_LARGE" -eq 1 ]; then
-        log "==== iteration $iter (LARGE): $item ===="
+        log "==== iteration $iter (LARGE, $item_status): $item ===="
     else
-        log "==== iteration $iter: $item ===="
+        log "==== iteration $iter ($item_status): $item ===="
         ITER_SINCE_LARGE=$((ITER_SINCE_LARGE + 1))
     fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
-        log "  dry-run: would work on $item"
-        mark_item_done "$item"
+        log "  dry-run: would work on $item ($item_status)"
+        # In dry-run, transition planned → in_progress so subsequent
+        # picks show realistic behavior. Don't mark shipped.
+        if [ "$item_status" = "planned" ]; then
+            mark_item_in_progress "$item"
+        elif [ "$item_status" = "in_progress" ]; then
+            mark_item_shipped "$item"
+        fi
         continue
     fi
 
-    # Mark item as in-progress so concurrent runs don't double-pick it.
+    # Mark item as in-progress (concurrent-run guard).
     if ! grep -qxF "$item" "$PROGRESS_FILE" 2>/dev/null; then
         printf '%s\n' "$item" >> "$PROGRESS_FILE"
     fi
@@ -613,22 +787,36 @@ while :; do
         if verify_build_and_tests; then
             log "verify: ok"
             if try_commit "$item"; then
-                mark_item_done "$item"
-                record_state "$item" "committed"
+                # Check claude's completeness assessment.
+                local concept_result
+                concept_result=$(detect_concept_status "$LAST_OUTPUT_FILE")
+                if [ "$concept_result" = "shipped" ]; then
+                    log "lifecycle: $item → shipped (claude assessed complete)"
+                    mark_item_shipped "$item"
+                    record_state "$item" "committed-shipped"
+                else
+                    log "lifecycle: $item → in_progress (more work remaining)"
+                    mark_item_in_progress "$item"
+                    record_state "$item" "committed-in-progress"
+                fi
             else
                 record_state "$item" "commit-failed"
                 warn "stopping loop: signing is unavailable"
                 warn "uncommitted changes remain in the working tree"
+                cleanup_output
                 break
             fi
         else
             warn "verify failed; changes left in working tree"
+            mark_item_in_progress "$item"
             record_state "$item" "verify-failed"
         fi
     else
         warn "claude step failed; changes (if any) left in working tree"
+        mark_item_in_progress "$item"
         record_state "$item" "codex-failed"
     fi
+    cleanup_output
 done
 
 log "loop: done after $iter iteration(s)"
