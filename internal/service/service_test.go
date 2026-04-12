@@ -1188,31 +1188,6 @@ func TestBuildPersistsRuntimeCacheProbeIntoSemanticSummary(t *testing.T) {
 	}
 }
 
-type hookRecorder struct {
-	before []integration.PlanRequest
-	after  []integration.PlanResult
-}
-
-func (h *hookRecorder) BeforePlan(_ context.Context, req integration.PlanRequest, model integration.ReadOnlyModel) error {
-	h.before = append(h.before, req)
-	if model.CacheKey() == "" {
-		return os.ErrInvalid
-	}
-	return nil
-}
-
-func (h *hookRecorder) AfterPlan(_ context.Context, result integration.PlanResult, model integration.ReadOnlyModel) error {
-	h.after = append(h.after, result)
-	for _, action := range result.Actions {
-		if _, ok := model.Action(action.ID); !ok {
-			return os.ErrNotExist
-		}
-		_ = model.ActionInputs(action.ID)
-		_ = model.ActionOutputs(action.ID)
-	}
-	return nil
-}
-
 func TestResolveExecutionPlanInvokesHooksWithReadOnlyModel(t *testing.T) {
 	root := t.TempDir()
 	prj := &project.Project{
@@ -1237,17 +1212,34 @@ func TestResolveExecutionPlanInvokesHooksWithReadOnlyModel(t *testing.T) {
 		t.Fatal("expected module")
 	}
 	svc := NewWithCompiler(&testsupport.CompilerRecorder{})
-	hook := &hookRecorder{}
+	hook := &testsupport.HookRecorder{
+		BeforeFn: func(_ context.Context, _ integration.PlanRequest, model integration.ReadOnlyModel) error {
+			if model.CacheKey() == "" {
+				return os.ErrInvalid
+			}
+			return nil
+		},
+		AfterFn: func(_ context.Context, result integration.PlanResult, model integration.ReadOnlyModel) error {
+			for _, action := range result.Actions {
+				if _, ok := model.Action(action.ID); !ok {
+					return os.ErrNotExist
+				}
+				_ = model.ActionInputs(action.ID)
+				_ = model.ActionOutputs(action.ID)
+			}
+			return nil
+		},
+	}
 	svc.RegisterHook(hook)
 	plan, err := svc.ResolveExecutionPlan(prj, mod, "assemble", "debug", false)
 	if err != nil {
 		t.Fatalf("ResolveExecutionPlan returned error: %v", err)
 	}
-	if len(hook.before) != 1 || len(hook.after) != 1 {
-		t.Fatalf("expected hook invocations, got before=%d after=%d", len(hook.before), len(hook.after))
+	if len(hook.Before) != 1 || len(hook.After) != 1 {
+		t.Fatalf("expected hook invocations, got before=%d after=%d", len(hook.Before), len(hook.After))
 	}
-	if hook.after[0].ModulePath != ":app" || len(hook.after[0].Actions) == 0 {
-		t.Fatalf("unexpected hook plan result: %#v", hook.after[0])
+	if hook.After[0].ModulePath != ":app" || len(hook.After[0].Actions) == 0 {
+		t.Fatalf("unexpected hook plan result: %#v", hook.After[0])
 	}
 	if len(plan.Actions) == 0 || plan.Actions[0].Kind == graph.ActionKindUnknown {
 		t.Fatalf("expected planned graph actions, got %#v", plan.Actions)
