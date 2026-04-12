@@ -21,7 +21,12 @@ type Scheduler struct {
 	ready         []graph.ActionID
 	completed     map[graph.ActionID]bool
 	admission     *admission.Controller
-	remoteProbes  map[graph.ActionID]admission.RemoteProbeDecision
+	remoteProbes  map[graph.ActionID]remoteProbeDecisionCache
+}
+
+type remoteProbeDecisionCache struct {
+	decision             admission.RemoteProbeDecision
+	deniedAvailableBytes int64
 }
 
 // ReadyAction captures a currently ready action along with the scheduler's
@@ -53,7 +58,7 @@ func NewScheduler(schedule configmodel.ActionSchedule, controller *admission.Con
 		stepOrder:     make(map[graph.ActionID]int, len(steps)),
 		completed:     make(map[graph.ActionID]bool, len(steps)),
 		admission:     controller,
-		remoteProbes:  make(map[graph.ActionID]admission.RemoteProbeDecision, len(steps)),
+		remoteProbes:  make(map[graph.ActionID]remoteProbeDecisionCache, len(steps)),
 	}
 	for actionID, ids := range schedule.Dependents {
 		s.dependents[actionID] = append([]graph.ActionID(nil), ids...)
@@ -175,15 +180,35 @@ func (s *Scheduler) remoteProbeDecision(actionID graph.ActionID) admission.Remot
 	if s == nil {
 		return admission.RemoteProbeDecision{}
 	}
-	if decision, ok := s.remoteProbes[actionID]; ok {
-		return decision
+	if cached, ok := s.remoteProbes[actionID]; ok && !s.shouldRefreshRemoteProbeDecision(cached) {
+		return cached.decision
 	}
 	decision := admission.RemoteProbeDecision{ActionID: actionID.String()}
 	if s.admission != nil {
 		decision = s.admission.AdmitRemoteProbe(s.steps[actionID])
 	}
-	s.remoteProbes[actionID] = decision
+	cached := remoteProbeDecisionCache{
+		decision:             decision,
+		deniedAvailableBytes: -1,
+	}
+	if decision.DeferRemote && s.admission != nil {
+		if snap := s.admission.NetworkBudgetSnapshot(); snap != nil {
+			cached.deniedAvailableBytes = snap.Available
+		}
+	}
+	s.remoteProbes[actionID] = cached
 	return decision
+}
+
+func (s *Scheduler) shouldRefreshRemoteProbeDecision(cached remoteProbeDecisionCache) bool {
+	if s == nil || s.admission == nil || !cached.decision.DeferRemote || cached.deniedAvailableBytes < 0 {
+		return false
+	}
+	snap := s.admission.NetworkBudgetSnapshot()
+	if snap == nil {
+		return false
+	}
+	return snap.Available > cached.deniedAvailableBytes
 }
 
 func (s *Scheduler) sortReady() {

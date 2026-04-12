@@ -355,6 +355,20 @@ func (c *Controller) FullSnapshot() ControllerSnapshot {
 	return snap
 }
 
+// NetworkBudgetSnapshot returns the current bandwidth budget state, if one is
+// attached. Callers use this to detect when previously deferred remote probes
+// can be retried after bytes are returned or refilled.
+func (c *Controller) NetworkBudgetSnapshot() *NetworkBudgetSnapshot {
+	c.mu.Lock()
+	nb := c.networkBudget
+	c.mu.Unlock()
+	if nb == nil {
+		return nil
+	}
+	snap := nb.Snapshot()
+	return &snap
+}
+
 // ControllerSnapshot captures the full state of the admission controller at a
 // point in time, including resource pools, worker slots, and the network budget.
 type ControllerSnapshot struct {

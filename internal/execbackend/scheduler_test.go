@@ -158,6 +158,64 @@ func TestSchedulerReadyWithRemoteProbeDecisionsCachesBudgetConsumption(t *testin
 	}
 }
 
+func TestSchedulerReadyWithRemoteProbeDecisionsRetriesDeferredActionsAfterBudgetRecovery(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 2}},
+		Steps: []configmodel.ActionScheduleStep{
+			schedulerStep("action:first"),
+			schedulerStep("action:second"),
+		},
+	}
+
+	scheduler := NewSchedulerFromSchedule(schedule)
+	nb := admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     80,
+		RefillBytesPerSec: 0,
+	})
+	scheduler.SetNetworkBudget(nb)
+
+	firstReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(firstReady) != 2 {
+		t.Fatalf("expected two ready actions, got %#v", firstReady)
+	}
+	if firstReady[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected first action to consume the available budget, got %#v", firstReady[0])
+	}
+	if !firstReady[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected second action to defer after budget exhaustion, got %#v", firstReady[1])
+	}
+	if snap := nb.Snapshot(); snap.TotalDenied != 80 {
+		t.Fatalf("expected one denied remote probe attempt, got %+v", snap)
+	}
+
+	secondReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(secondReady) != 2 {
+		t.Fatalf("expected repeated ready read to return same actions, got %#v", secondReady)
+	}
+	if !secondReady[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected deferred decision to stay cached before recovery, got %#v", secondReady[1])
+	}
+	if snap := nb.Snapshot(); snap.TotalDenied != 80 {
+		t.Fatalf("expected cached deferred decision to avoid double-denial, got %+v", snap)
+	}
+
+	nb.Return(80)
+
+	recoveredReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(recoveredReady) != 2 {
+		t.Fatalf("expected ready actions after budget recovery, got %#v", recoveredReady)
+	}
+	if recoveredReady[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected first action decision to remain cached after recovery, got %#v", recoveredReady[0])
+	}
+	if recoveredReady[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected second action to retry remote probe after recovery, got %#v", recoveredReady[1])
+	}
+	if snap := nb.Snapshot(); snap.TotalAdmitted != 160 || snap.TotalDenied != 80 {
+		t.Fatalf("expected recovered action to consume the returned budget once, got %+v", snap)
+	}
+}
+
 func TestSchedulerSetNetworkBudgetOverridesDefaultControllerBudget(t *testing.T) {
 	schedule := configmodel.ActionSchedule{
 		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 1}},
