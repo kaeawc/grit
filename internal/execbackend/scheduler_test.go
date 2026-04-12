@@ -194,6 +194,19 @@ func TestSchedulerReadyWithRemoteProbeDecisionsRetriesDeferredActionsAfterBudget
 		t.Fatalf("expected one denied remote probe attempt, got %+v", snap)
 	}
 
+	nb.Return(40)
+
+	partiallyRecoveredReady := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(partiallyRecoveredReady) != 2 {
+		t.Fatalf("expected ready actions after partial recovery, got %#v", partiallyRecoveredReady)
+	}
+	if !partiallyRecoveredReady[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected deferred decision to remain cached until enough bytes return, got %#v", partiallyRecoveredReady[1])
+	}
+	if snap := nb.Snapshot(); snap.Available != 40 || snap.TotalDenied != 80 {
+		t.Fatalf("expected partial recovery to avoid re-denying the probe, got %+v", snap)
+	}
+
 	secondReady := scheduler.ReadyWithRemoteProbeDecisions()
 	if len(secondReady) != 2 {
 		t.Fatalf("expected repeated ready read to return same actions, got %#v", secondReady)
@@ -205,7 +218,7 @@ func TestSchedulerReadyWithRemoteProbeDecisionsRetriesDeferredActionsAfterBudget
 		t.Fatalf("expected cached deferred decision to avoid double-denial, got %+v", snap)
 	}
 
-	nb.Return(80)
+	nb.Return(40)
 
 	recoveredReady := scheduler.ReadyWithRemoteProbeDecisions()
 	if len(recoveredReady) != 2 {

@@ -25,8 +25,7 @@ type Scheduler struct {
 }
 
 type remoteProbeDecisionCache struct {
-	decision             admission.RemoteProbeDecision
-	deniedAvailableBytes int64
+	decision admission.RemoteProbeDecision
 }
 
 // ReadyAction captures a currently ready action along with the scheduler's
@@ -203,27 +202,17 @@ func (s *Scheduler) remoteProbeDecision(actionID graph.ActionID) admission.Remot
 		decision = s.admission.AdmitRemoteProbe(s.steps[actionID])
 	}
 	cached := remoteProbeDecisionCache{
-		decision:             decision,
-		deniedAvailableBytes: -1,
-	}
-	if decision.DeferRemote && s.admission != nil {
-		if snap := s.admission.NetworkBudgetSnapshot(); snap != nil {
-			cached.deniedAvailableBytes = snap.Available
-		}
+		decision: decision,
 	}
 	s.remoteProbes[actionID] = cached
 	return decision
 }
 
 func (s *Scheduler) shouldRefreshRemoteProbeDecision(cached remoteProbeDecisionCache) bool {
-	if s == nil || s.admission == nil || !cached.decision.DeferRemote || cached.deniedAvailableBytes < 0 {
+	if s == nil || s.admission == nil || !cached.decision.DeferRemote {
 		return false
 	}
-	snap := s.admission.NetworkBudgetSnapshot()
-	if snap == nil {
-		return false
-	}
-	return snap.Available > cached.deniedAvailableBytes
+	return s.admission.CanAdmitRemoteProbeEstimate(cached.decision.EstimatedBytes)
 }
 
 func (s *Scheduler) sortReady() {

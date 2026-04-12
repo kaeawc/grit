@@ -395,6 +395,19 @@ func (c *Controller) NetworkBudgetSnapshot() *NetworkBudgetSnapshot {
 	return &snap
 }
 
+// CanAdmitRemoteProbeEstimate reports whether the attached network budget can
+// currently satisfy the given estimated remote-probe size without consuming any
+// bytes. When no budget is attached, remote probing is unconstrained.
+func (c *Controller) CanAdmitRemoteProbeEstimate(estimatedBytes int64) bool {
+	c.mu.Lock()
+	nb := c.networkBudget
+	c.mu.Unlock()
+	if nb == nil {
+		return true
+	}
+	return nb.CanAdmit(estimatedBytes)
+}
+
 // ControllerSnapshot captures the full state of the admission controller at a
 // point in time, including resource pools, worker slots, and the network budget.
 type ControllerSnapshot struct {

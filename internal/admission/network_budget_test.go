@@ -161,6 +161,36 @@ func TestNetworkBudgetAdmitDetailedReportsBeforeAndAfter(t *testing.T) {
 	}
 }
 
+func TestNetworkBudgetCanAdmitRefillsWithoutConsumingTokens(t *testing.T) {
+	fakeNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 10,
+	})
+	nb.now = func() time.Time { return fakeNow }
+	nb.lastRefill = fakeNow
+
+	if !nb.Admit(100) {
+		t.Fatal("expected initial drain to succeed")
+	}
+
+	fakeNow = fakeNow.Add(4 * time.Second)
+	if nb.CanAdmit(50) {
+		t.Fatal("expected 50-byte preview to fail with only 40 bytes refilled")
+	}
+	if !nb.CanAdmit(40) {
+		t.Fatal("expected 40-byte preview to succeed after refill")
+	}
+
+	snap := nb.Snapshot()
+	if snap.Available != 40 {
+		t.Fatalf("expected preview checks to leave 40 bytes available, got %+v", snap)
+	}
+	if snap.TotalAdmitted != 100 || snap.TotalDenied != 0 {
+		t.Fatalf("expected preview checks to avoid mutating stats, got %+v", snap)
+	}
+}
+
 func TestNetworkBudgetDefaultCapacity(t *testing.T) {
 	nb := NewNetworkBudget(NetworkBudgetConfig{
 		CapacityBytes:     0,

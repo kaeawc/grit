@@ -77,6 +77,19 @@ func (nb *NetworkBudget) Admit(estimatedBytes int64) bool {
 	return nb.AdmitDetailed(estimatedBytes).Admitted
 }
 
+// CanAdmit reports whether estimatedBytes would fit in the budget after any
+// time-based refill, without consuming tokens or updating admission stats.
+func (nb *NetworkBudget) CanAdmit(estimatedBytes int64) bool {
+	nb.mu.Lock()
+	defer nb.mu.Unlock()
+
+	nb.refillLocked()
+	if estimatedBytes <= 0 {
+		return true
+	}
+	return nb.available >= estimatedBytes
+}
+
 // AdmitDetailed performs the same token-bucket check as Admit while also
 // returning the budget state before and after the attempt.
 func (nb *NetworkBudget) AdmitDetailed(estimatedBytes int64) NetworkBudgetAdmission {
