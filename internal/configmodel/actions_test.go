@@ -143,6 +143,9 @@ func TestScheduleActionsSplitsReadyBatchBySharedResourceBudget(t *testing.T) {
 	if !schedule.Batches[0][0].Cacheable || len(schedule.Batches[0][0].ProbeOrder) == 0 || !schedule.Batches[0][0].ExecuteOnMiss {
 		t.Fatalf("expected cache probe scheduling metadata, got %#v", schedule.Batches[0][0])
 	}
+	if schedule.Batches[0][0].EstimatedBytes <= 0 {
+		t.Fatalf("expected non-zero estimated bytes for cacheable scheduled action, got %#v", schedule.Batches[0][0])
+	}
 	if schedule.Batches[0][0].ProbeHint == nil || schedule.Batches[0][0].ProbeHint.State == "" {
 		t.Fatalf("expected schedule probe hint, got %#v", schedule.Batches[0][0])
 	}
@@ -166,6 +169,46 @@ func TestScheduleActionsSplitsReadyBatchBySharedResourceBudget(t *testing.T) {
 	}
 	if got, want := len(schedule.ResourceBudgets), 4; got != want {
 		t.Fatalf("resource budget count = %d, want %d", got, want)
+	}
+}
+
+func TestScheduleStepEstimatedBytesFollowOperationHeuristic(t *testing.T) {
+	model := &Model{}
+
+	compileStep := model.scheduleStepForAction(graph.Action{
+		ID:   graph.ActionID("action:compile"),
+		Name: "compileDebugSources",
+		Kind: graph.ActionKindCompile,
+		Attributes: map[string]string{
+			"operation": "compile",
+		},
+	}, nil)
+	if compileStep.EstimatedBytes <= 0 {
+		t.Fatalf("expected compile step to carry estimated bytes, got %#v", compileStep)
+	}
+
+	assembleStep := model.scheduleStepForAction(graph.Action{
+		ID:   graph.ActionID("action:assemble"),
+		Name: "assembleDebug",
+		Kind: graph.ActionKindPackage,
+		Attributes: map[string]string{
+			"operation": "assemble",
+		},
+	}, nil)
+	if assembleStep.EstimatedBytes <= compileStep.EstimatedBytes {
+		t.Fatalf("expected assemble estimate to exceed compile estimate, got compile=%d assemble=%d", compileStep.EstimatedBytes, assembleStep.EstimatedBytes)
+	}
+
+	installStep := model.scheduleStepForAction(graph.Action{
+		ID:   graph.ActionID("action:install"),
+		Name: "installDebug",
+		Kind: graph.ActionKindCustom,
+		Attributes: map[string]string{
+			"operation": "install",
+		},
+	}, nil)
+	if installStep.EstimatedBytes != 0 {
+		t.Fatalf("expected non-cacheable install step to have zero estimated bytes, got %#v", installStep)
 	}
 }
 
@@ -247,7 +290,7 @@ func TestActionsForResolvedCommandUsesFlavorAwareDebugVariants(t *testing.T) {
 
 func TestDefaultNetworkBudgetConfigIncludedWhenCacheableActionsExist(t *testing.T) {
 	actions := []graph.Action{
-		{ID: graph.ActionID("a1"), Attributes: map[string]string{"cacheable": "true", "operation": "compile"}},
+		{ID: graph.ActionID("a1"), Attributes: map[string]string{"operation": "compile"}},
 	}
 	cfg := defaultNetworkBudgetConfig(actions)
 	if cfg == nil {

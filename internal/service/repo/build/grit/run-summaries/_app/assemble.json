@@ -393,7 +393,14 @@
           "reused": 2
         }
       }
-    ]
+    ],
+    "bandwidth": {
+      "totalCacheableActions": 2,
+      "budgetCapacityBytes": 52428800,
+      "budgetRemainingBytes": 18874573,
+      "budgetRefillRate": 10485760,
+      "totalAdmittedBytes": 33554432
+    }
   },
   "toolSummary": {
     "operations": [
@@ -459,6 +466,7 @@
         "shared-machine"
       ],
       "executeOnMiss": true,
+      "estimatedBytes": 16777216,
       "probeHint": {
         "actionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
         "state": "reused",
@@ -519,6 +527,7 @@
         "shared-machine"
       ],
       "executeOnMiss": true,
+      "estimatedBytes": 16777216,
       "probeHint": {
         "actionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
         "state": "reused",
@@ -719,5 +728,5 @@
       "detail": "1 reused substeps"
     }
   ],
-  "writtenAt": "2026-04-12T13:44:02Z"
+  "writtenAt": "2026-04-12T14:59:21Z"
 }

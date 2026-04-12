@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# roadmap-loop.sh — iterate over roadmap/clusters/**/*.md, ask claude to land
+# roadmap-loop.sh — iterate over roadmap/clusters/**/*.md, ask codex to land
 # one reasonable chunk of work per item, verify build + tests, and (best
 # effort) commit.
 #
@@ -18,7 +18,7 @@
 #
 #   The loop picks in_progress items first (finish what's started), then
 #   planned items (start new work). After each successful iteration,
-#   claude's output is checked for a CONCEPT_STATUS line to determine
+#   codex's output is checked for a CONCEPT_STATUS line to determine
 #   whether the concept is done or needs more work.
 #
 # Iteration priority:
@@ -71,7 +71,7 @@ Options:
   --max N         Stop after N iterations (0 = unlimited)
   --until M       Stop after M minutes (0 = unlimited)
   --cluster NAME  Only pick items from this cluster subdirectory
-  --dry-run       Show item picks without calling claude or committing
+  --dry-run       Show item picks without calling codex or committing
 USAGE
     exit 2
 }
@@ -135,7 +135,7 @@ require_cmd() {
 }
 
 log "preflight: checking tools"
-require_cmd claude
+require_cmd codex
 require_cmd git
 require_cmd go
 require_cmd jq
@@ -578,7 +578,7 @@ build_prompt() {
 
 # ---------- completeness detection ----------
 
-# Parse claude's output for CONCEPT_STATUS: line. Returns "in_progress"
+# Parse codex's output for CONCEPT_STATUS: line. Returns "in_progress"
 # or "shipped". Defaults to "in_progress" if not found (conservative).
 detect_concept_status() {
     local outfile="$1"
@@ -603,22 +603,39 @@ run_iteration() {
     local item="$1"
     LAST_OUTPUT_FILE=$(mktemp -t grit-loop-XXXXXX.txt)
 
-    log "claude exec on $item"
+    log "codex exec on $item"
     if [ "$DRY_RUN" -eq 1 ]; then
-        log "  dry-run: skipping claude"
+        log "  dry-run: skipping codex"
         return 0
     fi
 
-    if ! build_prompt "$item" | claude \
-            --dangerously-skip-permissions \
-            -p \
-            > "$LAST_OUTPUT_FILE" 2>>"$RUN_LOG"; then
-        warn "claude returned non-zero for $item"
+    local jsonl
+    jsonl=$(mktemp -t grit-jsonl-XXXXXX.log)
+    if ! build_prompt "$item" | codex exec \
+            --dangerously-bypass-approvals-and-sandbox \
+            --json \
+            -C "$REPO_ROOT" \
+            -o "$LAST_OUTPUT_FILE" \
+            --skip-git-repo-check \
+            - >"$jsonl" 2>/dev/null; then
+        warn "codex exec returned non-zero for $item"
+        rm -f "$jsonl"
         return 1
     fi
 
-    log "claude finished; output head:"
-    head -10 "$LAST_OUTPUT_FILE" 2>/dev/null | tee -a "$RUN_LOG"
+    jq -r '
+        select(.type == "item.completed") | .item |
+        if .type == "command_execution" then
+          (.command // "") | sub("^/bin/[a-z]+ -[a-z]+ '"'"'"; "") | sub("'"'"'$"; "") | .[0:120] |
+          "  $ \(.)"
+        elif .type == "file_change" then
+          (.changes // [] | map("  \(.kind): \(.path)") | join("\n"))
+        else empty end
+    ' "$jsonl" 2>/dev/null | head -40 | tee -a "$RUN_LOG"
+    rm -f "$jsonl"
+
+    log "codex finished; last message head:"
+    head -6 "$LAST_OUTPUT_FILE" 2>/dev/null | tee -a "$RUN_LOG"
     return 0
 }
 
@@ -787,11 +804,11 @@ while :; do
         if verify_build_and_tests; then
             log "verify: ok"
             if try_commit "$item"; then
-                # Check claude's completeness assessment.
+                # Check codex's completeness assessment.
                 local concept_result
                 concept_result=$(detect_concept_status "$LAST_OUTPUT_FILE")
                 if [ "$concept_result" = "shipped" ]; then
-                    log "lifecycle: $item → shipped (claude assessed complete)"
+                    log "lifecycle: $item → shipped (codex assessed complete)"
                     mark_item_shipped "$item"
                     record_state "$item" "committed-shipped"
                 else
@@ -812,7 +829,7 @@ while :; do
             record_state "$item" "verify-failed"
         fi
     else
-        warn "claude step failed; changes (if any) left in working tree"
+        warn "codex step failed; changes (if any) left in working tree"
         mark_item_in_progress "$item"
         record_state "$item" "codex-failed"
     fi

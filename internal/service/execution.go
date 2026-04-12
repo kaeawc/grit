@@ -16,9 +16,9 @@ import (
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/perf"
-	"github.com/kaeawc/grit/internal/tieredcas"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/responsepayload"
+	"github.com/kaeawc/grit/internal/tieredcas"
 	"github.com/kaeawc/grit/internal/tooldiag"
 )
 
@@ -181,6 +181,7 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 		Cacheable:       step.Cacheable,
 		ProbeOrder:      append([]string(nil), step.ProbeOrder...),
 		ExecuteOnMiss:   step.ExecuteOnMiss,
+		EstimatedBytes:  step.EstimatedBytes,
 		ProbeHint:       cloneCacheProbe(step.ProbeHint),
 		RetentionClass:  step.RetentionClass,
 		Shareability:    step.Shareability,

@@ -11,13 +11,13 @@ import (
 )
 
 type ActionSchedule struct {
-	Steps              []ActionScheduleStep
-	Batches            [][]ActionScheduleStep
-	ResourceBudgets    []ResourceBudget
+	Steps               []ActionScheduleStep
+	Batches             [][]ActionScheduleStep
+	ResourceBudgets     []ResourceBudget
 	NetworkBudgetConfig *ScheduleNetworkBudget
-	BatchResources     []BatchResourceUsage
-	Dependencies       map[graph.ActionID][]graph.ActionID
-	Dependents         map[graph.ActionID][]graph.ActionID
+	BatchResources      []BatchResourceUsage
+	Dependencies        map[graph.ActionID][]graph.ActionID
+	Dependents          map[graph.ActionID][]graph.ActionID
 }
 
 // ScheduleNetworkBudget holds the bandwidth-aware admission parameters derived
@@ -47,6 +47,14 @@ type ActionScheduleStep struct {
 	RetentionClass string
 	Shareability   string
 }
+
+const (
+	estimatedProbeBytesCompile      int64 = 8 * 1024 * 1024
+	estimatedProbeBytesCompileTests int64 = 6 * 1024 * 1024
+	estimatedProbeBytesAssemble     int64 = 16 * 1024 * 1024
+	estimatedProbeBytesTest         int64 = 1 * 1024 * 1024
+	estimatedProbeBytesJavadoc      int64 = 4 * 1024 * 1024
+)
 
 type projectProbeHint = responsepayload.CacheProbe
 
@@ -150,10 +158,10 @@ func (m *Model) PlanActions(actions []graph.Action) []graph.Action {
 
 func (m *Model) ScheduleActions(actions []graph.Action) ActionSchedule {
 	schedule := ActionSchedule{
-		ResourceBudgets:    defaultResourceBudgets(),
+		ResourceBudgets:     defaultResourceBudgets(),
 		NetworkBudgetConfig: defaultNetworkBudgetConfig(actions),
-		Dependencies:       map[graph.ActionID][]graph.ActionID{},
-		Dependents:         map[graph.ActionID][]graph.ActionID{},
+		Dependencies:        map[graph.ActionID][]graph.ActionID{},
+		Dependents:          map[graph.ActionID][]graph.ActionID{},
 	}
 	if len(actions) == 0 {
 		return schedule
@@ -333,6 +341,33 @@ func probeOrderForAction(action graph.Action) []string {
 	}
 }
 
+// estimatedBytesForAction returns a coarse remote-probe size estimate for
+// cacheable actions. These values are intentionally conservative and give the
+// bandwidth-aware admission controller a non-zero cost to reason about even
+// before we have artifact-size history for a specific action.
+func estimatedBytesForAction(action graph.Action) int64 {
+	if !actionCacheable(action) {
+		return 0
+	}
+	if len(probeOrderForAction(action)) <= 1 {
+		return 0
+	}
+	switch action.Attributes["operation"] {
+	case "compile":
+		return estimatedProbeBytesCompile
+	case "compile-tests":
+		return estimatedProbeBytesCompileTests
+	case "assemble":
+		return estimatedProbeBytesAssemble
+	case "test":
+		return estimatedProbeBytesTest
+	case "javadoc-jar":
+		return estimatedProbeBytesJavadoc
+	default:
+		return 0
+	}
+}
+
 func workerClassForAction(action graph.Action) string {
 	switch action.Attributes["operation"] {
 	case "compile":
@@ -404,7 +439,7 @@ func defaultResourceBudgets() []ResourceBudget {
 // never be consulted. Defaults: 50 MiB burst, 10 MiB/s refill.
 func defaultNetworkBudgetConfig(actions []graph.Action) *ScheduleNetworkBudget {
 	for _, a := range actions {
-		if a.Attributes["cacheable"] == "true" {
+		if actionCacheable(a) && len(probeOrderForAction(a)) > 1 {
 			return &ScheduleNetworkBudget{
 				CapacityBytes:     50 * 1024 * 1024,
 				RefillBytesPerSec: 10 * 1024 * 1024,
@@ -449,6 +484,7 @@ func (m *Model) scheduleStepForAction(action graph.Action, deps []graph.ActionID
 		Cacheable:      actionCacheable(action),
 		ProbeOrder:     probeOrderForAction(action),
 		ExecuteOnMiss:  true,
+		EstimatedBytes: estimatedBytesForAction(action),
 		RetentionClass: string(retentionClassForAction(action)),
 		Shareability:   string(shareabilityForAction(action)),
 	}

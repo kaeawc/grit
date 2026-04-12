@@ -112,15 +112,16 @@ type CacheSummary struct {
 }
 
 type SchedulerSummary struct {
-	ExecutedBatchCount  int                        `json:"executedBatchCount,omitempty"`
-	CriticalPathActions int                        `json:"criticalPathActions,omitempty"`
-	QueueWaitActions    int                        `json:"queueWaitActions,omitempty"`
-	TotalQueueWaitMs    int64                      `json:"totalQueueWaitMs,omitempty"`
-	MaxQueueWaitMs      int64                      `json:"maxQueueWaitMs,omitempty"`
-	WaitReasonCounts    map[string]int             `json:"waitReasonCounts,omitempty"`
-	CacheResultCounts   map[string]int             `json:"cacheResultCounts,omitempty"`
-	WorkerClasses       []SchedulerBreakdownBucket `json:"workerClasses,omitempty"`
-	ResourceClasses     []SchedulerBreakdownBucket `json:"resourceClasses,omitempty"`
+	ExecutedBatchCount  int                         `json:"executedBatchCount,omitempty"`
+	CriticalPathActions int                         `json:"criticalPathActions,omitempty"`
+	QueueWaitActions    int                         `json:"queueWaitActions,omitempty"`
+	TotalQueueWaitMs    int64                       `json:"totalQueueWaitMs,omitempty"`
+	MaxQueueWaitMs      int64                       `json:"maxQueueWaitMs,omitempty"`
+	WaitReasonCounts    map[string]int              `json:"waitReasonCounts,omitempty"`
+	CacheResultCounts   map[string]int              `json:"cacheResultCounts,omitempty"`
+	WorkerClasses       []SchedulerBreakdownBucket  `json:"workerClasses,omitempty"`
+	ResourceClasses     []SchedulerBreakdownBucket  `json:"resourceClasses,omitempty"`
+	Bandwidth           *admission.BandwidthSummary `json:"bandwidth,omitempty"`
 }
 
 type SchedulerBreakdownBucket struct {
@@ -152,6 +153,7 @@ type ActionExecution struct {
 	Cacheable       bool                               `json:"cacheable,omitempty"`
 	ProbeOrder      []string                           `json:"probeOrder,omitempty"`
 	ExecuteOnMiss   bool                               `json:"executeOnMiss,omitempty"`
+	EstimatedBytes  int64                              `json:"estimatedBytes,omitempty"`
 	ProbeHint       *responsepayload.CacheProbe        `json:"probeHint,omitempty"`
 	RetentionClass  string                             `json:"retentionClass,omitempty"`
 	Shareability    string                             `json:"shareability,omitempty"`
@@ -297,7 +299,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		TargetResolvedVariant:  plan.TargetResolvedVariant,
 		TargetResolvedVariants: append([]project.ResolvedVariant(nil), plan.TargetResolvedVariants...),
 	}
-	finalizeRunSummaryState(&outcome, plan)
+	s.finalizeRunSummaryState(&outcome, plan)
 	switch req.Command {
 	case "clean":
 		outcome.Message = "build outputs cleaned"
@@ -336,7 +338,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		recordBatchTiming(tracker, i, results, time.Since(batchStart).Milliseconds())
 		if batchErr != nil {
 			outcome = mergeBatchOutcome(outcome, results)
-			finalizeRunSummaryState(&outcome, plan)
+			s.finalizeRunSummaryState(&outcome, plan)
 			if s.models != nil {
 				_ = s.models.RecordRuntimeProbes(prj.RootDir, model.CacheKey(), outcome.CacheProbes)
 			}
@@ -345,7 +347,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		}
 		outcome = mergeBatchOutcome(outcome, results)
 	}
-	finalizeRunSummaryState(&outcome, plan)
+	s.finalizeRunSummaryState(&outcome, plan)
 	if s.models != nil {
 		_ = s.models.RecordRuntimeProbes(prj.RootDir, model.CacheKey(), outcome.CacheProbes)
 	}
@@ -463,7 +465,7 @@ func commandUsesDebugVariant(command string) bool {
 	}
 }
 
-func finalizeRunSummaryState(outcome *BuildOutcome, plan BuildPlan) {
+func (s *Service) finalizeRunSummaryState(outcome *BuildOutcome, plan BuildPlan) {
 	if outcome == nil {
 		return
 	}
@@ -473,7 +475,7 @@ func finalizeRunSummaryState(outcome *BuildOutcome, plan BuildPlan) {
 	schedule := toPlanScheduleResult(plan.Schedule)
 	outcome.PlannedSchedule = &schedule
 	outcome.CacheSummary = buildCacheSummary(*outcome)
-	outcome.SchedulerSummary = buildSchedulerSummary(*outcome)
+	outcome.SchedulerSummary = buildSchedulerSummary(*outcome, s.admissionController)
 }
 
 func markCriticalPathExecutions(outcome *BuildOutcome, plan BuildPlan) {
@@ -594,7 +596,7 @@ func buildCacheSummary(outcome BuildOutcome) *CacheSummary {
 	return summary
 }
 
-func buildSchedulerSummary(outcome BuildOutcome) *SchedulerSummary {
+func buildSchedulerSummary(outcome BuildOutcome, controller *admission.Controller) *SchedulerSummary {
 	if len(outcome.ActionExecutions) == 0 {
 		return nil
 	}
@@ -634,6 +636,27 @@ func buildSchedulerSummary(outcome BuildOutcome) *SchedulerSummary {
 	}
 	summary.WorkerClasses = materializeSchedulerBreakdowns(workerBuckets)
 	summary.ResourceClasses = materializeSchedulerBreakdowns(resourceBuckets)
+	summary.Bandwidth = buildBandwidthSummary(outcome.ActionExecutions, controller)
+	return summary
+}
+
+func buildBandwidthSummary(executions []ActionExecution, controller *admission.Controller) *admission.BandwidthSummary {
+	if controller == nil {
+		return nil
+	}
+	summary := controller.BandwidthSummary()
+	if summary == nil {
+		return nil
+	}
+	for _, execution := range executions {
+		if execution.Cacheable {
+			summary.TotalCacheableActions++
+		}
+		if execution.DeferRemote {
+			summary.DeferredActions++
+			summary.EstimatedBytesSaved += execution.EstimatedBytes
+		}
+	}
 	return summary
 }
 
