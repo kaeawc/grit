@@ -64,6 +64,7 @@ func TestPublishPinWritesMavenLayout(t *testing.T) {
 	pomPath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.pom")
 	modulePath := filepath.Join(baseDir, "kotlin-stdlib-2.0.0.module")
 	metadataPath := filepath.Join(artifactDir, "maven-metadata-local.xml")
+	markerPath := filepath.Join(baseDir, "_remote.repositories")
 
 	if got, err := os.ReadFile(jarPath); err != nil || string(got) != string(jarBytes) {
 		t.Fatalf("jar at %s: err=%v got=%q", jarPath, err, got)
@@ -108,6 +109,32 @@ func TestPublishPinWritesMavenLayout(t *testing.T) {
 		t.Fatalf("unexpected metadata latest/release: %#v", metadata.Versioning)
 	}
 	assertSidecar(t, metadataPath, metadataPayload)
+
+	markerPayload, err := os.ReadFile(markerPath)
+	if err != nil {
+		t.Fatalf("marker at %s: %v", markerPath, err)
+	}
+	if got, want := string(markerPayload), "kotlin-stdlib-2.0.0.jar>local=\n"+"kotlin-stdlib-2.0.0.pom>local=\n"; got != want {
+		t.Fatalf("unexpected marker payload: got=%q want=%q", got, want)
+	}
+}
+
+func TestDefaultRootHonorsSettingsXML(t *testing.T) {
+	home := t.TempDir()
+	confDir := filepath.Join(home, ".m2")
+	if err := os.MkdirAll(confDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	override := filepath.Join(home, "publisher-repo")
+	if err := os.WriteFile(filepath.Join(confDir, "settings.xml"), []byte("<settings><localRepository>"+override+"</localRepository></settings>"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("MAVEN_USER_HOME", "")
+
+	if got := DefaultRoot(); got != override {
+		t.Fatalf("DefaultRoot: got %q want %q", got, override)
+	}
 }
 
 func TestPublishPinMissingBlob(t *testing.T) {
@@ -164,6 +191,36 @@ func TestPublishPinIdempotent(t *testing.T) {
 	got, err := os.ReadFile(target)
 	if err != nil || string(got) != string(payload) {
 		t.Fatalf("unexpected state after double publish: err=%v got=%q", err, got)
+	}
+}
+
+func TestPublishPinOmitsRemoteRepositoriesMarkerWithoutRepositoryID(t *testing.T) {
+	root := t.TempDir()
+	casRoot := t.TempDir()
+	store := cas.NewFilesystemStore(casRoot)
+	ctx := context.Background()
+
+	payload := []byte("markerless content")
+	info, err := store.PutBytes(ctx, payload, cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "t"}},
+	})
+	if err != nil {
+		t.Fatalf("PutBytes: %v", err)
+	}
+	pin := lockfile.Pin{
+		Coordinate: lockfile.Coordinate{Group: "org.example", Artifact: "markerless", Version: "1.0"},
+		Files: []lockfile.PinFile{
+			{Kind: lockfile.FileKindPrimary, Name: "markerless-1.0.jar", Hash: info.Hash},
+		},
+	}
+
+	p := New(root)
+	if err := p.PublishPin(ctx, pin, store); err != nil {
+		t.Fatalf("PublishPin: %v", err)
+	}
+	markerPath := filepath.Join(root, "org", "example", "markerless", "1.0", "_remote.repositories")
+	if _, err := os.Stat(markerPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no marker file, stat err=%v", err)
 	}
 }
 

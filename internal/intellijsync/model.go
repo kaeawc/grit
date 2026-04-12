@@ -28,6 +28,9 @@ type Repository struct {
 	URL               string   `json:"url,omitempty"`
 	Scope             string   `json:"scope"`
 	Exclusive         bool     `json:"exclusive,omitempty"`
+	Priority          int      `json:"priority,omitempty"`
+	Origin            string   `json:"origin,omitempty"`
+	OfflineAllowed    bool     `json:"offlineAllowed,omitempty"`
 	IncludeGroups     []string `json:"includeGroups,omitempty"`
 	IncludeGroupRegex []string `json:"includeGroupRegex,omitempty"`
 	ExcludeGroups     []string `json:"excludeGroups,omitempty"`

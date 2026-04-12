@@ -101,6 +101,9 @@ func parseToolDiagnosticLine(tool, streamName, line string) (tooldiag.Record, bo
 	}
 	severity := inferredSeverity(line)
 	if severity == "" {
+		severity = inferredSeverityForTool(tool, line)
+	}
+	if severity == "" {
 		return tooldiag.Record{}, false
 	}
 	code, category := classifyDiagnostic(tool, severity, line)
@@ -156,6 +159,40 @@ func inferredSeverity(line string) string {
 	default:
 		return ""
 	}
+}
+
+func inferredSeverityForTool(tool, line string) string {
+	lower := strings.ToLower(line)
+	switch strings.ToLower(strings.TrimSpace(tool)) {
+	case "jarsigner":
+		switch {
+		case strings.Contains(lower, "unable to open jar file"),
+			strings.Contains(lower, "unable to sign jar file"),
+			strings.Contains(lower, "failed to sign"),
+			strings.Contains(lower, "jar signing failed"):
+			return "error"
+		case strings.Contains(lower, "self-signed"),
+			strings.Contains(lower, "not timestamped"),
+			strings.Contains(lower, "will be treated as unsigned"),
+			strings.Contains(lower, "certificate chain not validated"):
+			return "warning"
+		}
+	case "zipalign":
+		switch {
+		case strings.Contains(lower, "can't open"),
+			strings.Contains(lower, "cannot open"),
+			strings.Contains(lower, "failed to open"),
+			strings.Contains(lower, "failed to align"),
+			strings.Contains(lower, "not a zip file"),
+			strings.Contains(lower, "zipalign failed"):
+			return "error"
+		case strings.Contains(lower, "not aligned"),
+			strings.Contains(lower, "alignment warning"),
+			strings.Contains(lower, "unaligned"):
+			return "warning"
+		}
+	}
+	return ""
 }
 
 func classifyDiagnostic(tool, severity, message string) (string, string) {
@@ -263,6 +300,35 @@ func classifyDiagnostic(tool, severity, message string) (string, string) {
 		case strings.Contains(lower, "not protected by this signature"),
 			strings.Contains(lower, "signer #") && strings.Contains(lower, "warning"):
 			return "apksigner_unprotected_entry", "signing"
+		}
+	case "jarsigner":
+		switch {
+		case strings.Contains(lower, "unable to open jar file"),
+			strings.Contains(lower, "unable to sign jar file"),
+			strings.Contains(lower, "jar signing failed"),
+			strings.Contains(lower, "failed to sign"):
+			return "jarsigner_sign_failed", "signing"
+		case strings.Contains(lower, "self-signed"),
+			strings.Contains(lower, "not timestamped"),
+			strings.Contains(lower, "will be treated as unsigned"),
+			strings.Contains(lower, "certificate chain not validated"):
+			return "jarsigner_trust_warning", "signing"
+		case strings.Contains(lower, "duplicate entry"):
+			return "jarsigner_duplicate_entry", "signing"
+		}
+	case "zipalign":
+		switch {
+		case strings.Contains(lower, "can't open"),
+			strings.Contains(lower, "cannot open"),
+			strings.Contains(lower, "failed to open"),
+			strings.Contains(lower, "failed to align"),
+			strings.Contains(lower, "not a zip file"),
+			strings.Contains(lower, "zipalign failed"):
+			return "zipalign_failed", "packaging"
+		case strings.Contains(lower, "not aligned"),
+			strings.Contains(lower, "alignment warning"),
+			strings.Contains(lower, "unaligned"):
+			return "zipalign_unaligned_entry", "packaging"
 		}
 	}
 	return diagnosticCode(tool, severity), diagnosticCategory(tool)

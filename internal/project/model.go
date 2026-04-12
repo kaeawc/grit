@@ -178,6 +178,7 @@ type ResolvedVariant struct {
 	ConsumerProguardFiles     []string                  `json:"consumerProguardFiles,omitempty"`
 	SigningConfig             string                    `json:"signingConfig,omitempty"`
 	SigningConfigured         bool                      `json:"signingConfigured,omitempty"`
+	DexMode                   string                    `json:"dexMode,omitempty"`
 	MinifyEnabled             bool                      `json:"minifyEnabled,omitempty"`
 	ShrinkResources           bool                      `json:"shrinkResources,omitempty"`
 	Installable               bool                      `json:"installable,omitempty"`

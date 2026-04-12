@@ -17,7 +17,7 @@ func TestFilterResolvedForProjectDropsLegacySupportArtifactsWhenUsingAndroidX(t 
 			"/Users/jason/.grit/aar/androidx.core/core/1.17.0/classes.jar",
 		},
 		RuntimeJars: []string{
-			"/Users/jason/.gradle/caches/modules-2/files-2.1/com.android.support/support-annotations/26.1.0/downloaded/support-annotations-26.1.0.jar",
+			"/Users/jason/repo/.grit/worktree/materialized-m2/com/android/support/support-annotations/26.1.0/support-annotations-26.1.0.jar",
 			"/Users/jason/.gradle/caches/modules-2/files-2.1/androidx.annotation/annotation-jvm/1.9.1/x/annotation-jvm-1.9.1.jar",
 		},
 		AndroidLibraries: []m2local.AndroidLibrary{

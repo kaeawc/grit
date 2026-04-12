@@ -23,6 +23,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/downloader"
@@ -54,10 +55,11 @@ const (
 
 // FetchRecord captures one source attempt in a chain fetch.
 type FetchRecord struct {
-	Order    int          `json:"order"`
-	SourceID string       `json:"sourceId"`
-	Outcome  FetchOutcome `json:"outcome"`
-	Error    string       `json:"error,omitempty"`
+	Order      int          `json:"order"`
+	SourceID   string       `json:"sourceId"`
+	Outcome    FetchOutcome `json:"outcome"`
+	DurationMs int64        `json:"durationMs,omitempty"`
+	Error      string       `json:"error,omitempty"`
 }
 
 // WithID overrides the chain identifier recorded in log messages and
@@ -105,10 +107,12 @@ func (c *Downloader) FetchWithRecords(ctx context.Context, pin lockfile.Pin, sto
 	records := make([]FetchRecord, 0, len(c.sources))
 	var lastNotFound error
 	for i, src := range c.sources {
+		start := time.Now()
 		err := src.Fetch(ctx, pin, store)
 		record := FetchRecord{
-			Order:    i,
-			SourceID: src.ID(),
+			Order:      i,
+			SourceID:   src.ID(),
+			DurationMs: time.Since(start).Milliseconds(),
 		}
 		if err == nil {
 			record.Outcome = FetchOutcomeSuccess

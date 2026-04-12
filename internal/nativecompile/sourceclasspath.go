@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -457,6 +458,9 @@ func artifactKeyVersion(path string) (string, string, bool) {
 		if len(rest) >= 4 {
 			return artifactFamilyKey(rest[0], rest[1]), rest[2], true
 		}
+	}
+	if coord, ok := dependencywiring.CoordinateFromMaterializedPath(path); ok {
+		return artifactFamilyKey(coord.Group, coord.Artifact), coord.Version, true
 	}
 	parts := strings.Split(filepath.Clean(path), string(os.PathSeparator))
 	for i := 0; i+3 < len(parts); i++ {

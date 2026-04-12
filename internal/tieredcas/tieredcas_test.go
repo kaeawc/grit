@@ -10,6 +10,91 @@ import (
 	"github.com/kaeawc/grit/internal/cas"
 )
 
+type actionResultStoreBase struct{}
+
+func (actionResultStoreBase) Put(context.Context, io.Reader, cas.Provenance) (cas.BlobInfo, error) {
+	return cas.BlobInfo{}, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) PutBytes(context.Context, []byte, cas.Provenance) (cas.BlobInfo, error) {
+	return cas.BlobInfo{}, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) PutExpected(context.Context, io.Reader, cas.Hash, cas.Provenance) (cas.BlobInfo, error) {
+	return cas.BlobInfo{}, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) PutBytesExpected(context.Context, []byte, cas.Hash, cas.Provenance) (cas.BlobInfo, error) {
+	return cas.BlobInfo{}, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) Get(context.Context, cas.Hash) (io.ReadCloser, error) {
+	return nil, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) Stat(context.Context, cas.Hash) (cas.BlobInfo, error) {
+	return cas.BlobInfo{}, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) Has(context.Context, cas.Hash) (bool, error) {
+	return false, nil
+}
+
+func (actionResultStoreBase) Provenance(context.Context, cas.Hash) (cas.Provenance, error) {
+	return cas.Provenance{}, cas.ErrNotFound
+}
+
+func (actionResultStoreBase) PutActionResult(context.Context, cas.ActionResult) error {
+	return nil
+}
+
+type metadataActionResultStore struct {
+	actionResultStoreBase
+	hasActionResultCalls int
+	getActionResultCalls int
+	hasActionResult      bool
+	hasActionResultErr   error
+	actionResult         cas.ActionResult
+	getActionResultErr   error
+}
+
+func (s *metadataActionResultStore) HasActionResult(context.Context, cas.Hash) (bool, error) {
+	s.hasActionResultCalls++
+	if s.hasActionResultErr != nil {
+		return false, s.hasActionResultErr
+	}
+	return s.hasActionResult, nil
+}
+
+func (s *metadataActionResultStore) GetActionResult(context.Context, cas.Hash) (cas.ActionResult, error) {
+	s.getActionResultCalls++
+	if s.getActionResultErr != nil {
+		return cas.ActionResult{}, s.getActionResultErr
+	}
+	if s.actionResult.ActionHash.IsZero() {
+		return cas.ActionResult{}, cas.ErrNotFound
+	}
+	return s.actionResult, nil
+}
+
+type getOnlyActionResultStore struct {
+	actionResultStoreBase
+	getActionResultCalls int
+	actionResult         cas.ActionResult
+	getActionResultErr   error
+}
+
+func (s *getOnlyActionResultStore) GetActionResult(context.Context, cas.Hash) (cas.ActionResult, error) {
+	s.getActionResultCalls++
+	if s.getActionResultErr != nil {
+		return cas.ActionResult{}, s.getActionResultErr
+	}
+	if s.actionResult.ActionHash.IsZero() {
+		return cas.ActionResult{}, cas.ErrNotFound
+	}
+	return s.actionResult, nil
+}
+
 func TestNewRejectsEmpty(t *testing.T) {
 	if _, err := New(); err == nil {
 		t.Fatalf("expected error for zero tiers")
@@ -123,8 +208,14 @@ func TestGetWithProbeRecordsReturnsOrderedTimeline(t *testing.T) {
 	if records[0].Tier != 0 || records[0].Outcome != ProbeOutcomeMiss {
 		t.Fatalf("unexpected primary probe record: %#v", records[0])
 	}
+	if records[0].DurationMs < 0 {
+		t.Fatalf("expected non-negative primary probe duration, got %#v", records[0])
+	}
 	if records[1].Tier != 1 || records[1].Outcome != ProbeOutcomeHit || !records[1].Promoted {
 		t.Fatalf("unexpected upstream probe record: %#v", records[1])
+	}
+	if records[1].DurationMs < 0 {
+		t.Fatalf("expected non-negative upstream probe duration, got %#v", records[1])
 	}
 	if len(records[1].PromotionTargets) != 1 || records[1].PromotionTargets[0] != 0 {
 		t.Fatalf("unexpected promotion targets: %#v", records[1])
@@ -226,6 +317,60 @@ func TestHasProbesAllTiers(t *testing.T) {
 	}
 }
 
+func TestHasActionResultUsesMetadataQueryWhenAvailable(t *testing.T) {
+	ctx := context.Background()
+	actionHash := cas.HashBytes([]byte("metadata-action"))
+	primary := &metadataActionResultStore{hasActionResult: false}
+	upstream := &metadataActionResultStore{hasActionResult: true}
+
+	s, err := New(primary, upstream)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	has, err := s.HasActionResult(ctx, actionHash)
+	if err != nil {
+		t.Fatalf("HasActionResult: %v", err)
+	}
+	if !has {
+		t.Fatalf("expected action result to be reported present")
+	}
+	if primary.hasActionResultCalls != 1 || primary.getActionResultCalls != 0 {
+		t.Fatalf("expected primary metadata query only, got %#v", primary)
+	}
+	if upstream.hasActionResultCalls != 1 || upstream.getActionResultCalls != 0 {
+		t.Fatalf("expected upstream metadata query only, got %#v", upstream)
+	}
+}
+
+func TestHasActionResultFallsBackToGetActionResult(t *testing.T) {
+	primary := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+	actionHash := cas.HashBytes([]byte("fallback-action"))
+	result := cas.ActionResult{
+		ActionHash: actionHash,
+		Outputs: []cas.NamedOutput{
+			{Role: "out", Blob: cas.BlobInfo{Hash: cas.HashBytes([]byte("output")), Size: 6}},
+		},
+	}
+	if err := primary.PutActionResult(ctx, result); err != nil {
+		t.Fatalf("PutActionResult: %v", err)
+	}
+
+	s, err := New(primary)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	has, err := s.HasActionResult(ctx, actionHash)
+	if err != nil {
+		t.Fatalf("HasActionResult: %v", err)
+	}
+	if !has {
+		t.Fatalf("expected action result to be reported present")
+	}
+}
+
 func TestStatFallsThroughToUpstream(t *testing.T) {
 	primary := cas.NewFilesystemStore(t.TempDir())
 	upstream := cas.NewFilesystemStore(t.TempDir())
@@ -318,8 +463,14 @@ func TestGetActionResultWithProbeRecordsReturnsOrderedTimeline(t *testing.T) {
 	if records[0].Tier != 0 || records[0].Outcome != ProbeOutcomeMiss {
 		t.Fatalf("unexpected primary probe record: %#v", records[0])
 	}
+	if records[0].DurationMs < 0 {
+		t.Fatalf("expected non-negative primary action probe duration, got %#v", records[0])
+	}
 	if records[1].Tier != 1 || records[1].Outcome != ProbeOutcomeHit || !records[1].Promoted {
 		t.Fatalf("unexpected upstream probe record: %#v", records[1])
+	}
+	if records[1].DurationMs < 0 {
+		t.Fatalf("expected non-negative upstream action probe duration, got %#v", records[1])
 	}
 	if len(records[1].PromotionTargets) != 1 || records[1].PromotionTargets[0] != 0 {
 		t.Fatalf("unexpected action promotion targets: %#v", records[1])

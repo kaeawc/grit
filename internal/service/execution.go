@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kaeawc/grit/internal/configmodel"
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/perf"
@@ -92,9 +93,22 @@ func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMo
 			go func(i int) {
 				defer wg.Done()
 				queuedAt := time.Now()
-				sem <- struct{}{}
+				weight := batch[i].ResourceCost
+				if weight <= 0 {
+					weight = 1
+				}
+				if weight > limit {
+					weight = limit
+				}
+				for j := 0; j < weight; j++ {
+					sem <- struct{}{}
+				}
 				queueWaitMs := time.Since(queuedAt).Milliseconds()
-				defer func() { <-sem }()
+				defer func() {
+					for j := 0; j < weight; j++ {
+						<-sem
+					}
+				}()
 				results[i] = s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[i], queueWaitMs, stdout, stderr)
 			}(idx)
 		}
@@ -462,6 +476,9 @@ func inferDependencyFromPath(path string) string {
 		if len(parts) >= 3 {
 			return parts[0] + ":" + parts[1] + ":" + parts[2]
 		}
+	}
+	if coord, ok := dependencywiring.CoordinateFromMaterializedPath(path); ok {
+		return coord.Group + ":" + coord.Artifact + ":" + coord.Version
 	}
 	return ""
 }

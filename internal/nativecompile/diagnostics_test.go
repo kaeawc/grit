@@ -210,6 +210,44 @@ WARNING: signer #1 entry META-INF/MANIFEST.MF not protected by this signature.
 	}
 }
 
+func TestParseToolDiagnosticsClassifiesJarsignerFailuresAndWarnings(t *testing.T) {
+	records := parseToolDiagnostics("jarsigner", "stderr", `
+jarsigner: unable to open jar file: /tmp/app-release.apk
+WARNING: The signer's certificate is self-signed.
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "jarsigner_sign_failed" || records[0].Category != "signing" {
+		t.Fatalf("unexpected jarsigner failure diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "warning" || records[1].Code != "jarsigner_trust_warning" || records[1].Category != "signing" {
+		t.Fatalf("unexpected jarsigner warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesZipalignDiagnostics(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "zipalign", `
+zipalign: can't open input file: /tmp/app-release-unsigned.apk
+`, `
+WARNING: unaligned entry res/layout/main.xml
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected zipalign diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "zipalign_failed" || records[0].Category != "packaging" {
+		t.Fatalf("unexpected collected zipalign failure diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "zipalign_unaligned_entry" || records[1].Category != "packaging" {
+		t.Fatalf("unexpected collected zipalign warning diagnostic: %#v", records[1])
+	}
+}
+
 func TestRecordToolDiagnosticsCapturesAAPT2DiagnosticsAcrossStreams(t *testing.T) {
 	collector := &tooldiag.Collector{}
 	ctx := tooldiag.WithCollector(context.Background(), collector)

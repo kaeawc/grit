@@ -219,9 +219,9 @@ func (d *Downloader) fetchFile(ctx context.Context, pin lockfile.Pin, file lockf
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return fmt.Errorf("%w: GET %s", ErrNotFound, target)
+		return fmt.Errorf("%w: GET %s", ErrNotFound, redactURLUserinfo(target))
 	default:
-		return fmt.Errorf("mavenremote: GET %s: %s", target, resp.Status)
+		return fmt.Errorf("mavenremote: GET %s: %s", redactURLUserinfo(target), resp.Status)
 	}
 
 	prov := cas.Provenance{
@@ -231,7 +231,7 @@ func (d *Downloader) fetchFile(ctx context.Context, pin lockfile.Pin, file lockf
 				Downloader:   d.id,
 				RepositoryID: pin.RepositoryID,
 				Coordinate:   pin.Coordinate.String(),
-				URL:          target,
+				URL:          redactURLUserinfo(target),
 			},
 		},
 		Attributes: map[string]string{
@@ -240,7 +240,7 @@ func (d *Downloader) fetchFile(ctx context.Context, pin lockfile.Pin, file lockf
 		},
 	}
 	if _, err := store.PutExpected(ctx, resp.Body, file.Hash, prov); err != nil {
-		return fmt.Errorf("mavenremote: ingest %s: %w", target, err)
+		return fmt.Errorf("mavenremote: ingest %s: %w", redactURLUserinfo(target), err)
 	}
 	return nil
 }
@@ -255,6 +255,15 @@ func (d *Downloader) applyRequestHeaders(headers http.Header) {
 	for k, v := range d.headers {
 		headers.Set(k, v)
 	}
+}
+
+func redactURLUserinfo(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = nil
+	return u.String()
 }
 
 // targetURL returns the URL the downloader will GET for this file. If

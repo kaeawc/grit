@@ -289,6 +289,59 @@ func TestBuilderProjectsAndroidDependencyProjection(t *testing.T) {
 	}
 }
 
+func TestBuilderProjectsRepositoryMetadata(t *testing.T) {
+	prj := sampleSyncProject(t)
+	prj.Repositories = []project.Repository{
+		{
+			Name:           "central",
+			Kind:           "maven",
+			URL:            "https://repo1.maven.org/maven2/",
+			Scope:          "dependency",
+			Priority:       3,
+			Origin:         "settings",
+			OfflineAllowed: false,
+			IncludeGroups:  []string{"org.example"},
+		},
+		{
+			Name:           "local",
+			Kind:           "mavenLocal",
+			Scope:          "dependency",
+			Priority:       7,
+			Origin:         "module-build",
+			OfflineAllowed: true,
+		},
+	}
+	cfg, err := configmodel.DefaultBuilder{}.Build(prj)
+	if err != nil {
+		t.Fatalf("config model build failed: %v", err)
+	}
+	model, err := Builder{}.Build(cfg, prj)
+	if err != nil {
+		t.Fatalf("sync build failed: %v", err)
+	}
+	if len(model.Project.Repositories) != 2 {
+		t.Fatalf("expected two projected repositories, got %#v", model.Project.Repositories)
+	}
+	repos := map[string]Repository{}
+	for _, repo := range model.Project.Repositories {
+		repos[repo.Name] = repo
+	}
+	central, ok := repos["central"]
+	if !ok {
+		t.Fatalf("expected central repository in %#v", model.Project.Repositories)
+	}
+	if central.Priority != 3 || central.Origin != "settings" || central.OfflineAllowed || !sameStrings(central.IncludeGroups, []string{"org.example"}) {
+		t.Fatalf("unexpected central repository projection: %#v", central)
+	}
+	local, ok := repos["local"]
+	if !ok {
+		t.Fatalf("expected local repository in %#v", model.Project.Repositories)
+	}
+	if local.Priority != 7 || local.Origin != "module-build" || !local.OfflineAllowed {
+		t.Fatalf("unexpected local repository projection: %#v", local)
+	}
+}
+
 func TestBuilderPreservesFlavorCoordinatesWithoutGraphLookup(t *testing.T) {
 	root := t.TempDir()
 	mod := project.Module{

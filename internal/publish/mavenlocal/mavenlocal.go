@@ -35,6 +35,7 @@ import (
 
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/lockfile"
+	"github.com/kaeawc/grit/internal/mavenlocalroot"
 	"github.com/kaeawc/grit/internal/publish"
 )
 
@@ -44,11 +45,7 @@ const ID = "maven-local"
 // DefaultRoot returns the conventional Maven local repository path under
 // the user's home directory, or an empty string if HOME is unset.
 func DefaultRoot() string {
-	home := os.Getenv("HOME")
-	if home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".m2", "repository")
+	return mavenlocalroot.Default()
 }
 
 // Publisher materializes CAS blobs as Maven-layout files under a local root.
@@ -96,6 +93,9 @@ func (p *Publisher) PublishPin(ctx context.Context, pin lockfile.Pin, store cas.
 	}
 	if err := p.publishArtifactMetadata(pin.Coordinate); err != nil {
 		return fmt.Errorf("mavenlocal publish metadata %s: %w", pin.Coordinate, err)
+	}
+	if err := p.publishRemoteRepositoriesMarker(pin); err != nil {
+		return fmt.Errorf("mavenlocal publish marker %s: %w", pin.Coordinate, err)
 	}
 	return nil
 }

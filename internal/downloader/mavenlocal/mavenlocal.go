@@ -35,6 +35,7 @@ import (
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/downloader"
 	"github.com/kaeawc/grit/internal/lockfile"
+	"github.com/kaeawc/grit/internal/mavenlocalroot"
 )
 
 // ID is the stable identifier recorded in provenance for blobs sourced
@@ -44,11 +45,7 @@ const ID = "maven-local"
 // DefaultRoot returns the conventional Maven local repository path under
 // the user's home directory, or an empty string if HOME is unset.
 func DefaultRoot() string {
-	home := os.Getenv("HOME")
-	if home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".m2", "repository")
+	return mavenlocalroot.Default()
 }
 
 // Downloader reads artifact files from a Maven local repository.

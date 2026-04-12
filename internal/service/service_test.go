@@ -511,6 +511,13 @@ func TestBuildRoutesToCompiler(t *testing.T) {
 	}
 }
 
+func TestInferDependencyFromPathRecognizesMaterializedRepositoryView(t *testing.T) {
+	got := inferDependencyFromPath("/tmp/repo/.grit/worktree/materialized-m2/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar")
+	if got != "com.squareup.okhttp3:okhttp:4.12.0" {
+		t.Fatalf("unexpected dependency inference: %q", got)
+	}
+}
+
 func TestBuildRoutesJvmModuleToCompileAndTest(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)
@@ -928,6 +935,87 @@ func TestExecuteBatchRecordsQueueWaitForParallelSlots(t *testing.T) {
 	}
 	if !sawQueueWait {
 		t.Fatalf("expected at least one queued action execution, got %#v", outcomes)
+	}
+}
+
+func TestExecuteBatchUsesResourceCostForWeightedAdmission(t *testing.T) {
+	compiler := &blockingCompiler{
+		started: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	svc := NewWithCompiler(compiler)
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	batch := []configmodel.ActionScheduleStep{
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:heavy-a"),
+				Name: "compileHeavyA",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "debug",
+				},
+			},
+			WorkerClass:    "compile",
+			ResourceCost:   2,
+			MaxParallelism: 2,
+		},
+		{
+			Action: graph.Action{
+				ID:   graph.ActionID("action:heavy-b"),
+				Name: "compileHeavyB",
+				Attributes: map[string]string{
+					"operation":   "compile",
+					"modulePath":  ":app",
+					"variantName": "release",
+				},
+			},
+			WorkerClass:    "compile",
+			ResourceCost:   2,
+			MaxParallelism: 2,
+		},
+	}
+
+	done := make(chan struct{})
+	var (
+		outcomes []BuildOutcome
+		err      error
+	)
+	go func() {
+		outcomes, err = svc.executeBatch(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, 0, batch, os.Stdout, os.Stderr)
+		close(done)
+	}()
+
+	<-compiler.started
+	select {
+	case <-compiler.started:
+		t.Fatal("expected second heavy action to remain queued while the first consumes the full worker budget")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(compiler.release)
+	<-done
+
+	if err != nil {
+		t.Fatalf("executeBatch returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected two batch outcomes, got %#v", outcomes)
+	}
+	var sawQueueWait bool
+	for _, outcome := range outcomes {
+		if len(outcome.ActionExecutions) != 1 {
+			t.Fatalf("expected one action execution per outcome, got %#v", outcomes)
+		}
+		if outcome.ActionExecutions[0].QueueWaitMs > 0 {
+			sawQueueWait = true
+		}
+	}
+	if !sawQueueWait {
+		t.Fatalf("expected weighted admission to queue one heavy action, got %#v", outcomes)
 	}
 }
 

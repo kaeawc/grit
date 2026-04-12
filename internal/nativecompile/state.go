@@ -2,12 +2,9 @@ package nativecompile
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"sync"
 
-	"github.com/kaeawc/grit/internal/catalog"
-	"github.com/kaeawc/grit/internal/m2local"
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -19,10 +16,9 @@ type compileState struct {
 	externalResources map[string]androidResourceArtifact
 	depGraph          map[string]map[string]struct{}
 	parsedDeps        map[string]*modulebuild.Dependencies
-	catalogOnce       sync.Once
-	catalog           *catalog.Catalog
-	resolver          *m2local.Resolver
-	catalogErr        error
+	resolverOnce      sync.Once
+	resolver          dependencywiring.DependencyResolver
+	resolverErr       error
 	toolchainOnce     sync.Once
 	toolchain         *kotlinToolchain
 	toolchainErr      error
@@ -132,24 +128,12 @@ func (s *compileState) dependenciesForModule(buildFile string) (*modulebuild.Dep
 	return deps, nil
 }
 
-func (s *compileState) resolverForProject(prj *project.Project) (*m2local.Resolver, error) {
-	s.catalogOnce.Do(func() {
-		if len(prj.VersionCatalogs) == 0 {
-			s.catalog = &catalog.Catalog{
-				Versions:  map[string]string{},
-				Libraries: map[string]catalog.Library{},
-				Bundles:   map[string][]string{},
-			}
-		} else {
-			s.catalog, s.catalogErr = catalog.LoadAll(prj.VersionCatalogs)
-			if s.catalogErr != nil {
-				return
-			}
-		}
-		s.resolver = m2local.New(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1"), prj.RootDir, prj.Repositories, s.catalog)
+func (s *compileState) resolverForProject(prj *project.Project) (dependencywiring.DependencyResolver, error) {
+	s.resolverOnce.Do(func() {
+		s.resolver, s.resolverErr = dependencywiring.Resolver(prj, nil)
 	})
-	if s.catalogErr != nil {
-		return nil, s.catalogErr
+	if s.resolverErr != nil {
+		return nil, s.resolverErr
 	}
 	return s.resolver, nil
 }

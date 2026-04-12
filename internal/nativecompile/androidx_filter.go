@@ -45,5 +45,8 @@ func filterSupportAndroidLibraries(libs []m2local.AndroidLibrary) []m2local.Andr
 }
 
 func isLegacySupportArtifact(path string) bool {
-	return strings.Contains(path, "/com.android.support/") || strings.Contains(path, "\\com.android.support\\")
+	return strings.Contains(path, "/com.android.support/") ||
+		strings.Contains(path, "\\com.android.support\\") ||
+		strings.Contains(path, "/com/android/support/") ||
+		strings.Contains(path, "\\com\\android\\support\\")
 }

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/mavenlocalroot"
 	"github.com/kaeawc/grit/internal/pathutil"
 )
 
@@ -120,7 +121,7 @@ func parseRepositoriesBlock(block string, scope string, gradleProperties map[str
 		{pattern: `(?m)^\s*mavenCentral\(\)\s*$`, repo: Repository{Name: "mavenCentral", Kind: "mavenCentral", URL: "https://repo1.maven.org/maven2/", Scope: scope}},
 		{pattern: `(?m)^\s*gradlePluginPortal\(\)\s*$`, repo: Repository{Name: "gradlePluginPortal", Kind: "gradlePluginPortal", URL: "https://plugins.gradle.org/m2/", Scope: scope}},
 		{pattern: `(?m)^\s*jcenter\(\)\s*$`, repo: Repository{Name: "jcenter", Kind: "jcenter", URL: "https://jcenter.bintray.com/", Scope: scope}},
-		{pattern: `(?m)^\s*mavenLocal\(\)\s*$`, repo: Repository{Name: "mavenLocal", Kind: "mavenLocal", Scope: scope}},
+		{pattern: `(?m)^\s*mavenLocal\(\)\s*$`, repo: namedRepository("mavenLocal", scope)},
 	}
 	for _, candidate := range simpleCalls {
 		if regexp.MustCompile(candidate.pattern).FindStringIndex(trimmed) != nil {
@@ -217,7 +218,11 @@ func namedRepository(name, scope string) Repository {
 	case "jcenter":
 		return Repository{Name: "jcenter", Kind: "jcenter", URL: "https://jcenter.bintray.com/", Scope: scope}
 	case "mavenLocal":
-		return Repository{Name: "mavenLocal", Kind: "mavenLocal", Scope: scope}
+		repo := Repository{Name: "mavenLocal", Kind: "mavenLocal", Scope: scope}
+		if root := mavenlocalroot.Default(); root != "" {
+			repo.URL = "file://" + filepath.ToSlash(root)
+		}
+		return repo
 	default:
 		return Repository{Name: name, Kind: name, Scope: scope}
 	}

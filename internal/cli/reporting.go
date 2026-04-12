@@ -2077,6 +2077,7 @@ func androidCapabilityVariants(items []service.AndroidCapabilityVariantResult) [
 			Debuggable:                item.Debuggable,
 			SigningConfigured:         item.SigningConfigured,
 			SigningConfig:             item.SigningConfig,
+			DexMode:                   item.DexMode,
 			MinifyEnabled:             item.MinifyEnabled,
 			ShrinkResources:           item.ShrinkResources,
 			InstallTask:               item.InstallTask,

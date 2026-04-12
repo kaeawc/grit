@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2976,6 +2977,44 @@ android {
 	}
 }
 
+func TestInspectExposesRepositoryMetadata(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MAVEN_USER_HOME", "")
+	root := repositoryMetadataCLIProject(t)
+
+	var stdout, stderr strings.Builder
+	if exitCode := Run(context.Background(), []string{"inspect", "--repo", root}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("inspect exited with %d: stderr=%s", exitCode, stderr.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Result  struct {
+			Repositories []project.Repository `json:"repositories"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected inspect success, got %#v", resp)
+	}
+	if len(resp.Result.Repositories) != 3 {
+		t.Fatalf("expected 3 repositories, got %#v", resp.Result.Repositories)
+	}
+	wantSettingsURL := "file://" + filepath.ToSlash(filepath.Join(home, ".m2", "repository"))
+	if got := resp.Result.Repositories[0]; got.Name != "mavenLocal" || got.URL != wantSettingsURL || got.Priority != 0 || got.Origin != "settings" || !got.OfflineAllowed {
+		t.Fatalf("unexpected settings repository metadata: %#v", got)
+	}
+	if got := resp.Result.Repositories[1]; got.Name != "mavenCentral" || got.Priority != 1 || got.Origin != "root-build" || got.OfflineAllowed {
+		t.Fatalf("unexpected root-build repository metadata: %#v", got)
+	}
+	wantModuleURL := "file://" + filepath.ToSlash(filepath.Join(root, "local-repo")) + "/"
+	if got := resp.Result.Repositories[2]; got.URL != wantModuleURL || got.Priority != 2 || got.Origin != "module-build" || !got.OfflineAllowed {
+		t.Fatalf("unexpected module-build repository metadata: %#v", got)
+	}
+}
+
 func TestVariantImpactCommandExposesDependents(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, "settings.gradle.kts"), `
@@ -3054,6 +3093,55 @@ dependencies {
 	}
 	if !foundApp {
 		t.Fatalf("expected :app in variantImpact dependents, got %#v", resp.Result.Impact.Dependents)
+	}
+}
+
+func TestIntelliJSyncModelExposesRepositoryMetadata(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MAVEN_USER_HOME", "")
+	root := repositoryMetadataCLIProject(t)
+
+	var stdout, stderr strings.Builder
+	if exitCode := Run(context.Background(), []string{"intellijSyncModel", "--repo", root}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("intellijSyncModel exited with %d: stderr=%s", exitCode, stderr.String())
+	}
+	var resp struct {
+		Success bool `json:"success"`
+		Result  struct {
+			Model intellijsync.Model `json:"model"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected intellijSyncModel success, got %#v", resp)
+	}
+	if len(resp.Result.Model.Project.Repositories) != 3 {
+		t.Fatalf("expected 3 projected repositories, got %#v", resp.Result.Model.Project.Repositories)
+	}
+	wantModuleURL := "file://" + filepath.ToSlash(filepath.Join(root, "local-repo")) + "/"
+	wantSettingsURL := "file://" + filepath.ToSlash(filepath.Join(home, ".m2", "repository"))
+	var sawSettings, sawRoot, sawModule bool
+	for _, repo := range resp.Result.Model.Project.Repositories {
+		switch repo.Priority {
+		case 0:
+			sawSettings = repo.Name == "mavenLocal" && repo.URL == wantSettingsURL && repo.Origin == "settings" && repo.OfflineAllowed
+		case 1:
+			sawRoot = repo.Name == "mavenCentral" && repo.Origin == "root-build" && !repo.OfflineAllowed
+		case 2:
+			sawModule = repo.URL == wantModuleURL && repo.Origin == "module-build" && repo.OfflineAllowed
+		}
+	}
+	if !sawSettings {
+		t.Fatalf("unexpected projected settings repository metadata: %#v", resp.Result.Model.Project.Repositories)
+	}
+	if !sawRoot {
+		t.Fatalf("unexpected projected root-build repository metadata: %#v", resp.Result.Model.Project.Repositories)
+	}
+	if !sawModule {
+		t.Fatalf("unexpected projected module-build repository metadata: %#v", resp.Result.Model.Project.Repositories)
 	}
 }
 
@@ -3859,6 +3947,49 @@ func mustWriteFile(t *testing.T, path string, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func repositoryMetadataCLIProject(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, "settings.gradle.kts"), `
+rootProject.name = "RepositoryMetadataTest"
+dependencyResolutionManagement {
+  repositories {
+    mavenLocal()
+  }
+}
+include(":app")
+`)
+	mustWriteFile(t, filepath.Join(root, "build.gradle.kts"), `
+plugins {}
+
+allprojects {
+  repositories {
+    mavenCentral()
+  }
+}
+`)
+	appDir := filepath.Join(root, "app")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	moduleRepo := "file://" + filepath.ToSlash(filepath.Join(root, "local-repo"))
+	mustWriteFile(t, filepath.Join(appDir, "build.gradle.kts"), fmt.Sprintf(`
+plugins { alias(libs.plugins.android.application) }
+
+repositories {
+  maven {
+    url = uri(%q)
+  }
+}
+
+android {
+  namespace = "com.example.app"
+  compileSdk = 34
+}
+`, moduleRepo))
+	return root
 }
 
 func containsResolvedVariant(variants []project.ResolvedVariant, name, buildType, flavor string) bool {

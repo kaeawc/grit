@@ -9,6 +9,9 @@ import (
 )
 
 func TestParseSettingsKTSRepositories(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MAVEN_USER_HOME", "")
 	body := `
 pluginManagement {
   repositories {
@@ -64,13 +67,14 @@ include(":app", ":lib")
 	foundJCenter := false
 	foundBlockMaven := false
 	foundMavenLocal := false
+	wantMavenLocalURL := "file://" + filepath.ToSlash(filepath.Join(home, ".m2", "repository"))
 	for _, repo := range model.Repositories {
 		if repo.Scope == "plugin" && repo.Name == "google" {
 			foundGoogle = true
 			googleRepo = repo
 		}
 		if repo.Scope == "dependency" && repo.Kind == "mavenLocal" {
-			foundMavenLocal = repo.Priority == 3 && repo.Origin == "settings" && repo.OfflineAllowed
+			foundMavenLocal = repo.Priority == 3 && repo.Origin == "settings" && repo.OfflineAllowed && repo.URL == wantMavenLocalURL
 		}
 		if repo.Scope == "dependency" && repo.Name == "ExampleRepo" && repo.URL == "https://example.com/maven/" {
 			foundCustom = repo.Priority == 7 && repo.Origin == "settings" && !repo.OfflineAllowed
@@ -184,6 +188,9 @@ android {
 }
 
 func TestLoadPreservesRepositoryOrderOriginAndOfflineAllowance(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("MAVEN_USER_HOME", "")
 	root := t.TempDir()
 	testutil.WriteFile(t, root, "settings.gradle.kts", `
 rootProject.name = "RepoOrder"
@@ -230,7 +237,7 @@ repositories {
 		origin  string
 		offline bool
 	}{
-		{idx: 0, name: "mavenLocal", origin: "settings", offline: true},
+		{idx: 0, name: "mavenLocal", url: "file://" + filepath.ToSlash(filepath.Join(home, ".m2", "repository")), origin: "settings", offline: true},
 		{idx: 1, name: "google", origin: "settings", offline: false},
 		{idx: 2, name: "https://root.example.com/maven", url: "https://root.example.com/maven/", origin: "root-build", offline: false},
 		{idx: 3, name: "file:///tmp/module-repo", url: "file:///tmp/module-repo/", origin: "module-build", offline: true},

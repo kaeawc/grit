@@ -552,6 +552,9 @@ dependencies {
 	if debugCapability.Namespace != "com.example.app" || debugCapability.TestInstrumentationRunner != "androidx.test.runner.AndroidJUnitRunner" {
 		t.Fatalf("expected namespace and test runner metadata, got %#v", debugCapability)
 	}
+	if debugCapability.DexMode != "d8" {
+		t.Fatalf("expected dex mode d8 for debug variant, got %q", debugCapability.DexMode)
+	}
 	if debugCapability.Optimization.MinifyEnabled || debugCapability.Optimization.ShrinkResources || len(debugCapability.ProguardFiles) != 0 {
 		t.Fatalf("expected bounded optimization/proguard metadata, got %#v", debugCapability)
 	}
@@ -581,6 +584,19 @@ dependencies {
 	}
 	if debugCapability.AndroidTestInstallTask != "installDebugAndroidTest" || debugCapability.AndroidTestUninstallTask != "uninstallDebugAndroidTest" {
 		t.Fatalf("unexpected androidTest task aliases, got %#v", debugCapability)
+	}
+	var releaseCapability AndroidCapabilityVariantResult
+	for _, candidate := range capabilities.Variants {
+		if candidate.Name == "release" {
+			releaseCapability = candidate
+			break
+		}
+	}
+	if releaseCapability.DexMode != "r8" {
+		t.Fatalf("expected dex mode r8 for release variant, got %q", releaseCapability.DexMode)
+	}
+	if !releaseCapability.MinifyEnabled {
+		t.Fatalf("expected minify enabled for release variant, got %#v", releaseCapability)
 	}
 	variantMat, err := svc.VariantMaterialization(context.Background(), prj, ":app", debugVariant.Name)
 	if err != nil {
@@ -629,6 +645,9 @@ dependencies {
 	}
 	if variantCompatibility.BackingArtifactPath == "" {
 		t.Fatalf("expected backing artifact path metadata in variant compatibility, got %#v", variantCompatibility)
+	}
+	if variantCompatibility.DexMode != "d8" {
+		t.Fatalf("expected dex mode d8 in variant compatibility for debug, got %q", variantCompatibility.DexMode)
 	}
 	if variantCompatibility.Optimization.MinifyEnabled || variantCompatibility.Optimization.ShrinkResources || len(variantCompatibility.ProguardFiles) != 0 {
 		t.Fatalf("expected bounded optimization/proguard metadata in variant compatibility, got %#v", variantCompatibility)

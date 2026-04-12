@@ -6,6 +6,7 @@
 //	GET    /cas/<hex-hash>       → blob bytes (or 404)
 //	HEAD   /cas/<hex-hash>       → 200 or 404
 //	PUT    /cas/<hex-hash>       → upload blob bytes
+//	HEAD   /action/<hex-hash>    → 200 or 404
 //	GET    /action/<hex-hash>    → action-result JSON (or 404)
 //	PUT    /action/<hex-hash>    → store action-result JSON
 //
@@ -126,6 +127,28 @@ func (c *Client) HasBlob(ctx context.Context, hash cas.Hash) (bool, error) {
 		return false, nil
 	default:
 		return false, fmt.Errorf("remotecache: HEAD /cas/%s: %s", hash, statusError(resp))
+	}
+}
+
+// HasActionResult returns true if the server claims to have the action result.
+func (c *Client) HasActionResult(ctx context.Context, actionHash cas.Hash) (bool, error) {
+	req, err := c.newRequest(ctx, http.MethodHead, []string{"action", actionHash.String()}, nil, "")
+	if err != nil {
+		return false, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("remotecache: HEAD /action/%s: %s", actionHash, statusError(resp))
 	}
 }
 

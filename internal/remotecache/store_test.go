@@ -153,6 +153,33 @@ func TestStoreActionResultRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStoreHasActionResult(t *testing.T) {
+	store, cleanup := startStoreTestServer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	actionHash := cas.HashBytes([]byte("action"))
+	has, err := store.HasActionResult(ctx, actionHash)
+	if err != nil || has {
+		t.Fatalf("expected absent action result, got has=%v err=%v", has, err)
+	}
+
+	result := cas.ActionResult{
+		ActionHash: actionHash,
+		Outputs: []cas.NamedOutput{
+			{Role: "main", Blob: cas.BlobInfo{Hash: cas.HashBytes([]byte("output")), Size: 6}},
+		},
+	}
+	if err := store.PutActionResult(ctx, result); err != nil {
+		t.Fatalf("PutActionResult: %v", err)
+	}
+
+	has, err = store.HasActionResult(ctx, actionHash)
+	if err != nil || !has {
+		t.Fatalf("expected present action result, got has=%v err=%v", has, err)
+	}
+}
+
 func TestStoreGetNotFound(t *testing.T) {
 	store, cleanup := startStoreTestServer(t)
 	defer cleanup()

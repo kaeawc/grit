@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -144,6 +146,64 @@ func TestFetchRoundTripWithDerivedURL(t *testing.T) {
 	}
 }
 
+func TestFetchRedactsCredentialsFromBaseURLInProvenance(t *testing.T) {
+	d, fake, cleanup := startFakeMaven(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	payload := []byte("credentialed payload")
+	hash := cas.HashBytes(payload)
+	fake.set("/org/example/alpha/1.0/alpha-1.0.jar", payload)
+
+	baseURL, err := url.Parse(d.BaseURL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseURL.User = url.UserPassword("alice", "secret")
+
+	credentialed, err := New(baseURL.String() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := cas.NewFilesystemStore(t.TempDir())
+	pin := lockfile.Pin{
+		Coordinate:   lockfile.Coordinate{Group: "org.example", Artifact: "alpha", Version: "1.0"},
+		RepositoryID: "central",
+		Files: []lockfile.PinFile{
+			{Kind: lockfile.FileKindPrimary, Name: "alpha-1.0.jar", Size: int64(len(payload)), Hash: hash},
+		},
+	}
+	if err := credentialed.Fetch(ctx, pin, store); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	fake.mu.Lock()
+	req := fake.lastReq
+	fake.mu.Unlock()
+	if req == nil {
+		t.Fatalf("no request captured")
+	}
+	user, pass, ok := req.BasicAuth()
+	if !ok || user != "alice" || pass != "secret" {
+		t.Fatalf("expected basic auth from credentialed base URL, got %q %q %v", user, pass, ok)
+	}
+
+	prov, err := store.Provenance(ctx, hash)
+	if err != nil {
+		t.Fatalf("Provenance: %v", err)
+	}
+	if prov.Source.Download == nil {
+		t.Fatalf("download provenance missing")
+	}
+	if strings.Contains(prov.Source.Download.URL, "alice") || strings.Contains(prov.Source.Download.URL, "secret") {
+		t.Fatalf("provenance URL leaked credentials: %s", prov.Source.Download.URL)
+	}
+	if !hasSuffix(prov.Source.Download.URL, "/org/example/alpha/1.0/alpha-1.0.jar") {
+		t.Fatalf("provenance URL has wrong path: %s", prov.Source.Download.URL)
+	}
+}
+
 func TestFetchHonorsPinFileURL(t *testing.T) {
 	d, fake, cleanup := startFakeMaven(t)
 	defer cleanup()
@@ -172,6 +232,57 @@ func TestFetchHonorsPinFileURL(t *testing.T) {
 	}
 	if has, _ := store.Has(ctx, hash); !has {
 		t.Fatalf("blob not fetched via pin URL override")
+	}
+}
+
+func TestFetchRedactsCredentialsFromExplicitPinURLInErrors(t *testing.T) {
+	fake := newFakeMaven()
+	ts := httptest.NewServer(fake.handler())
+	defer ts.Close()
+
+	credentialedURL, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentialedURL.User = url.UserPassword("bob", "topsecret")
+
+	d, err := New(credentialedURL.String() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := cas.NewFilesystemStore(t.TempDir())
+	pin := lockfile.Pin{
+		Coordinate: lockfile.Coordinate{Group: "unused", Artifact: "unused", Version: "1"},
+		Files: []lockfile.PinFile{
+			{
+				Kind: lockfile.FileKindPrimary,
+				Name: "artifact.jar",
+				Hash: cas.HashBytes([]byte("x")),
+				URL:  credentialedURL.String() + "/custom/path/to/artifact.jar",
+			},
+		},
+	}
+	err = d.Fetch(context.Background(), pin, store)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if strings.Contains(err.Error(), "bob") || strings.Contains(err.Error(), "topsecret") {
+		t.Fatalf("error leaked credentials: %v", err)
+	}
+
+	fake.mu.Lock()
+	req := fake.lastReq
+	fake.mu.Unlock()
+	if req == nil {
+		t.Fatalf("no request captured")
+	}
+	user, pass, ok := req.BasicAuth()
+	if !ok || user != "bob" || pass != "topsecret" {
+		t.Fatalf("expected basic auth from credentialed pin URL, got %q %q %v", user, pass, ok)
 	}
 }
 

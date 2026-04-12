@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
@@ -66,7 +67,7 @@ func (c *Compiler) resolveMainDependencies(ctx context.Context, prj *project.Pro
 	if err != nil {
 		return out, err
 	}
-	var resolver *m2local.Resolver
+	var resolver dependencywiring.DependencyResolver
 	err = c.track("loadCatalog", func() error {
 		var innerErr error
 		resolver, innerErr = state.resolverForProject(prj)

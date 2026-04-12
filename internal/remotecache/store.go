@@ -114,6 +114,12 @@ func (s *Store) Has(ctx context.Context, h cas.Hash) (bool, error) {
 	return s.client.HasBlob(ctx, h)
 }
 
+// HasActionResult returns true if the remote cache claims to have the
+// action result identified by actionHash.
+func (s *Store) HasActionResult(ctx context.Context, actionHash cas.Hash) (bool, error) {
+	return s.client.HasActionResult(ctx, actionHash)
+}
+
 // Provenance implements cas.Store. Remote stores do not track provenance,
 // so this method always returns cas.ErrNotFound.
 func (s *Store) Provenance(_ context.Context, _ cas.Hash) (cas.Provenance, error) {

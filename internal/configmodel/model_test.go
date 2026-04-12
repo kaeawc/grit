@@ -337,8 +337,14 @@ func TestModelResolvedVariantsExposeStructuredCoordinates(t *testing.T) {
 	if len(resolved[0].ClasspathSnapshotIDs) == 0 || len(resolved[0].SourceRoots) == 0 || len(resolved[0].ManifestPaths) == 0 || len(resolved[0].ProducedArtifactIDs) == 0 {
 		t.Fatalf("expected generated-artifact and packaging metadata on resolved variant, got %#v", resolved[0])
 	}
+	if resolved[0].DexMode != "d8" {
+		t.Fatalf("expected dex mode d8 for debug variant, got %q", resolved[0].DexMode)
+	}
 	if !resolved[1].SigningConfigured || !resolved[1].MinifyEnabled || !resolved[1].ShrinkResources || resolved[1].Debuggable {
 		t.Fatalf("expected top-level resolved variant metadata for release app variant, got %#v", resolved[1])
+	}
+	if resolved[1].DexMode != "r8" {
+		t.Fatalf("expected dex mode r8 for release variant, got %q", resolved[1].DexMode)
 	}
 	jvmVariant, ok := model.ResolvedVariant(":lib", "main")
 	if !ok {

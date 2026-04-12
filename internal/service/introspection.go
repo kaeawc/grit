@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/kaeawc/grit/internal/cachepolicy"
-	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/configmodel"
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/integration"
@@ -251,6 +251,7 @@ type AndroidCapabilityVariantResult struct {
 	SigningKeyAlias           string                            `json:"signingKeyAlias,omitempty"`
 	HasStorePassword          bool                              `json:"hasStorePassword,omitempty"`
 	HasKeyPassword            bool                              `json:"hasKeyPassword,omitempty"`
+	DexMode                   string                            `json:"dexMode,omitempty"`
 	MinifyEnabled             bool                              `json:"minifyEnabled,omitempty"`
 	ShrinkResources           bool                              `json:"shrinkResources,omitempty"`
 	InstallTask               string                            `json:"installTask,omitempty"`
@@ -461,6 +462,7 @@ type VariantCompatibilityResult struct {
 	Debuggable                bool                                   `json:"debuggable,omitempty"`
 	SigningConfigured         bool                                   `json:"signingConfigured,omitempty"`
 	SigningConfig             string                                 `json:"signingConfig,omitempty"`
+	DexMode                   string                                 `json:"dexMode,omitempty"`
 	MinifyEnabled             bool                                   `json:"minifyEnabled,omitempty"`
 	ShrinkResources           bool                                   `json:"shrinkResources,omitempty"`
 	MaterializationID         string                                 `json:"materializationId,omitempty"`
@@ -1514,6 +1516,7 @@ func (s *Service) AndroidCapabilities(ctx context.Context, prj *project.Project,
 			SigningKeyAlias:           signing.KeyAlias,
 			HasStorePassword:          signing.StorePassword != "",
 			HasKeyPassword:            signing.KeyPassword != "",
+			DexMode:                   variant.DexMode,
 			MinifyEnabled:             variant.MinifyEnabled,
 			ShrinkResources:           variant.ShrinkResources,
 			InstallTask:               variant.InstallTask,
@@ -2173,6 +2176,7 @@ func (s *Service) VariantCompatibility(ctx context.Context, prj *project.Project
 		Debuggable:                variant.Debuggable,
 		SigningConfigured:         variant.SigningConfigured,
 		SigningConfig:             variant.SigningConfig,
+		DexMode:                   variant.DexMode,
 		MinifyEnabled:             variant.MinifyEnabled,
 		ShrinkResources:           variant.ShrinkResources,
 		MaterializationID:         provenance.MaterializationID,
@@ -3470,17 +3474,7 @@ func (s *Service) ResolverReport(mod *project.Module, prj *project.Project) (Res
 	if err != nil {
 		return ResolverReportResult{}, err
 	}
-	cat, err := loadCatalogForProject(prj)
-	if err != nil {
-		return ResolverReportResult{}, err
-	}
-	product, err := m2local.LoadCachedResolvedProduct(
-		resolverCacheRoot(),
-		prj.RootDir,
-		prj.Repositories,
-		cat,
-		deps,
-	)
+	product, err := dependencywiring.LoadCachedResolvedProduct(prj, deps)
 	if err != nil {
 		return ResolverReportResult{}, err
 	}
@@ -3513,11 +3507,10 @@ func (s *Service) CacheTopology(prj *project.Project) (CacheTopologyResult, erro
 	if prj == nil {
 		return CacheTopologyResult{}, os.ErrInvalid
 	}
-	cat, err := loadCatalogForProject(prj)
+	topology, err := dependencywiring.CacheTopology(prj)
 	if err != nil {
 		return CacheTopologyResult{}, err
 	}
-	topology := m2local.New(resolverCacheRoot(), prj.RootDir, prj.Repositories, cat).Topology()
 	return CacheTopologyResult{
 		Repo:     prj.RootDir,
 		Topology: topology,
@@ -3625,32 +3618,4 @@ func refsToStrings(refs []modulebuild.Ref) []string {
 		out = append(out, ref.Kind+":"+ref.Value)
 	}
 	return out
-}
-
-func resolverCacheRoot() string {
-	return filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1")
-}
-
-func loadCatalogForProject(prj *project.Project) (*catalog.Catalog, error) {
-	if prj == nil || len(prj.VersionCatalogs) == 0 {
-		return &catalog.Catalog{
-			Versions:  map[string]string{},
-			Libraries: map[string]catalog.Library{},
-			Bundles:   map[string][]string{},
-		}, nil
-	}
-	var existing []string
-	for _, path := range prj.VersionCatalogs {
-		if _, err := os.Stat(path); err == nil {
-			existing = append(existing, path)
-		}
-	}
-	if len(existing) == 0 {
-		return &catalog.Catalog{
-			Versions:  map[string]string{},
-			Libraries: map[string]catalog.Library{},
-			Bundles:   map[string][]string{},
-		}, nil
-	}
-	return catalog.LoadAll(existing)
 }

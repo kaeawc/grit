@@ -163,6 +163,18 @@ func TestFilterKnownRuntimeDuplicatesDropsLiveDataCoreKtxWhenCorePresent(t *test
 	}
 }
 
+func TestArtifactKeyVersionRecognizesMaterializedMavenLayout(t *testing.T) {
+	t.Parallel()
+
+	key, version, ok := artifactKeyVersion("/tmp/repo/.grit/worktree/materialized-m2/androidx/lifecycle/lifecycle-livedata-core/2.10.0/lifecycle-livedata-core-2.10.0.jar")
+	if !ok {
+		t.Fatal("expected materialized dependency path to parse")
+	}
+	if key != "androidx.lifecycle:lifecycle-livedata-core" || version != "2.10.0" {
+		t.Fatalf("unexpected parsed artifact identity: %s %s", key, version)
+	}
+}
+
 func TestDiscoverJUnitTestsCachedWritesFilteredCache(t *testing.T) {
 	t.Parallel()
 

@@ -1,7 +1,6 @@
 package lockfile
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -60,7 +59,7 @@ func TestVerifyIgnoresTimestampAndOrderingNoise(t *testing.T) {
 	}
 
 	result := Verify(expected, actual)
-	if !result.Match || len(result.Issues) != 0 {
+	if !result.Match || len(result.Mismatches) != 0 {
 		t.Fatalf("expected semantic match, got %#v", result)
 	}
 }
@@ -115,16 +114,37 @@ func TestVerifyReportsMissingUnexpectedAndDriftedPins(t *testing.T) {
 	if result.Match {
 		t.Fatalf("expected mismatch, got %#v", result)
 	}
-	joined := strings.Join(result.Issues, "\n")
-	for _, want := range []string{
-		"missing pin: org.ex:beta:2.0|central",
-		"unexpected pin: org.ex:gamma:3.0|central",
-		"hash mismatch for org.ex:alpha:1.0|central file primary|alpha-1.0.jar",
-		"size mismatch for org.ex:alpha:1.0|central file primary|alpha-1.0.jar",
-		"url mismatch for org.ex:alpha:1.0|central file primary|alpha-1.0.jar",
-	} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("expected issue containing %q, got %s", want, joined)
+	if len(result.Mismatches) != 5 {
+		t.Fatalf("expected 5 mismatches, got %#v", result)
+	}
+	assertMismatch := func(kind MismatchKind, field string) Mismatch {
+		t.Helper()
+		for _, mismatch := range result.Mismatches {
+			if mismatch.Kind == kind && mismatch.Field == field {
+				return mismatch
+			}
 		}
+		t.Fatalf("expected mismatch kind %q field %q, got %#v", kind, field, result.Mismatches)
+		return Mismatch{}
+	}
+	missing := assertMismatch(MismatchKindMissingPin, "")
+	if missing.Coordinate != (Coordinate{Group: "org.ex", Artifact: "beta", Version: "2.0"}) || missing.RepositoryID != "central" {
+		t.Fatalf("unexpected missing pin mismatch: %#v", missing)
+	}
+	unexpected := assertMismatch(MismatchKindUnexpectedPin, "")
+	if unexpected.Coordinate != (Coordinate{Group: "org.ex", Artifact: "gamma", Version: "3.0"}) || unexpected.RepositoryID != "central" {
+		t.Fatalf("unexpected unexpected pin mismatch: %#v", unexpected)
+	}
+	hash := assertMismatch(MismatchKindField, "hash")
+	if hash.FileKind != FileKindPrimary || hash.FileName != "alpha-1.0.jar" {
+		t.Fatalf("unexpected hash mismatch: %#v", hash)
+	}
+	size := assertMismatch(MismatchKindField, "size")
+	if size.Expected != "1" || size.Actual != "99" {
+		t.Fatalf("unexpected size mismatch values: %#v", size)
+	}
+	url := assertMismatch(MismatchKindField, "url")
+	if url.Expected != "https://example/alpha-1.0.jar" || url.Actual != "https://mirror/alpha-1.0.jar" {
+		t.Fatalf("unexpected url mismatch values: %#v", url)
 	}
 }

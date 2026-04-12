@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/kaeawc/grit/internal/cas"
 )
@@ -54,6 +55,7 @@ type ProbeRecord struct {
 	Operation        ProbeOperation `json:"operation"`
 	Tier             int            `json:"tier"`
 	Outcome          ProbeOutcome   `json:"outcome"`
+	DurationMs       int64          `json:"durationMs,omitempty"`
 	Promoted         bool           `json:"promoted,omitempty"`
 	PromotionTargets []int          `json:"promotionTargets,omitempty"`
 	Error            string         `json:"error,omitempty"`
@@ -66,6 +68,10 @@ type ProbeRecord struct {
 // on reads and misses at lower tiers.
 type Store struct {
 	tiers []cas.Store
+}
+
+type actionResultHaver interface {
+	HasActionResult(context.Context, cas.Hash) (bool, error)
 }
 
 // New returns a Store composing the given tiers in probe order. The
@@ -112,13 +118,15 @@ func (s *Store) PutBytesExpected(ctx context.Context, data []byte, expected cas.
 func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadCloser, []ProbeRecord, error) {
 	var records []ProbeRecord
 	for i, tier := range s.tiers {
+		start := time.Now()
 		rc, err := tier.Get(ctx, h)
 		if err == nil {
 			if i == 0 {
 				records = append(records, ProbeRecord{
-					Operation: ProbeOperationGet,
-					Tier:      i,
-					Outcome:   ProbeOutcomeHit,
+					Operation:  ProbeOperationGet,
+					Tier:       i,
+					Outcome:    ProbeOutcomeHit,
+					DurationMs: time.Since(start).Milliseconds(),
 				})
 				return rc, records, nil
 			}
@@ -126,10 +134,11 @@ func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadClo
 			_ = rc.Close()
 			if readErr != nil {
 				return nil, append(records, ProbeRecord{
-					Operation: ProbeOperationGet,
-					Tier:      i,
-					Outcome:   ProbeOutcomeError,
-					Error:     readErr.Error(),
+					Operation:  ProbeOperationGet,
+					Tier:       i,
+					Outcome:    ProbeOutcomeError,
+					DurationMs: time.Since(start).Milliseconds(),
+					Error:      readErr.Error(),
 				}), readErr
 			}
 			targets := promotionTargets(i)
@@ -137,6 +146,7 @@ func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadClo
 				Operation:        ProbeOperationGet,
 				Tier:             i,
 				Outcome:          ProbeOutcomeHit,
+				DurationMs:       time.Since(start).Milliseconds(),
 				Promoted:         len(targets) > 0,
 				PromotionTargets: targets,
 			})
@@ -145,16 +155,18 @@ func (s *Store) GetWithProbeRecords(ctx context.Context, h cas.Hash) (io.ReadClo
 		}
 		if !errors.Is(err, cas.ErrNotFound) {
 			return nil, append(records, ProbeRecord{
-				Operation: ProbeOperationGet,
-				Tier:      i,
-				Outcome:   ProbeOutcomeError,
-				Error:     err.Error(),
+				Operation:  ProbeOperationGet,
+				Tier:       i,
+				Outcome:    ProbeOutcomeError,
+				DurationMs: time.Since(start).Milliseconds(),
+				Error:      err.Error(),
 			}), fmt.Errorf("tieredcas: tier %d Get: %w", i, err)
 		}
 		records = append(records, ProbeRecord{
-			Operation: ProbeOperationGet,
-			Tier:      i,
-			Outcome:   ProbeOutcomeMiss,
+			Operation:  ProbeOperationGet,
+			Tier:       i,
+			Outcome:    ProbeOutcomeMiss,
+			DurationMs: time.Since(start).Milliseconds(),
 		})
 	}
 	return nil, records, cas.ErrNotFound
@@ -204,6 +216,36 @@ func (s *Store) Has(ctx context.Context, h cas.Hash) (bool, error) {
 	return false, nil
 }
 
+// HasActionResult reports whether any tier can serve the action result
+// identified by actionHash. Tiers that expose a dedicated metadata query
+// use it directly; tiers that do not fall back to GetActionResult.
+func (s *Store) HasActionResult(ctx context.Context, actionHash cas.Hash) (bool, error) {
+	for i, tier := range s.tiers {
+		if haver, ok := tier.(actionResultHaver); ok {
+			has, err := haver.HasActionResult(ctx, actionHash)
+			if err != nil {
+				return false, fmt.Errorf("tieredcas: tier %d HasActionResult: %w", i, err)
+			}
+			if has {
+				return true, nil
+			}
+			continue
+		}
+		result, err := tier.GetActionResult(ctx, actionHash)
+		if err != nil {
+			if errors.Is(err, cas.ErrNotFound) {
+				continue
+			}
+			return false, fmt.Errorf("tieredcas: tier %d GetActionResult: %w", i, err)
+		}
+		if result.ActionHash != actionHash {
+			return false, fmt.Errorf("tieredcas: tier %d GetActionResult returned mismatched action hash %s", i, result.ActionHash)
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 // Provenance returns the provenance recorded in the primary tier.
 // Upstream tiers typically do not track provenance and are not consulted.
 func (s *Store) Provenance(ctx context.Context, h cas.Hash) (cas.Provenance, error) {
@@ -228,12 +270,14 @@ func (s *Store) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.A
 func (s *Store) GetActionResultWithProbeRecords(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, []ProbeRecord, error) {
 	var records []ProbeRecord
 	for i, tier := range s.tiers {
+		start := time.Now()
 		result, err := tier.GetActionResult(ctx, actionHash)
 		if err == nil {
 			record := ProbeRecord{
-				Operation: ProbeOperationGetActionResult,
-				Tier:      i,
-				Outcome:   ProbeOutcomeHit,
+				Operation:  ProbeOperationGetActionResult,
+				Tier:       i,
+				Outcome:    ProbeOutcomeHit,
+				DurationMs: time.Since(start).Milliseconds(),
 			}
 			if i > 0 {
 				record.Promoted = true
@@ -245,16 +289,18 @@ func (s *Store) GetActionResultWithProbeRecords(ctx context.Context, actionHash 
 		}
 		if !errors.Is(err, cas.ErrNotFound) {
 			return cas.ActionResult{}, append(records, ProbeRecord{
-				Operation: ProbeOperationGetActionResult,
-				Tier:      i,
-				Outcome:   ProbeOutcomeError,
-				Error:     err.Error(),
+				Operation:  ProbeOperationGetActionResult,
+				Tier:       i,
+				Outcome:    ProbeOutcomeError,
+				DurationMs: time.Since(start).Milliseconds(),
+				Error:      err.Error(),
 			}), fmt.Errorf("tieredcas: tier %d GetActionResult: %w", i, err)
 		}
 		records = append(records, ProbeRecord{
-			Operation: ProbeOperationGetActionResult,
-			Tier:      i,
-			Outcome:   ProbeOutcomeMiss,
+			Operation:  ProbeOperationGetActionResult,
+			Tier:       i,
+			Outcome:    ProbeOutcomeMiss,
+			DurationMs: time.Since(start).Milliseconds(),
 		})
 	}
 	return cas.ActionResult{}, records, cas.ErrNotFound

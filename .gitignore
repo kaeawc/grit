@@ -25,6 +25,7 @@ vendor/
 scratch/
 roadmap/
 .tmpcheck/
+.loop/
 
 # Stray local artifact caches at the repo root.
 # grit's resolver should write these under ~/.grit/caches/, not into the repo.

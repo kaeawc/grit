@@ -3,14 +3,45 @@ package lockfile
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 )
+
+// MismatchKind categorizes one semantic difference between two lockfiles.
+type MismatchKind string
+
+const (
+	MismatchKindPinCount       MismatchKind = "pin_count"
+	MismatchKindMissingPin     MismatchKind = "missing_pin"
+	MismatchKindUnexpectedPin  MismatchKind = "unexpected_pin"
+	MismatchKindDuplicatePin   MismatchKind = "duplicate_pin"
+	MismatchKindField          MismatchKind = "field_mismatch"
+	MismatchKindFileCount      MismatchKind = "file_count"
+	MismatchKindMissingFile    MismatchKind = "missing_file"
+	MismatchKindUnexpectedFile MismatchKind = "unexpected_file"
+	MismatchKindDuplicateFile  MismatchKind = "duplicate_file"
+)
+
+// Mismatch describes one semantic difference between two lockfiles.
+type Mismatch struct {
+	Kind         MismatchKind `json:"kind"`
+	Coordinate   Coordinate   `json:"coordinate,omitempty"`
+	RepositoryID string       `json:"repositoryId,omitempty"`
+	FileKind     FileKind     `json:"fileKind,omitempty"`
+	FileName     string       `json:"fileName,omitempty"`
+	Field        string       `json:"field,omitempty"`
+	Expected     string       `json:"expected,omitempty"`
+	Actual       string       `json:"actual,omitempty"`
+}
 
 // VerifyResult describes whether two lockfiles are semantically equivalent.
 // GeneratedAt and GritVersion are intentionally ignored so callers can use
-// this as a CI gate over resolver output without timestamp churn causing drift.
+// this as a CI gate over freshly produced resolver output without timestamp
+// churn causing drift.
 type VerifyResult struct {
-	Match  bool     `json:"match"`
-	Issues []string `json:"issues,omitempty"`
+	Match      bool       `json:"match"`
+	Mismatches []Mismatch `json:"mismatches,omitempty"`
 }
 
 // Verify compares two lockfiles after canonicalization and returns a structured
@@ -20,95 +51,272 @@ func Verify(expected, actual Lockfile) VerifyResult {
 	expected = expected.Canonicalize()
 	actual = actual.Canonicalize()
 
-	var issues []string
+	var mismatches []Mismatch
 	if len(expected.Pins) != len(actual.Pins) {
-		issues = append(issues, fmt.Sprintf("pin count mismatch: expected %d got %d", len(expected.Pins), len(actual.Pins)))
+		mismatches = append(mismatches, Mismatch{
+			Kind:     MismatchKindPinCount,
+			Field:    "pins",
+			Expected: strconv.Itoa(len(expected.Pins)),
+			Actual:   strconv.Itoa(len(actual.Pins)),
+		})
 	}
 
-	expectedByKey := make(map[string]Pin, len(expected.Pins))
-	for _, pin := range expected.Pins {
-		expectedByKey[verifyPinKey(pin)] = pin
-	}
-	actualByKey := make(map[string]Pin, len(actual.Pins))
-	for _, pin := range actual.Pins {
-		actualByKey[verifyPinKey(pin)] = pin
-	}
+	expectedByKey, expectedDupes := indexPins(expected.Pins)
+	actualByKey, actualDupes := indexPins(actual.Pins)
+	mismatches = append(mismatches, expectedDupes...)
+	mismatches = append(mismatches, actualDupes...)
 
-	for key, expectedPin := range expectedByKey {
+	expectedKeys := sortedKeys(expectedByKey)
+	actualKeys := sortedKeys(actualByKey)
+
+	for _, key := range expectedKeys {
+		expectedPin := expectedByKey[key]
 		actualPin, ok := actualByKey[key]
 		if !ok {
-			issues = append(issues, fmt.Sprintf("missing pin: %s", key))
+			mismatches = append(mismatches, missingPinMismatch(expectedPin))
 			continue
 		}
-		issues = append(issues, verifyPin(expectedPin, actualPin)...)
+		mismatches = append(mismatches, verifyPin(expectedPin, actualPin)...)
 	}
-	for key := range actualByKey {
+	for _, key := range actualKeys {
+		actualPin := actualByKey[key]
 		if _, ok := expectedByKey[key]; !ok {
-			issues = append(issues, fmt.Sprintf("unexpected pin: %s", key))
+			mismatches = append(mismatches, unexpectedPinMismatch(actualPin))
 		}
 	}
 
 	return VerifyResult{
-		Match:  len(issues) == 0,
-		Issues: issues,
+		Match:      len(mismatches) == 0,
+		Mismatches: mismatches,
 	}
+}
+
+func indexPins(pins []Pin) (map[string]Pin, []Mismatch) {
+	out := make(map[string]Pin, len(pins))
+	var mismatches []Mismatch
+	for _, pin := range pins {
+		key := verifyPinKey(pin)
+		if _, exists := out[key]; exists {
+			mismatches = append(mismatches, Mismatch{
+				Kind:         MismatchKindDuplicatePin,
+				Coordinate:   pin.Coordinate,
+				RepositoryID: pin.RepositoryID,
+				Field:        "pins",
+				Expected:     "unique pin key",
+				Actual:       key,
+			})
+			continue
+		}
+		out[key] = pin
+	}
+	return out, mismatches
+}
+
+func sortedKeys[K ~string, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	return keys
 }
 
 func verifyPinKey(pin Pin) string {
 	return pin.Coordinate.String() + "|" + pin.RepositoryID
 }
 
-func verifyPin(expected, actual Pin) []string {
-	var issues []string
-	prefix := verifyPinKey(expected)
+func verifyPin(expected, actual Pin) []Mismatch {
+	var mismatches []Mismatch
 
 	if !reflect.DeepEqual(expected.Attributes, actual.Attributes) {
-		issues = append(issues, fmt.Sprintf("attributes mismatch for %s", prefix))
+		mismatches = append(mismatches, Mismatch{
+			Kind:         MismatchKindField,
+			Coordinate:   expected.Coordinate,
+			RepositoryID: expected.RepositoryID,
+			Field:        "attributes",
+			Expected:     formatStringMap(expected.Attributes),
+			Actual:       formatStringMap(actual.Attributes),
+		})
 	}
 	if !reflect.DeepEqual(expected.Capabilities, actual.Capabilities) {
-		issues = append(issues, fmt.Sprintf("capabilities mismatch for %s: expected %v got %v", prefix, expected.Capabilities, actual.Capabilities))
+		mismatches = append(mismatches, Mismatch{
+			Kind:         MismatchKindField,
+			Coordinate:   expected.Coordinate,
+			RepositoryID: expected.RepositoryID,
+			Field:        "capabilities",
+			Expected:     formatStrings(expected.Capabilities),
+			Actual:       formatStrings(actual.Capabilities),
+		})
 	}
 	if !reflect.DeepEqual(expected.Dependencies, actual.Dependencies) {
-		issues = append(issues, fmt.Sprintf("dependencies mismatch for %s: expected %v got %v", prefix, expected.Dependencies, actual.Dependencies))
+		mismatches = append(mismatches, Mismatch{
+			Kind:         MismatchKindField,
+			Coordinate:   expected.Coordinate,
+			RepositoryID: expected.RepositoryID,
+			Field:        "dependencies",
+			Expected:     formatCoordinates(expected.Dependencies),
+			Actual:       formatCoordinates(actual.Dependencies),
+		})
 	}
 	if len(expected.Files) != len(actual.Files) {
-		issues = append(issues, fmt.Sprintf("file count mismatch for %s: expected %d got %d", prefix, len(expected.Files), len(actual.Files)))
+		mismatches = append(mismatches, Mismatch{
+			Kind:         MismatchKindFileCount,
+			Coordinate:   expected.Coordinate,
+			RepositoryID: expected.RepositoryID,
+			Field:        "files",
+			Expected:     strconv.Itoa(len(expected.Files)),
+			Actual:       strconv.Itoa(len(actual.Files)),
+		})
 	}
 
-	expectedFiles := make(map[string]PinFile, len(expected.Files))
-	for _, file := range expected.Files {
-		expectedFiles[verifyFileKey(file)] = file
-	}
-	actualFiles := make(map[string]PinFile, len(actual.Files))
-	for _, file := range actual.Files {
-		actualFiles[verifyFileKey(file)] = file
-	}
+	expectedFiles, expectedDupes := indexFiles(expected)
+	actualFiles, actualDupes := indexFiles(actual)
+	mismatches = append(mismatches, expectedDupes...)
+	mismatches = append(mismatches, actualDupes...)
 
-	for key, expectedFile := range expectedFiles {
+	expectedFileKeys := sortedKeys(expectedFiles)
+	actualFileKeys := sortedKeys(actualFiles)
+
+	for _, key := range expectedFileKeys {
+		expectedFile := expectedFiles[key]
 		actualFile, ok := actualFiles[key]
 		if !ok {
-			issues = append(issues, fmt.Sprintf("missing file for %s: %s", prefix, key))
+			mismatches = append(mismatches, missingFileMismatch(expected, expectedFile))
 			continue
 		}
 		if expectedFile.Hash != actualFile.Hash {
-			issues = append(issues, fmt.Sprintf("hash mismatch for %s file %s: expected %s got %s", prefix, key, expectedFile.Hash, actualFile.Hash))
+			mismatches = append(mismatches, fileFieldMismatch(expected, expectedFile, "hash", expectedFile.Hash.String(), actualFile.Hash.String()))
 		}
 		if expectedFile.Size != actualFile.Size {
-			issues = append(issues, fmt.Sprintf("size mismatch for %s file %s: expected %d got %d", prefix, key, expectedFile.Size, actualFile.Size))
+			mismatches = append(mismatches, fileFieldMismatch(expected, expectedFile, "size", strconv.FormatInt(expectedFile.Size, 10), strconv.FormatInt(actualFile.Size, 10)))
 		}
 		if expectedFile.URL != actualFile.URL {
-			issues = append(issues, fmt.Sprintf("url mismatch for %s file %s: expected %q got %q", prefix, key, expectedFile.URL, actualFile.URL))
+			mismatches = append(mismatches, fileFieldMismatch(expected, expectedFile, "url", expectedFile.URL, actualFile.URL))
 		}
 	}
-	for key := range actualFiles {
+	for _, key := range actualFileKeys {
 		if _, ok := expectedFiles[key]; !ok {
-			issues = append(issues, fmt.Sprintf("unexpected file for %s: %s", prefix, key))
+			mismatches = append(mismatches, unexpectedFileMismatch(actual, actualFiles[key]))
 		}
 	}
 
-	return issues
+	return mismatches
 }
 
 func verifyFileKey(file PinFile) string {
 	return string(file.Kind) + "|" + file.Name
+}
+
+func indexFiles(pin Pin) (map[string]PinFile, []Mismatch) {
+	out := make(map[string]PinFile, len(pin.Files))
+	var mismatches []Mismatch
+	for _, file := range pin.Files {
+		key := verifyFileKey(file)
+		if _, exists := out[key]; exists {
+			mismatches = append(mismatches, Mismatch{
+				Kind:         MismatchKindDuplicateFile,
+				Coordinate:   pin.Coordinate,
+				RepositoryID: pin.RepositoryID,
+				FileKind:     file.Kind,
+				FileName:     file.Name,
+				Field:        "files",
+				Expected:     "unique file key",
+				Actual:       key,
+			})
+			continue
+		}
+		out[key] = file
+	}
+	return out, mismatches
+}
+
+func missingPinMismatch(pin Pin) Mismatch {
+	return Mismatch{
+		Kind:         MismatchKindMissingPin,
+		Coordinate:   pin.Coordinate,
+		RepositoryID: pin.RepositoryID,
+		Expected:     "present",
+		Actual:       "missing",
+	}
+}
+
+func unexpectedPinMismatch(pin Pin) Mismatch {
+	return Mismatch{
+		Kind:         MismatchKindUnexpectedPin,
+		Coordinate:   pin.Coordinate,
+		RepositoryID: pin.RepositoryID,
+		Expected:     "missing",
+		Actual:       "present",
+	}
+}
+
+func missingFileMismatch(pin Pin, file PinFile) Mismatch {
+	return Mismatch{
+		Kind:         MismatchKindMissingFile,
+		Coordinate:   pin.Coordinate,
+		RepositoryID: pin.RepositoryID,
+		FileKind:     file.Kind,
+		FileName:     file.Name,
+		Expected:     "present",
+		Actual:       "missing",
+	}
+}
+
+func unexpectedFileMismatch(pin Pin, file PinFile) Mismatch {
+	return Mismatch{
+		Kind:         MismatchKindUnexpectedFile,
+		Coordinate:   pin.Coordinate,
+		RepositoryID: pin.RepositoryID,
+		FileKind:     file.Kind,
+		FileName:     file.Name,
+		Expected:     "missing",
+		Actual:       "present",
+	}
+}
+
+func fileFieldMismatch(pin Pin, file PinFile, field, expected, actual string) Mismatch {
+	return Mismatch{
+		Kind:         MismatchKindField,
+		Coordinate:   pin.Coordinate,
+		RepositoryID: pin.RepositoryID,
+		FileKind:     file.Kind,
+		FileName:     file.Name,
+		Field:        field,
+		Expected:     expected,
+		Actual:       actual,
+	}
+}
+
+func formatStringMap(m map[string]string) string {
+	if len(m) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", key, m[key]))
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+func formatStrings(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	return "[" + strings.Join(values, ",") + "]"
+}
+
+func formatCoordinates(values []Coordinate) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, value.String())
+	}
+	return "[" + strings.Join(parts, ",") + "]"
 }

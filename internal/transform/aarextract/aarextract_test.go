@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/kaeawc/grit/internal/cas"
@@ -54,6 +55,10 @@ func TestExtractProducesClassesJarAndManifest(t *testing.T) {
 		t.Fatalf("manifest hash mismatch")
 	}
 
+	if _, ok := result.Output(RoleResourceTree); !ok {
+		t.Fatalf("resource-tree output missing")
+	}
+
 	// Verify the output blobs are actually retrievable from the store.
 	for _, out := range result.Outputs {
 		rc, err := store.Get(ctx, out.Blob.Hash)
@@ -68,6 +73,11 @@ func TestExtractProducesClassesJarAndManifest(t *testing.T) {
 			want = classesBody
 		case RoleAndroidManifest:
 			want = manifestBody
+		case RoleResourceTree:
+			assertNormalizedResourceTreeZip(t, got, []resourceEntry{
+				{Name: "res/values/strings.xml", Body: []byte(`<resources><string name="app">x</string></resources>`)},
+			})
+			continue
 		}
 		if !bytes.Equal(got, want) {
 			t.Fatalf("blob content mismatch for role %s", out.Role)
@@ -228,6 +238,9 @@ func TestExtractIgnoresUnknownZipEntries(t *testing.T) {
 	if len(result.Outputs) != 2 {
 		t.Fatalf("expected exactly 2 outputs, got %d", len(result.Outputs))
 	}
+	if _, ok := result.Output(RoleResourceTree); ok {
+		t.Fatalf("resource-tree should not be present without res entries")
+	}
 }
 
 func TestExtractHandlesAARWithOnlyClassesJar(t *testing.T) {
@@ -253,6 +266,57 @@ func TestExtractHandlesAARWithOnlyClassesJar(t *testing.T) {
 	if _, ok := result.Output(RoleAndroidManifest); ok {
 		t.Fatalf("android-manifest should not be present")
 	}
+	if _, ok := result.Output(RoleResourceTree); ok {
+		t.Fatalf("resource-tree should not be present")
+	}
+}
+
+func TestExtractProducesDeterministicResourceTreeZip(t *testing.T) {
+	store := cas.NewFilesystemStore(t.TempDir())
+	ctx := context.Background()
+
+	entriesA := []resourceEntry{
+		{Name: "res/layout/main.xml", Body: []byte(`<LinearLayout/>`)},
+		{Name: "res/values/strings.xml", Body: []byte(`<resources><string name="app">x</string></resources>`)},
+	}
+	entriesB := []resourceEntry{
+		{Name: "res/values/strings.xml", Body: []byte(`<resources><string name="app">x</string></resources>`)},
+		{Name: "res/layout/main.xml", Body: []byte(`<LinearLayout/>`)},
+	}
+
+	firstInfo, err := store.PutBytes(ctx, buildAARFromEntries(t, append([]resourceEntry{{Name: "classes.jar", Body: []byte("classes")}}, entriesA...)), cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "first"}},
+	})
+	if err != nil {
+		t.Fatalf("PutBytes first aar: %v", err)
+	}
+	secondInfo, err := store.PutBytes(ctx, buildAARFromEntries(t, append([]resourceEntry{{Name: "classes.jar", Body: []byte("classes")}}, entriesB...)), cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "second"}},
+	})
+	if err != nil {
+		t.Fatalf("PutBytes second aar: %v", err)
+	}
+
+	firstResult, err := Extract(ctx, store, firstInfo.Hash)
+	if err != nil {
+		t.Fatalf("first Extract: %v", err)
+	}
+	secondResult, err := Extract(ctx, store, secondInfo.Hash)
+	if err != nil {
+		t.Fatalf("second Extract: %v", err)
+	}
+
+	firstTree, ok := firstResult.Output(RoleResourceTree)
+	if !ok {
+		t.Fatalf("first resource-tree output missing")
+	}
+	secondTree, ok := secondResult.Output(RoleResourceTree)
+	if !ok {
+		t.Fatalf("second resource-tree output missing")
+	}
+	if firstTree.Blob.Hash != secondTree.Blob.Hash {
+		t.Fatalf("expected deterministic resource-tree hash, got %s and %s", firstTree.Blob.Hash, secondTree.Blob.Hash)
+	}
 }
 
 // buildAAR produces a minimal zip file with the named entries for use as
@@ -260,19 +324,70 @@ func TestExtractHandlesAARWithOnlyClassesJar(t *testing.T) {
 // the test does not need to reproduce the full Android build-tool output.
 func buildAAR(t *testing.T, entries map[string][]byte) []byte {
 	t.Helper()
+	ordered := make([]resourceEntry, 0, len(entries))
+	for name, body := range entries {
+		ordered = append(ordered, resourceEntry{Name: name, Body: body})
+	}
+	slices.SortFunc(ordered, func(a, b resourceEntry) int {
+		return bytes.Compare([]byte(a.Name), []byte(b.Name))
+	})
+	return buildAARFromEntries(t, ordered)
+}
+
+type resourceEntry struct {
+	Name string
+	Body []byte
+}
+
+func buildAARFromEntries(t *testing.T, entries []resourceEntry) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	for name, body := range entries {
-		w, err := zw.Create(name)
+	for _, entry := range entries {
+		w, err := zw.Create(entry.Name)
 		if err != nil {
-			t.Fatalf("zip.Create %s: %v", name, err)
+			t.Fatalf("zip.Create %s: %v", entry.Name, err)
 		}
-		if _, err := w.Write(body); err != nil {
-			t.Fatalf("zip.Write %s: %v", name, err)
+		if _, err := w.Write(entry.Body); err != nil {
+			t.Fatalf("zip.Write %s: %v", entry.Name, err)
 		}
 	}
 	if err := zw.Close(); err != nil {
 		t.Fatalf("zip.Close: %v", err)
 	}
 	return buf.Bytes()
+}
+
+func assertNormalizedResourceTreeZip(t *testing.T, data []byte, want []resourceEntry) {
+	t.Helper()
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("open normalized resource zip: %v", err)
+	}
+	if len(zr.File) != len(want) {
+		t.Fatalf("resource entry count mismatch: got %d want %d", len(zr.File), len(want))
+	}
+	for i, file := range zr.File {
+		if file.Name != want[i].Name {
+			t.Fatalf("resource entry order mismatch at %d: got %s want %s", i, file.Name, want[i].Name)
+		}
+		if file.Method != zip.Store {
+			t.Fatalf("resource entry method mismatch for %s: got %d want %d", file.Name, file.Method, zip.Store)
+		}
+		if !file.Modified.Equal(reproducibleZipTime) {
+			t.Fatalf("resource entry time mismatch for %s: got %s want %s", file.Name, file.Modified.UTC(), reproducibleZipTime)
+		}
+		rc, err := file.Open()
+		if err != nil {
+			t.Fatalf("open resource entry %s: %v", file.Name, err)
+		}
+		body, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatalf("read resource entry %s: %v", file.Name, err)
+		}
+		if !bytes.Equal(body, want[i].Body) {
+			t.Fatalf("resource entry body mismatch for %s", file.Name)
+		}
+	}
 }

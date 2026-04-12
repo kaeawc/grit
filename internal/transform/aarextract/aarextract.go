@@ -1,14 +1,11 @@
 // Package aarextract implements the aar-extract Layer 4 transform.
 //
 // The transform takes one input blob (an Android Archive) and produces
-// named output blobs for the archive's classes.jar and AndroidManifest.xml.
+// named output blobs for the archive's classes.jar, AndroidManifest.xml,
+// and a deterministic zip of the res/ subtree when present.
 // The transform is deterministic and cached by action hash: the second
 // Extract call for the same AAR hash is served from the action-result
 // index without re-reading the archive bytes.
-//
-// Slice-4 scope: classes.jar and AndroidManifest.xml only. Normalized
-// resource-tree output is a follow-up — producing a bit-reproducible zip
-// of the res/ subtree is fiddly enough to deserve its own change.
 package aarextract
 
 import (
@@ -18,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
+	"time"
 
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/transform"
@@ -32,7 +31,7 @@ const (
 	// ToolVersion is bumped when the extraction logic changes in a way
 	// that should invalidate cached outputs. Bumping this is the deliberate
 	// way to force re-extraction across the fleet.
-	ToolVersion = "1"
+	ToolVersion = "2"
 
 	// RoleAARInput is the input role for the source AAR blob.
 	RoleAARInput = "aar"
@@ -40,7 +39,11 @@ const (
 	RoleClassesJar = "classes-jar"
 	// RoleAndroidManifest is the output role for the extracted manifest.
 	RoleAndroidManifest = "android-manifest"
+	// RoleResourceTree is the output role for the normalized res/ subtree.
+	RoleResourceTree = "resource-tree"
 )
+
+var reproducibleZipTime = time.Date(1980, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 // Action returns the transform action for extracting aarHash. The returned
 // Action's Hash is the cache key.
@@ -55,6 +58,7 @@ func Action(aarHash cas.Hash) transform.Action {
 		Outputs: []transform.OutputDecl{
 			{Role: RoleClassesJar, Kind: "jar"},
 			{Role: RoleAndroidManifest, Kind: "xml"},
+			{Role: RoleResourceTree, Kind: "zip"},
 		},
 	}
 }
@@ -108,6 +112,7 @@ func extractFromBytes(ctx context.Context, store cas.Store, aarHash, actionHash 
 
 	var classesJar []byte
 	var manifest []byte
+	resourceEntries := map[string][]byte{}
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -126,6 +131,14 @@ func extractFromBytes(ctx context.Context, store cas.Store, aarHash, actionHash 
 				return cas.ActionResult{}, fmt.Errorf("aarextract: read AndroidManifest.xml: %w", err)
 			}
 			manifest = body
+		default:
+			if len(f.Name) > len("res/") && f.Name[:len("res/")] == "res/" {
+				body, err := readZipEntry(f)
+				if err != nil {
+					return cas.ActionResult{}, fmt.Errorf("aarextract: read %s: %w", f.Name, err)
+				}
+				resourceEntries[f.Name] = body
+			}
 		}
 	}
 
@@ -145,8 +158,47 @@ func extractFromBytes(ctx context.Context, store cas.Store, aarHash, actionHash 
 		}
 		outputs = append(outputs, cas.NamedOutput{Role: RoleAndroidManifest, Blob: info})
 	}
+	if len(resourceEntries) != 0 {
+		resourceTree, err := normalizedResourceTreeZip(resourceEntries)
+		if err != nil {
+			return cas.ActionResult{}, err
+		}
+		info, err := store.PutBytes(ctx, resourceTree, provenance(aarHash, actionHash, RoleResourceTree))
+		if err != nil {
+			return cas.ActionResult{}, err
+		}
+		outputs = append(outputs, cas.NamedOutput{Role: RoleResourceTree, Blob: info})
+	}
 
 	return cas.ActionResult{ActionHash: actionHash, Outputs: outputs}, nil
+}
+
+func normalizedResourceTreeZip(entries map[string][]byte) ([]byte, error) {
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, name := range names {
+		header := &zip.FileHeader{
+			Name:   name,
+			Method: zip.Store,
+		}
+		header.SetModTime(reproducibleZipTime)
+		w, err := zw.CreateHeader(header)
+		if err != nil {
+			return nil, fmt.Errorf("aarextract: create normalized resource entry %s: %w", name, err)
+		}
+		if _, err := w.Write(entries[name]); err != nil {
+			return nil, fmt.Errorf("aarextract: write normalized resource entry %s: %w", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		return nil, fmt.Errorf("aarextract: close normalized resource zip: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 func readZipEntry(f *zip.File) ([]byte, error) {

@@ -288,6 +288,7 @@ func (m *Model) ResolvedVariant(modulePath, variantName string) (project.Resolve
 			ConsumerProguardFiles:     append([]string(nil), mod.ConsumerProguardFiles...),
 			SigningConfig:             variant.SigningConfig,
 			SigningConfigured:         variant.SigningConfigured,
+			DexMode:                   resolvedDexMode(variant.MinifyEnabled),
 			MinifyEnabled:             variant.MinifyEnabled,
 			ShrinkResources:           variant.ShrinkResources,
 			Installable:               variant.Installable,
@@ -353,6 +354,7 @@ func (m *Model) ResolvedVariants(modulePath string) ([]project.ResolvedVariant, 
 				BuildType:  "debug",
 			},
 			Config:         project.BuildType{Name: "debug", BaseBuildType: "debug"},
+			DexMode:        "d8",
 			Debuggable:     true,
 			SourceSetOrder: []string{"main", "debug"},
 			TaskAliases:    taskAliases,
@@ -419,6 +421,7 @@ func (m *Model) ResolvedVariants(modulePath string) ([]project.ResolvedVariant, 
 			ConsumerProguardFiles:     append([]string(nil), mod.ConsumerProguardFiles...),
 			SigningConfig:             variant.SigningConfig,
 			SigningConfigured:         variant.SigningConfigured,
+			DexMode:                   resolvedDexMode(variant.MinifyEnabled),
 			MinifyEnabled:             variant.MinifyEnabled,
 			ShrinkResources:           variant.ShrinkResources,
 			Installable:               variant.Installable,
@@ -482,6 +485,13 @@ func resolvedVariantPrimaryTaskAlias(moduleType, variantName, prefix string) str
 	default:
 		return ""
 	}
+}
+
+func resolvedDexMode(minifyEnabled bool) string {
+	if minifyEnabled {
+		return "r8"
+	}
+	return "d8"
 }
 
 func resolvedVariantTaskNameSuffix(variantName string) string {

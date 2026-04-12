@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/downloader"
@@ -18,6 +19,7 @@ type stubDownloader struct {
 	id    string
 	err   error
 	calls int32
+	delay time.Duration
 	// data is the set of pre-staged blobs this stub serves. A Fetch call
 	// for a pin file whose hash matches an entry here will land the
 	// bytes in the target store. A miss returns err (which defaults to
@@ -29,6 +31,9 @@ func (s *stubDownloader) ID() string { return s.id }
 
 func (s *stubDownloader) Fetch(ctx context.Context, pin lockfile.Pin, store cas.Store) error {
 	atomic.AddInt32(&s.calls, 1)
+	if s.delay > 0 {
+		time.Sleep(s.delay)
+	}
 	if s.err != nil {
 		return s.err
 	}
@@ -59,11 +64,15 @@ func (s *stubDownloader) callCount() int32 {
 }
 
 func newStub(id string, blobs ...[]byte) *stubDownloader {
+	return newStubWithDelay(id, 0, blobs...)
+}
+
+func newStubWithDelay(id string, delay time.Duration, blobs ...[]byte) *stubDownloader {
 	data := map[cas.Hash][]byte{}
 	for _, b := range blobs {
 		data[cas.HashBytes(b)] = b
 	}
-	return &stubDownloader{id: id, data: data}
+	return &stubDownloader{id: id, delay: delay, data: data}
 }
 
 // --- tests ---
@@ -99,6 +108,7 @@ func TestFetchFirstSourceWins(t *testing.T) {
 
 	first := newStub("first", payload)
 	second := newStub("second", payload) // also has it, should not be called
+	first.delay = 5 * time.Millisecond
 
 	c, _ := New([]downloader.Downloader{first, second})
 	store := cas.NewFilesystemStore(t.TempDir())
@@ -110,6 +120,9 @@ func TestFetchFirstSourceWins(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].Order != 0 || records[0].SourceID != "first" || records[0].Outcome != FetchOutcomeSuccess {
 		t.Fatalf("unexpected fetch records: %#v", records)
+	}
+	if records[0].DurationMs <= 0 {
+		t.Fatalf("expected positive fetch duration, got %#v", records[0])
 	}
 	if first.callCount() != 1 {
 		t.Fatalf("first source call count: %d", first.callCount())
@@ -127,8 +140,8 @@ func TestFetchFallsThroughOnNotFound(t *testing.T) {
 	payload := []byte("fall-through payload")
 	hash := cas.HashBytes(payload)
 
-	empty := newStub("empty")              // returns ErrNotFound for everything
-	stocked := newStub("stocked", payload) // has the blob
+	empty := newStubWithDelay("empty", 5*time.Millisecond) // returns ErrNotFound for everything
+	stocked := newStub("stocked", payload)                 // has the blob
 
 	c, _ := New([]downloader.Downloader{empty, stocked})
 	store := cas.NewFilesystemStore(t.TempDir())
@@ -139,6 +152,9 @@ func TestFetchFallsThroughOnNotFound(t *testing.T) {
 	}
 	if len(records) != 2 || records[0].SourceID != "empty" || records[0].Outcome != FetchOutcomeNotFound || records[1].SourceID != "stocked" || records[1].Outcome != FetchOutcomeSuccess {
 		t.Fatalf("unexpected fetch records: %#v", records)
+	}
+	if records[0].DurationMs <= 0 || records[1].DurationMs < 0 {
+		t.Fatalf("unexpected fetch durations: %#v", records)
 	}
 	if empty.callCount() != 1 || stocked.callCount() != 1 {
 		t.Fatalf("unexpected call counts: empty=%d stocked=%d", empty.callCount(), stocked.callCount())
@@ -152,7 +168,7 @@ func TestFetchReturnsNotFoundAfterAllSourcesExhausted(t *testing.T) {
 	ctx := context.Background()
 	hash := cas.HashBytes([]byte("nowhere"))
 
-	a := newStub("a")
+	a := newStubWithDelay("a", 5*time.Millisecond)
 	b := newStub("b")
 	c, _ := New([]downloader.Downloader{a, b})
 
@@ -166,13 +182,16 @@ func TestFetchReturnsNotFoundAfterAllSourcesExhausted(t *testing.T) {
 	if len(records) != 2 || records[0].SourceID != "a" || records[0].Outcome != FetchOutcomeNotFound || records[1].SourceID != "b" || records[1].Outcome != FetchOutcomeNotFound {
 		t.Fatalf("unexpected fetch records: %#v", records)
 	}
+	if records[0].DurationMs <= 0 || records[1].DurationMs < 0 {
+		t.Fatalf("unexpected fetch durations: %#v", records)
+	}
 }
 
 func TestFetchDoesNotFallThroughOnHardError(t *testing.T) {
 	ctx := context.Background()
 
 	// A hard error (not an ErrNotFound wrap) must short-circuit the chain.
-	hard := &stubDownloader{id: "hard", err: errors.New("auth failed")}
+	hard := &stubDownloader{id: "hard", err: errors.New("auth failed"), delay: 5 * time.Millisecond}
 	fallback := newStub("fallback", []byte("would have worked"))
 
 	c, _ := New([]downloader.Downloader{hard, fallback})
@@ -187,6 +206,9 @@ func TestFetchDoesNotFallThroughOnHardError(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].SourceID != "hard" || records[0].Outcome != FetchOutcomeError {
 		t.Fatalf("unexpected fetch records: %#v", records)
+	}
+	if records[0].DurationMs <= 0 {
+		t.Fatalf("expected positive fetch duration, got %#v", records[0])
 	}
 	if fallback.callCount() != 0 {
 		t.Fatalf("fallback should not be called after hard error, got %d calls", fallback.callCount())
@@ -207,7 +229,7 @@ func TestFetchPartialPopulationAcceptedByNextSource(t *testing.T) {
 	jarHash := cas.HashBytes(jarBytes)
 	pomHash := cas.HashBytes(pomBytes)
 
-	firstStub := newStub("first-partial", jarBytes) // has only the jar
+	firstStub := newStubWithDelay("first-partial", 5*time.Millisecond, jarBytes) // has only the jar
 	secondStub := newStub("second-full", jarBytes, pomBytes)
 
 	c, _ := New([]downloader.Downloader{firstStub, secondStub})
@@ -227,6 +249,9 @@ func TestFetchPartialPopulationAcceptedByNextSource(t *testing.T) {
 	}
 	if len(records) != 2 || records[0].SourceID != "first-partial" || records[0].Outcome != FetchOutcomeNotFound || records[1].SourceID != "second-full" || records[1].Outcome != FetchOutcomeSuccess {
 		t.Fatalf("unexpected fetch records: %#v", records)
+	}
+	if records[0].DurationMs <= 0 || records[1].DurationMs < 0 {
+		t.Fatalf("unexpected fetch durations: %#v", records)
 	}
 
 	// Both files must be in the store.

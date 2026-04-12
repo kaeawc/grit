@@ -29,6 +29,7 @@
       "minifyEnabled": false,
       "shrinkResources": false
     },
+    "dexMode": "d8",
     "installable": true,
     "testable": true,
     "debuggable": true,
@@ -106,6 +107,7 @@
         "minifyEnabled": false,
         "shrinkResources": false
       },
+      "dexMode": "d8",
       "installable": true,
       "testable": true,
       "debuggable": true,
@@ -182,6 +184,7 @@
         "minifyEnabled": false,
         "shrinkResources": false
       },
+      "dexMode": "d8",
       "installable": true,
       "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
       "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
@@ -716,5 +719,5 @@
       "detail": "1 reused substeps"
     }
   ],
-  "writtenAt": "2026-04-11T17:27:22Z"
+  "writtenAt": "2026-04-12T07:03:53Z"
 }

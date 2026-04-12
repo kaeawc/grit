@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kaeawc/grit/internal/catalog"
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
@@ -80,25 +80,15 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 		return outputs, err
 	}
 
-	var cat *catalog.Catalog
+	var resolver dependencywiring.DependencyResolver
 	err = c.track("loadCatalog", func() error {
 		var innerErr error
-		if len(prj.VersionCatalogs) == 0 {
-			cat = &catalog.Catalog{
-				Versions:  map[string]string{},
-				Libraries: map[string]catalog.Library{},
-				Bundles:   map[string][]string{},
-			}
-			return nil
-		}
-		cat, innerErr = catalog.LoadAll(prj.VersionCatalogs)
+		resolver, innerErr = state.resolverForProject(prj)
 		return innerErr
 	})
 	if err != nil {
 		return outputs, err
 	}
-
-	resolver := m2local.New(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1"), prj.RootDir, prj.Repositories, cat)
 	resolver.SetTracker(c.tracker)
 	compileDeps := modulebuild.Dependencies{
 		Test: append(append([]modulebuild.Ref{}, deps.AndroidTest...), deps.AndroidTestCompileOnly...),

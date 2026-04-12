@@ -110,6 +110,12 @@ func (f *fakeServer) handleAction(w http.ResponseWriter, r *http.Request, hash c
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(result)
+	case http.MethodHead:
+		if _, ok := f.actions[hash]; !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	case http.MethodPut:
 		var result cas.ActionResult
 		if err := json.NewDecoder(r.Body).Decode(&result); err != nil {
@@ -246,6 +252,30 @@ func TestActionResultRoundTrip(t *testing.T) {
 	}
 	if loaded.Outputs[0].Role != "classes-jar" || loaded.Outputs[0].Blob.Hash != blobHash {
 		t.Fatalf("first output not preserved: %+v", loaded.Outputs[0])
+	}
+}
+
+func TestHasActionResult(t *testing.T) {
+	client, server, cleanup := startTestServer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	actionHash := cas.HashBytes([]byte("action-id"))
+	has, err := client.HasActionResult(ctx, actionHash)
+	if err != nil || has {
+		t.Fatalf("expected absent action result, got has=%v err=%v", has, err)
+	}
+
+	server.actions[actionHash] = cas.ActionResult{
+		ActionHash: actionHash,
+		Outputs: []cas.NamedOutput{
+			{Role: "main", Blob: cas.BlobInfo{Hash: cas.HashBytes([]byte("blob")), Size: 4}},
+		},
+	}
+
+	has, err = client.HasActionResult(ctx, actionHash)
+	if err != nil || !has {
+		t.Fatalf("expected present action result, got has=%v err=%v", has, err)
 	}
 }
 

@@ -159,6 +159,7 @@ type androidCapabilityVariantResult struct {
 	Debuggable                bool                              `json:"debuggable,omitempty"`
 	SigningConfigured         bool                              `json:"signingConfigured,omitempty"`
 	SigningConfig             string                            `json:"signingConfig,omitempty"`
+	DexMode                   string                            `json:"dexMode,omitempty"`
 	MinifyEnabled             bool                              `json:"minifyEnabled,omitempty"`
 	ShrinkResources           bool                              `json:"shrinkResources,omitempty"`
 	InstallTask               string                            `json:"installTask,omitempty"`
