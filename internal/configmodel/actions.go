@@ -11,12 +11,24 @@ import (
 )
 
 type ActionSchedule struct {
-	Steps           []ActionScheduleStep
-	Batches         [][]ActionScheduleStep
-	ResourceBudgets []ResourceBudget
-	BatchResources  []BatchResourceUsage
-	Dependencies    map[graph.ActionID][]graph.ActionID
-	Dependents      map[graph.ActionID][]graph.ActionID
+	Steps              []ActionScheduleStep
+	Batches            [][]ActionScheduleStep
+	ResourceBudgets    []ResourceBudget
+	NetworkBudgetConfig *ScheduleNetworkBudget
+	BatchResources     []BatchResourceUsage
+	Dependencies       map[graph.ActionID][]graph.ActionID
+	Dependents         map[graph.ActionID][]graph.ActionID
+}
+
+// ScheduleNetworkBudget holds the bandwidth-aware admission parameters derived
+// from the action schedule. When present, the service layer uses these to
+// create a NetworkBudget and attach it to the admission controller.
+type ScheduleNetworkBudget struct {
+	// CapacityBytes is the maximum burst size in bytes.
+	CapacityBytes int64 `json:"capacityBytes"`
+
+	// RefillBytesPerSec is the steady-state bandwidth allowance.
+	RefillBytesPerSec int64 `json:"refillBytesPerSec"`
 }
 
 type ActionScheduleStep struct {
@@ -138,9 +150,10 @@ func (m *Model) PlanActions(actions []graph.Action) []graph.Action {
 
 func (m *Model) ScheduleActions(actions []graph.Action) ActionSchedule {
 	schedule := ActionSchedule{
-		ResourceBudgets: defaultResourceBudgets(),
-		Dependencies:    map[graph.ActionID][]graph.ActionID{},
-		Dependents:      map[graph.ActionID][]graph.ActionID{},
+		ResourceBudgets:    defaultResourceBudgets(),
+		NetworkBudgetConfig: defaultNetworkBudgetConfig(actions),
+		Dependencies:       map[graph.ActionID][]graph.ActionID{},
+		Dependents:         map[graph.ActionID][]graph.ActionID{},
 	}
 	if len(actions) == 0 {
 		return schedule
@@ -383,6 +396,22 @@ func defaultResourceBudgets() []ResourceBudget {
 		return budgets[i].ResourceClass < budgets[j].ResourceClass
 	})
 	return budgets
+}
+
+// defaultNetworkBudgetConfig returns a network budget config only when the
+// schedule contains cacheable actions with remote probe tiers. When there
+// are no such actions, returning nil avoids creating a budget that would
+// never be consulted. Defaults: 50 MiB burst, 10 MiB/s refill.
+func defaultNetworkBudgetConfig(actions []graph.Action) *ScheduleNetworkBudget {
+	for _, a := range actions {
+		if a.Attributes["cacheable"] == "true" {
+			return &ScheduleNetworkBudget{
+				CapacityBytes:     50 * 1024 * 1024,
+				RefillBytesPerSec: 10 * 1024 * 1024,
+			}
+		}
+	}
+	return nil
 }
 
 func maxParallelismForWorkerClass(workerClass string) int {

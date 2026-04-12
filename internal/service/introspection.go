@@ -73,8 +73,16 @@ type InspectPlannedAction struct {
 }
 
 type PlanScheduleResult struct {
-	ResourceBudgets []PlanResourceBudget `json:"resourceBudgets,omitempty"`
-	Batches         []PlanScheduleBatch  `json:"batches,omitempty"`
+	ResourceBudgets    []PlanResourceBudget        `json:"resourceBudgets,omitempty"`
+	NetworkBudgetConfig *PlanNetworkBudget          `json:"networkBudgetConfig,omitempty"`
+	Batches            []PlanScheduleBatch          `json:"batches,omitempty"`
+}
+
+// PlanNetworkBudget surfaces the bandwidth-aware admission parameters in the
+// plan schedule for introspection and run summaries.
+type PlanNetworkBudget struct {
+	CapacityBytes     int64 `json:"capacityBytes"`
+	RefillBytesPerSec int64 `json:"refillBytesPerSec"`
 }
 
 type PlanResourceBudget struct {
@@ -1098,6 +1106,12 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 			ResourceClass: budget.ResourceClass,
 			Capacity:      budget.Capacity,
 		})
+	}
+	if schedule.NetworkBudgetConfig != nil {
+		out.NetworkBudgetConfig = &PlanNetworkBudget{
+			CapacityBytes:     schedule.NetworkBudgetConfig.CapacityBytes,
+			RefillBytesPerSec: schedule.NetworkBudgetConfig.RefillBytesPerSec,
+		}
 	}
 	for batchIdx, batch := range schedule.Batches {
 		stepResults := make([]InspectPlannedAction, 0, len(batch))

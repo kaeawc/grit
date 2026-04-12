@@ -105,6 +105,23 @@ func NewController(budgets []configmodel.ResourceBudget) *Controller {
 	return c
 }
 
+// NewControllerFromSchedule creates a Controller from an ActionSchedule,
+// pre-loading resource budgets and attaching a NetworkBudget when the schedule
+// includes one. This is the primary entry point for the Build flow: the
+// service layer calls it once per build to wire admission control from the
+// static schedule configuration.
+func NewControllerFromSchedule(schedule configmodel.ActionSchedule) *Controller {
+	c := NewController(schedule.ResourceBudgets)
+	if schedule.NetworkBudgetConfig != nil {
+		nb := NewNetworkBudget(NetworkBudgetConfig{
+			CapacityBytes:     schedule.NetworkBudgetConfig.CapacityBytes,
+			RefillBytesPerSec: schedule.NetworkBudgetConfig.RefillBytesPerSec,
+		})
+		c.SetNetworkBudget(nb)
+	}
+	return c
+}
+
 // SetNetworkBudget attaches a bandwidth-aware admission constraint. When set,
 // cacheable actions that include remote probe tiers are checked against the
 // budget before admission. If the budget denies the request, the action is

@@ -244,3 +244,36 @@ func TestActionsForResolvedCommandUsesFlavorAwareDebugVariants(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultNetworkBudgetConfigIncludedWhenCacheableActionsExist(t *testing.T) {
+	actions := []graph.Action{
+		{ID: graph.ActionID("a1"), Attributes: map[string]string{"cacheable": "true", "operation": "compile"}},
+	}
+	cfg := defaultNetworkBudgetConfig(actions)
+	if cfg == nil {
+		t.Fatal("expected non-nil NetworkBudgetConfig for cacheable actions")
+	}
+	if cfg.CapacityBytes <= 0 {
+		t.Fatalf("expected positive CapacityBytes, got %d", cfg.CapacityBytes)
+	}
+	if cfg.RefillBytesPerSec <= 0 {
+		t.Fatalf("expected positive RefillBytesPerSec, got %d", cfg.RefillBytesPerSec)
+	}
+}
+
+func TestDefaultNetworkBudgetConfigNilWhenNoCacheableActions(t *testing.T) {
+	actions := []graph.Action{
+		{ID: graph.ActionID("a1"), Attributes: map[string]string{"operation": "install"}},
+	}
+	cfg := defaultNetworkBudgetConfig(actions)
+	if cfg != nil {
+		t.Fatalf("expected nil NetworkBudgetConfig when no cacheable actions, got %+v", cfg)
+	}
+}
+
+func TestDefaultNetworkBudgetConfigNilForEmptyActions(t *testing.T) {
+	cfg := defaultNetworkBudgetConfig(nil)
+	if cfg != nil {
+		t.Fatal("expected nil NetworkBudgetConfig for nil actions")
+	}
+}

@@ -492,3 +492,80 @@ func TestResourceCostGreaterThanOne(t *testing.T) {
 		t.Fatalf("expected admission for cost 1, got %+v", d)
 	}
 }
+
+func TestNewControllerFromScheduleWithNetworkBudget(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{
+			{ResourceClass: "jvm-process", Capacity: 4},
+		},
+		NetworkBudgetConfig: &configmodel.ScheduleNetworkBudget{
+			CapacityBytes:     200,
+			RefillBytesPerSec: 0,
+		},
+	}
+	c := NewControllerFromSchedule(schedule)
+
+	// Verify resource pool was created.
+	s := step("a1", "compile", "kotlin-compile", "jvm-process", 1, 2)
+	d := c.TryAdmit(s)
+	if !d.Admitted {
+		t.Fatalf("expected admission, got %+v", d)
+	}
+	_ = c.Release("a1")
+
+	// Verify network budget was attached by admitting a cacheable action
+	// with a remote tier and estimated bytes exceeding the budget.
+	remoteStep := configmodel.ActionScheduleStep{
+		Action: graph.Action{
+			ID:         graph.ActionID("r1"),
+			Attributes: map[string]string{"operation": "compile"},
+		},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 2,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote-tier1"},
+		EstimatedBytes: 300, // exceeds 200-byte budget
+	}
+	d = c.TryAdmit(remoteStep)
+	if !d.Admitted {
+		t.Fatal("expected admission (network budget only defers, doesn't block)")
+	}
+	if !d.DeferRemote {
+		t.Fatal("expected DeferRemote=true when estimated bytes exceed budget")
+	}
+}
+
+func TestNewControllerFromScheduleWithoutNetworkBudget(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{
+			{ResourceClass: "jvm-process", Capacity: 2},
+		},
+		// NetworkBudgetConfig is nil — no bandwidth constraint.
+	}
+	c := NewControllerFromSchedule(schedule)
+
+	// Cacheable actions with remote tiers should NOT get DeferRemote since
+	// no network budget is attached.
+	remoteStep := configmodel.ActionScheduleStep{
+		Action: graph.Action{
+			ID:         graph.ActionID("r1"),
+			Attributes: map[string]string{"operation": "compile"},
+		},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 2,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote-tier1"},
+		EstimatedBytes: 999999,
+	}
+	d := c.TryAdmit(remoteStep)
+	if !d.Admitted {
+		t.Fatalf("expected admission, got %+v", d)
+	}
+	if d.DeferRemote {
+		t.Fatal("expected DeferRemote=false when no network budget is attached")
+	}
+}
