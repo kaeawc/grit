@@ -58,6 +58,7 @@ const (
 	ActionKindSign      ActionKind = "sign"
 	ActionKindTest      ActionKind = "test"
 	ActionKindTransform ActionKind = "transform"
+	ActionKindJavadoc   ActionKind = "javadoc"
 	ActionKindCustom    ActionKind = "custom"
 )
 
