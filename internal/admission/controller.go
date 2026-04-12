@@ -1,0 +1,269 @@
+// Package admission implements resource-aware runtime admission control for
+// action execution. It is the second level of the two-level scheduler described
+// in the execution-graph-and-scheduler roadmap: level one determines what CAN
+// run (DAG readiness), and level two — this package — determines what SHOULD
+// run given current CPU, memory, IO, and tool contention.
+//
+// The controller tracks live resource usage across all resource classes and
+// makes dynamic admit/release decisions as actions start and complete. Unlike
+// the static batch planner in configmodel.ScheduleActions, this operates at
+// runtime and can react to cache hits freeing resources early.
+package admission
+
+import (
+	"fmt"
+	"sort"
+	"sync"
+
+	"github.com/kaeawc/grit/internal/configmodel"
+)
+
+// Decision describes the outcome of an admission attempt.
+type Decision struct {
+	Admitted    bool
+	ActionID    string
+	Reason      string
+	WaitClass   string // resource class that blocked admission, if any
+	WaitCost    int    // cost that exceeded capacity, if any
+	PoolUsage   []PoolSnapshot
+	WorkerUsage []WorkerSnapshot
+}
+
+// PoolSnapshot captures the state of a single resource pool at a point in time.
+type PoolSnapshot struct {
+	ResourceClass string
+	Capacity      int
+	Used          int
+	Remaining     int
+}
+
+// WorkerSnapshot captures the state of a single worker class at a point in time.
+type WorkerSnapshot struct {
+	WorkerClass string
+	Limit       int
+	Active      int
+	Remaining   int
+}
+
+// Controller tracks live resource pool capacities and worker class limits,
+// making dynamic admission decisions for action schedule steps.
+type Controller struct {
+	mu sync.Mutex
+
+	// Resource pools keyed by resource class.
+	pools map[string]*pool
+
+	// Worker class limits keyed by worker class name.
+	workers map[string]*workerSlot
+
+	// Actions currently admitted, keyed by action ID.
+	admitted map[string]admittedAction
+}
+
+type pool struct {
+	capacity int
+	used     int
+}
+
+type workerSlot struct {
+	limit  int
+	active int
+}
+
+type admittedAction struct {
+	resourceClass string
+	resourceCost  int
+	workerClass   string
+}
+
+// NewController creates a Controller pre-loaded with the given resource budgets.
+// Worker class limits are registered lazily on first admission attempt, or can
+// be pre-registered with RegisterWorkerClass.
+func NewController(budgets []configmodel.ResourceBudget) *Controller {
+	c := &Controller{
+		pools:    make(map[string]*pool, len(budgets)),
+		workers:  make(map[string]*workerSlot),
+		admitted: make(map[string]admittedAction),
+	}
+	for _, b := range budgets {
+		c.pools[b.ResourceClass] = &pool{capacity: b.Capacity}
+	}
+	return c
+}
+
+// RegisterWorkerClass sets the maximum parallelism for a worker class. If the
+// class is already registered, the limit is updated.
+func (c *Controller) RegisterWorkerClass(workerClass string, maxParallelism int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.workers[workerClass] = &workerSlot{limit: maxParallelism}
+}
+
+// TryAdmit attempts to admit a single action step. It returns a Decision
+// indicating whether the action was admitted and, if not, which constraint
+// blocked it.
+//
+// On success the action's resource cost and worker slot are reserved until
+// Release is called with the same action ID.
+func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	actionID := step.Action.ID.String()
+	if _, ok := c.admitted[actionID]; ok {
+		return Decision{
+			Admitted: false,
+			ActionID: actionID,
+			Reason:   "already-admitted",
+		}
+	}
+
+	// Check resource pool capacity.
+	p := c.ensurePool(step.ResourceClass)
+	if p.used+step.ResourceCost > p.capacity {
+		return Decision{
+			Admitted:    false,
+			ActionID:    actionID,
+			Reason:      "resource-exhausted",
+			WaitClass:   step.ResourceClass,
+			WaitCost:    step.ResourceCost,
+			PoolUsage:   c.snapshotPoolsLocked(),
+			WorkerUsage: c.snapshotWorkersLocked(),
+		}
+	}
+
+	// Check worker class limit.
+	w := c.ensureWorker(step.WorkerClass, step.MaxParallelism)
+	if w.active >= w.limit {
+		return Decision{
+			Admitted:    false,
+			ActionID:    actionID,
+			Reason:      "worker-saturated",
+			WaitClass:   step.WorkerClass,
+			PoolUsage:   c.snapshotPoolsLocked(),
+			WorkerUsage: c.snapshotWorkersLocked(),
+		}
+	}
+
+	// Admit the action.
+	p.used += step.ResourceCost
+	w.active++
+	c.admitted[actionID] = admittedAction{
+		resourceClass: step.ResourceClass,
+		resourceCost:  step.ResourceCost,
+		workerClass:   step.WorkerClass,
+	}
+	return Decision{
+		Admitted:    true,
+		ActionID:    actionID,
+		Reason:      "admitted",
+		PoolUsage:   c.snapshotPoolsLocked(),
+		WorkerUsage: c.snapshotWorkersLocked(),
+	}
+}
+
+// Release frees the resources held by a previously admitted action. It returns
+// an error if the action was not currently admitted.
+func (c *Controller) Release(actionID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	entry, ok := c.admitted[actionID]
+	if !ok {
+		return fmt.Errorf("action %s not admitted", actionID)
+	}
+	delete(c.admitted, actionID)
+
+	if p, ok := c.pools[entry.resourceClass]; ok {
+		p.used -= entry.resourceCost
+		if p.used < 0 {
+			p.used = 0
+		}
+	}
+	if w, ok := c.workers[entry.workerClass]; ok {
+		w.active--
+		if w.active < 0 {
+			w.active = 0
+		}
+	}
+	return nil
+}
+
+// AdmitBatch takes a set of ready steps (DAG-ready actions) and returns two
+// slices: those that were admitted and those that must wait. Steps are
+// considered in order, so callers should sort by priority before calling.
+func (c *Controller) AdmitBatch(ready []configmodel.ActionScheduleStep) (admitted, waiting []configmodel.ActionScheduleStep) {
+	for _, step := range ready {
+		decision := c.TryAdmit(step)
+		if decision.Admitted {
+			admitted = append(admitted, step)
+		} else {
+			waiting = append(waiting, step)
+		}
+	}
+	return admitted, waiting
+}
+
+// Snapshot returns the current state of all resource pools and worker slots.
+func (c *Controller) Snapshot() ([]PoolSnapshot, []WorkerSnapshot) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.snapshotPoolsLocked(), c.snapshotWorkersLocked()
+}
+
+// ActiveCount returns the number of currently admitted actions.
+func (c *Controller) ActiveCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.admitted)
+}
+
+func (c *Controller) ensurePool(resourceClass string) *pool {
+	p, ok := c.pools[resourceClass]
+	if !ok {
+		p = &pool{capacity: 1}
+		c.pools[resourceClass] = p
+	}
+	return p
+}
+
+func (c *Controller) ensureWorker(workerClass string, maxParallelism int) *workerSlot {
+	w, ok := c.workers[workerClass]
+	if !ok {
+		limit := maxParallelism
+		if limit <= 0 {
+			limit = 1
+		}
+		w = &workerSlot{limit: limit}
+		c.workers[workerClass] = w
+	}
+	return w
+}
+
+func (c *Controller) snapshotPoolsLocked() []PoolSnapshot {
+	out := make([]PoolSnapshot, 0, len(c.pools))
+	for class, p := range c.pools {
+		out = append(out, PoolSnapshot{
+			ResourceClass: class,
+			Capacity:      p.capacity,
+			Used:          p.used,
+			Remaining:     p.capacity - p.used,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ResourceClass < out[j].ResourceClass })
+	return out
+}
+
+func (c *Controller) snapshotWorkersLocked() []WorkerSnapshot {
+	out := make([]WorkerSnapshot, 0, len(c.workers))
+	for class, w := range c.workers {
+		out = append(out, WorkerSnapshot{
+			WorkerClass: class,
+			Limit:       w.limit,
+			Active:      w.active,
+			Remaining:   w.limit - w.active,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].WorkerClass < out[j].WorkerClass })
+	return out
+}
