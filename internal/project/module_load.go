@@ -79,6 +79,8 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 		return strings.HasSuffix(path, ".kt") || strings.HasSuffix(path, ".java")
 	})
 
+	mod.AidlFiles = discoverAidlFiles(modDir, []string{"main", "test", "androidTest"})
+
 	return mod, nil
 }
 

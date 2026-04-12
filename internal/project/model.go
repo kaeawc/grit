@@ -56,6 +56,7 @@ type Module struct {
 	SourceFileCount           int
 	UnitTestFileCount         int
 	AndroidTestFileCount      int
+	AidlFiles                 []string
 	UsesCompose               bool
 	UsesKotlinSerialization   bool
 	UsesMetro                 bool

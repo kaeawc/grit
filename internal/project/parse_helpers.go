@@ -65,6 +65,28 @@ func countFiles(root string, include func(path string) bool) int {
 	return count
 }
 
+// discoverAidlFiles scans src/{sourceSet}/aidl/ directories under modDir
+// for .aidl files and returns their paths relative to modDir.
+func discoverAidlFiles(modDir string, sourceSets []string) []string {
+	var files []string
+	for _, ss := range sourceSets {
+		aidlDir := filepath.Join(modDir, "src", ss, "aidl")
+		_ = filepath.WalkDir(aidlDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d == nil || d.IsDir() {
+				return nil
+			}
+			if strings.HasSuffix(path, ".aidl") {
+				rel, relErr := filepath.Rel(modDir, path)
+				if relErr == nil {
+					files = append(files, rel)
+				}
+			}
+			return nil
+		})
+	}
+	return files
+}
+
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
