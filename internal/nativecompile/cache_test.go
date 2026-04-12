@@ -25,12 +25,15 @@ func TestModuleCompileCacheDirStableForSameInputs(t *testing.T) {
 
 	dir := t.TempDir()
 	src := testutil.WriteFile(t, dir, "input.txt", "hello")
-	first := moduleCompileCacheDir(":app", "debug", []string{src})
-	second := moduleCompileCacheDir(":app", "debug", []string{src})
+	first := moduleCompileCacheDir(":app", "debug", "abc123", []string{src})
+	second := moduleCompileCacheDir(":app", "debug", "abc123", []string{src})
 	if first != second {
 		t.Fatalf("cache dir should be stable: %q != %q", first, second)
 	}
-	if other := moduleCompileCacheDir(":app", "release", []string{src}); other == first {
+	if other := moduleCompileCacheDir(":app", "release", "abc123", []string{src}); other == first {
 		t.Fatalf("variant should affect cache dir: %q", other)
+	}
+	if other := moduleCompileCacheDir(":app", "debug", "def456", []string{src}); other == first {
+		t.Fatalf("configHash should affect cache dir: %q", other)
 	}
 }

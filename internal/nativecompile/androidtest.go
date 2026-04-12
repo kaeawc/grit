@@ -139,7 +139,7 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 	testCompileInputs = append(testCompileInputs, testCP...)
 	testCompileInputs = append(testCompileInputs, toolchain.RuntimeJars...)
 	testCompileInputs = append(testCompileInputs, toolchain.CompilerClasspath...)
-	testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#androidTest", variantName, testCompileInputs)
+	testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#androidTest", variantName, mod.ResolveVariant(variantName).ConfigHash(), testCompileInputs)
 	testJarPath := filepath.Join(filepath.Dir(testOut), "android-test-classes.jar")
 	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
 	endCompileTests := c.beginSerial("compileAndroidTests")

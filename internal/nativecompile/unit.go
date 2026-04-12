@@ -165,7 +165,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 	testCompileInputs = append(testCompileInputs, testCP...)
 	testCompileInputs = append(testCompileInputs, toolchain.RuntimeJars...)
 	testCompileInputs = append(testCompileInputs, toolchain.CompilerClasspath...)
-	testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#unitTest", variantName, testCompileInputs)
+	testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#unitTest", variantName, mod.ResolveVariant(variantName).ConfigHash(), testCompileInputs)
 	testJarPath := filepath.Join(filepath.Dir(testOut), "test-classes.jar")
 	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
 	endCompileTests := c.beginSerial("compileTests")

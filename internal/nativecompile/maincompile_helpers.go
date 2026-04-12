@@ -178,7 +178,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	out.compileInputs = append(out.compileInputs, toolchain.RuntimeJars...)
 	out.compileInputs = append(out.compileInputs, toolchain.CompilerClasspath...)
 	out.compileInputs = append(out.compileInputs, out.pluginPaths...)
-	out.sharedCompileDir = moduleCompileCacheDir(mod.Path, variantName, out.compileInputs)
+	out.sharedCompileDir = moduleCompileCacheDir(mod.Path, variantName, mod.ResolveVariant(variantName).ConfigHash(), out.compileInputs)
 	out.moduleJarPath = filepath.Join(filepath.Dir(out.mainOut), "module-classes.jar")
 	out.compileStampPath = filepath.Join(filepath.Dir(out.mainOut), "compile.stamp")
 	return out, nil

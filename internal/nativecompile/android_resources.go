@@ -76,7 +76,7 @@ func (c *Compiler) compileAndroidResources(ctx context.Context, prj *project.Pro
 	resDirs := resourceRootsForVariant(mod, variantName)
 	mergedResDir := filepath.Join(outRoot, "merged", "res")
 	mergedResStamp := filepath.Join(outRoot, "merged-res.stamp")
-	sharedCompileCacheDir := moduleResourceCompileCacheDir(mod.Path, variantName, resDirs)
+	sharedCompileCacheDir := moduleResourceCompileCacheDir(mod.Path, variantName, mod.ResolveVariant(variantName).ConfigHash(), resDirs)
 	if err := os.MkdirAll(compiledDir, 0o755); err != nil {
 		return artifact, err
 	}

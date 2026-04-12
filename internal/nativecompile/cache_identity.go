@@ -87,11 +87,13 @@ func sharedNativeCacheRoot() string {
 	return filepath.Join(os.Getenv("HOME"), ".cache", "grit")
 }
 
-func moduleCompileCacheDir(modulePath, variantName string, inputs []string) string {
+func moduleCompileCacheDir(modulePath, variantName, configHash string, inputs []string) string {
 	sum := sha256.New()
 	sum.Write([]byte(modulePath))
 	sum.Write([]byte{0})
 	sum.Write([]byte(variantName))
+	sum.Write([]byte{0})
+	sum.Write([]byte(configHash))
 	sum.Write([]byte{0})
 	for _, input := range inputs {
 		sum.Write([]byte(input))
@@ -102,13 +104,15 @@ func moduleCompileCacheDir(modulePath, variantName string, inputs []string) stri
 	return filepath.Join(sharedNativeCacheRoot(), "compile", hex.EncodeToString(sum.Sum(nil)))
 }
 
-func moduleResourceCompileCacheDir(modulePath, variantName string, resDirs []string) string {
+func moduleResourceCompileCacheDir(modulePath, variantName, configHash string, resDirs []string) string {
 	sum := sha256.New()
 	sum.Write([]byte("resource-compile-v3"))
 	sum.Write([]byte{0})
 	sum.Write([]byte(modulePath))
 	sum.Write([]byte{0})
 	sum.Write([]byte(variantName))
+	sum.Write([]byte{0})
+	sum.Write([]byte(configHash))
 	sum.Write([]byte{0})
 	for _, dir := range resDirs {
 		sum.Write([]byte(filepath.Clean(dir)))
