@@ -1,8 +1,10 @@
 package m2local
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -219,6 +221,177 @@ func TestParsePOMDepsResolvesProjectVersionProperty(t *testing.T) {
 	}
 	if got[0].Version != "2.57.2" {
 		t.Fatalf("unexpected resolved version: %#v", got[0])
+	}
+}
+
+func TestChooseVariantSelectsAvailableAtVariant(t *testing.T) {
+	t.Parallel()
+
+	variants := []moduleVariant{
+		{
+			Name: "jvmApiElements-published",
+			Attributes: map[string]string{
+				"org.jetbrains.kotlin.platform.type": "jvm",
+				"org.gradle.usage":                   "java-api",
+			},
+			AvailableAt: &moduleAvailableAt{
+				Group:   "org.example",
+				Module:  "lib-jvm",
+				Version: "1.0.0",
+			},
+		},
+		{
+			Name: "jvmRuntimeElements-published",
+			Attributes: map[string]string{
+				"org.jetbrains.kotlin.platform.type": "jvm",
+				"org.gradle.usage":                   "java-runtime",
+			},
+			AvailableAt: &moduleAvailableAt{
+				Group:   "org.example",
+				Module:  "lib-jvm",
+				Version: "1.0.0",
+			},
+		},
+	}
+
+	chosen := chooseVariant(variants)
+	if chosen == nil {
+		t.Fatal("expected a chosen variant")
+	}
+	if chosen.AvailableAt == nil {
+		t.Fatal("expected chosen variant to have available-at")
+	}
+	if chosen.AvailableAt.Module != "lib-jvm" {
+		t.Fatalf("expected available-at module lib-jvm, got %s", chosen.AvailableAt.Module)
+	}
+}
+
+func TestResolveOneFollowsAvailableAtRedirect(t *testing.T) {
+	t.Parallel()
+
+	cacheRoot := t.TempDir()
+	resolver := New(cacheRoot, t.TempDir(), nil, nil)
+
+	// Set up the root module with an available-at redirect.
+	rootCoord := Coordinate{Group: "org.example", Module: "lib", Version: "1.0.0"}
+	rootBase := resolver.moduleBasePath(rootCoord)
+	rootHashDir := rootBase + "/hash"
+	if err := os.MkdirAll(rootHashDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rootModule := `{
+		"variants": [
+			{
+				"name": "jvmRuntimeElements-published",
+				"attributes": {
+					"org.jetbrains.kotlin.platform.type": "jvm",
+					"org.gradle.usage": "java-runtime"
+				},
+				"available-at": {
+					"group": "org.example",
+					"module": "lib-jvm",
+					"version": "1.0.0"
+				}
+			}
+		]
+	}`
+	if err := os.WriteFile(rootHashDir+"/lib-1.0.0.module", []byte(rootModule), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up the target module that the redirect points to.
+	targetCoord := Coordinate{Group: "org.example", Module: "lib-jvm", Version: "1.0.0"}
+	targetBase := resolver.moduleBasePath(targetCoord)
+	targetHashDir := targetBase + "/hash"
+	if err := os.MkdirAll(targetHashDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	targetModule := `{
+		"variants": [
+			{
+				"name": "jvmRuntimeElements",
+				"attributes": {
+					"org.jetbrains.kotlin.platform.type": "jvm",
+					"org.gradle.usage": "java-runtime"
+				},
+				"files": [{"name":"lib-jvm-1.0.0.jar","url":"lib-jvm-1.0.0.jar"}]
+			}
+		]
+	}`
+	if err := os.WriteFile(targetHashDir+"/lib-jvm-1.0.0.module", []byte(targetModule), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(targetHashDir+"/lib-jvm-1.0.0.jar", []byte("jar"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver.resetReport()
+	resolver.resetReplay()
+	artifact, _, _, err := resolver.resolveOne(rootCoord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(artifact) || !strings.HasSuffix(artifact, "lib-jvm-1.0.0.jar") {
+		t.Fatalf("expected artifact path ending in lib-jvm-1.0.0.jar, got %s", artifact)
+	}
+
+	report := resolver.snapshotReport()
+	var found bool
+	for _, s := range report.Selections {
+		if s.Kind == "available_at_redirect" {
+			found = true
+			if s.Chosen != "org.example:lib-jvm:1.0.0" {
+				t.Fatalf("unexpected redirect target: %s", s.Chosen)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected an available_at_redirect selection in the report")
+	}
+}
+
+func TestResolveOneRejectsDeepAvailableAtChain(t *testing.T) {
+	t.Parallel()
+
+	cacheRoot := t.TempDir()
+	resolver := New(cacheRoot, t.TempDir(), nil, nil)
+
+	// Create a chain of available-at redirects deeper than maxAvailableAtDepth.
+	for i := 0; i <= maxAvailableAtDepth+1; i++ {
+		mod := fmt.Sprintf("lib-%d", i)
+		next := fmt.Sprintf("lib-%d", i+1)
+		coord := Coordinate{Group: "org.example", Module: mod, Version: "1.0.0"}
+		base := resolver.moduleBasePath(coord)
+		hashDir := base + "/hash"
+		if err := os.MkdirAll(hashDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf(`{
+			"variants": [{
+				"name": "jvmRuntimeElements",
+				"attributes": {
+					"org.jetbrains.kotlin.platform.type": "jvm",
+					"org.gradle.usage": "java-runtime"
+				},
+				"available-at": {
+					"group": "org.example",
+					"module": "%s",
+					"version": "1.0.0"
+				}
+			}]
+		}`, next)
+		if err := os.WriteFile(hashDir+"/"+mod+"-1.0.0.module", []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resolver.resetReport()
+	_, _, _, err := resolver.resolveOne(Coordinate{Group: "org.example", Module: "lib-0", Version: "1.0.0"})
+	if err == nil {
+		t.Fatal("expected an error for excessive available-at redirect depth")
+	}
+	if !strings.Contains(err.Error(), "redirect depth exceeded") {
+		t.Fatalf("expected redirect depth error, got: %v", err)
 	}
 }
 

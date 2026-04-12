@@ -2,11 +2,17 @@ package m2local
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
 )
+
+// maxAvailableAtDepth limits how many available-at redirects the
+// resolver follows before returning an error. This prevents infinite
+// loops when module metadata contains circular available-at pointers.
+const maxAvailableAtDepth = 5
 
 type Resolver struct {
 	CacheRoot    string
@@ -14,11 +20,12 @@ type Resolver struct {
 	Repositories []project.Repository
 	Catalog      *catalog.Catalog
 	Tracker      perf.Tracker
-	mu           sync.Mutex
-	inflight     map[string]*resolveCall
-	fetched      map[string]ResolutionMetadataSource
-	report       ResolutionReport
-	replay       ResolutionReplay
+	mu             sync.Mutex
+	inflight       map[string]*resolveCall
+	fetched        map[string]ResolutionMetadataSource
+	report         ResolutionReport
+	replay         ResolutionReplay
+	redirectDepth  atomic.Int32
 }
 
 type resolveCall struct {

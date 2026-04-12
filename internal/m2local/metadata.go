@@ -2,12 +2,17 @@ package m2local
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
 )
+
+// errAvailableAtDepthExceeded is returned when available-at redirects
+// exceed maxAvailableAtDepth.
+var errAvailableAtDepthExceeded = errors.New("available-at redirect depth exceeded")
 
 type moduleMetadata struct {
 	Variants              []moduleVariant `json:"variants"`
@@ -465,6 +470,11 @@ func (r *Resolver) resolveModuleMetadata(coord Coordinate, path string, source *
 	}
 
 	if chosen.AvailableAt != nil {
+		depth := r.redirectDepth.Add(1)
+		defer r.redirectDepth.Add(-1)
+		if depth > int32(maxAvailableAtDepth) {
+			return "", nil, nil, fmt.Errorf("%w for %s:%s:%s", errAvailableAtDepthExceeded, coord.Group, coord.Module, coord.Version)
+		}
 		r.addSelection(ResolutionSelection{
 			Kind:           "available_at_redirect",
 			Coordinate:     coord.Group + ":" + coord.Module + ":" + coord.Version,

@@ -2,6 +2,7 @@ package m2local
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -162,6 +163,10 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 	}
 	if moduleFile != "" {
 		artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+		if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
+			call.result = resolveResult{err: err}
+			return "", nil, nil, err
+		}
 		if err == nil && (artifact != "" || androidLibrary != nil) {
 			deps = applyExcludes(deps, coord.Excludes)
 			call.result = resolveResult{artifact: artifact, androidLibrary: androidLibrary, deps: deps}
@@ -193,6 +198,10 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 			}
 			if moduleFile != "" {
 				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+				if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
+					call.result = resolveResult{err: err}
+					return "", nil, nil, err
+				}
 				if err == nil && (artifact != "" || androidLibrary != nil) {
 					deps = applyExcludes(deps, coord.Excludes)
 					call.result = resolveResult{artifact: artifact, androidLibrary: androidLibrary, deps: deps}
@@ -225,6 +234,10 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 			}
 			if moduleFile != "" {
 				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+				if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
+					call.result = resolveResult{err: err}
+					return "", nil, nil, err
+				}
 				if err == nil && (artifact != "" || androidLibrary != nil) {
 					deps = applyExcludes(deps, coord.Excludes)
 					call.result = resolveResult{artifact: artifact, androidLibrary: androidLibrary, deps: deps}
@@ -262,6 +275,10 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 			}
 			if moduleFile != "" {
 				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+				if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
+					call.result = resolveResult{err: err}
+					return "", nil, nil, err
+				}
 				if err == nil && (artifact != "" || androidLibrary != nil) {
 					deps = applyExcludes(deps, coord.Excludes)
 					call.result = resolveResult{artifact: artifact, androidLibrary: androidLibrary, deps: deps}
