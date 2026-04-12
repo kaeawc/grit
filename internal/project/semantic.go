@@ -782,6 +782,8 @@ func (prj *Project) SemanticActionsForCommand(modulePath, command string, reques
 	switch command {
 	case "compile-debug", "compileDebugSources", "compileReleaseSources":
 		return semanticActionsForVariants(prj, g, modulePath, requestedVariants, "compile"), nil
+	case "lint-debug", "lintDebug", "lint-release", "lintRelease", "lint":
+		return semanticActionsForVariants(prj, g, modulePath, requestedVariants, "lint"), nil
 	case "install", "install-debug", "installDebug", "installRelease":
 		return semanticActionsForVariants(prj, g, modulePath, requestedVariants, "install"), nil
 	case "assemble-debug", "assembleDebug", "assemble-release", "assembleRelease", "assemble":
@@ -978,6 +980,7 @@ func addSemanticActions(g *graph.Graph, moduleID graph.LogicalModuleID, variantI
 		out  graph.ArtifactKind
 	}{
 		{op: "compile", kind: graph.ActionKindCompile, task: semanticTaskName("compile", variantName), out: graph.ArtifactKindJar},
+		{op: "lint", kind: graph.ActionKindLint, task: semanticTaskName("lint", variantName), out: graph.ArtifactKindOther},
 		{op: "assemble", kind: graph.ActionKindPackage, task: semanticTaskName("assemble", variantName), out: graph.ArtifactKindApk},
 		{op: "install", kind: graph.ActionKindCustom, task: semanticTaskName("install", variantName), out: graph.ArtifactKindOther},
 	}
@@ -1058,7 +1061,7 @@ func addSemanticActions(g *graph.Graph, moduleID graph.LogicalModuleID, variantI
 			To:   actionID.Ref(),
 			Kind: graph.EdgeKindContains,
 		})
-		if spec.op == "compile" || spec.op == "compile-tests" {
+		if spec.op == "compile" || spec.op == "compile-tests" || spec.op == "lint" {
 			_ = g.SetActionInputs(actionID, []graph.ArtifactID{backingArtifactID})
 			_, _ = g.AddEdge(graph.Edge{
 				From: actionID.Ref(),
@@ -1320,7 +1323,7 @@ func connectSemanticVariantDependency(g *graph.Graph, prj *Project, from Module,
 	if _, ok := g.Artifact(graph.ArtifactID(targetBackingArtifactID.String())); !ok {
 		return
 	}
-	for _, operation := range []string{"compile", "assemble", "test", "compile-tests"} {
+	for _, operation := range []string{"compile", "lint", "assemble", "test", "compile-tests"} {
 		actionID := semanticActionID(prj, from, fromVariantName, operation)
 		action, ok := g.Action(graph.ActionID(actionID.String()))
 		if !ok {
@@ -1471,6 +1474,7 @@ func semanticActionSpecs(mod Module, variantName string) []semanticActionSpec {
 	}
 	specs := []semanticActionSpec{
 		{op: "compile", kind: graph.ActionKindCompile, task: semanticTaskName("compile", variantName), out: graph.ArtifactKindJar},
+		{op: "lint", kind: graph.ActionKindLint, task: semanticTaskName("lint", variantName), out: graph.ArtifactKindOther},
 		{op: "assemble", kind: graph.ActionKindPackage, task: semanticTaskName("assemble", variantName), out: graph.ArtifactKindApk},
 		{op: "install", kind: graph.ActionKindCustom, task: semanticTaskName("install", variantName), out: graph.ArtifactKindOther},
 	}

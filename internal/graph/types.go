@@ -52,6 +52,7 @@ const (
 	ActionKindUnknown   ActionKind = "unknown"
 	ActionKindResolve   ActionKind = "resolve"
 	ActionKindCompile   ActionKind = "compile"
+	ActionKindLint      ActionKind = "lint"
 	ActionKindLink      ActionKind = "link"
 	ActionKindDex       ActionKind = "dex"
 	ActionKindPackage   ActionKind = "package"

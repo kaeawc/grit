@@ -52,6 +52,7 @@ type ActionScheduleStep struct {
 const (
 	estimatedProbeBytesCompile      int64 = 8 * 1024 * 1024
 	estimatedProbeBytesCompileTests int64 = 6 * 1024 * 1024
+	estimatedProbeBytesLint         int64 = 4 * 1024 * 1024
 	estimatedProbeBytesAssemble     int64 = 16 * 1024 * 1024
 	estimatedProbeBytesTest         int64 = 1 * 1024 * 1024
 	estimatedProbeBytesJavadoc      int64 = 4 * 1024 * 1024
@@ -306,14 +307,16 @@ func actionPriority(action graph.Action) int {
 		return 0
 	case "compile-tests":
 		return 1
-	case "assemble":
+	case "lint":
 		return 2
-	case "install":
+	case "assemble":
 		return 3
-	case "test":
+	case "install":
 		return 4
-	case "javadoc-jar":
+	case "test":
 		return 5
+	case "javadoc-jar":
+		return 6
 	default:
 		return 100
 	}
@@ -321,7 +324,7 @@ func actionPriority(action graph.Action) int {
 
 func actionCacheable(action graph.Action) bool {
 	switch action.Attributes["operation"] {
-	case "compile", "compile-tests", "assemble", "test", "javadoc-jar":
+	case "compile", "compile-tests", "lint", "assemble", "test", "javadoc-jar":
 		return true
 	case "install":
 		return false
@@ -335,7 +338,7 @@ func probeOrderForAction(action graph.Action) []string {
 		return nil
 	}
 	switch action.Attributes["operation"] {
-	case "compile", "compile-tests", "assemble", "test", "javadoc-jar":
+	case "compile", "compile-tests", "lint", "assemble", "test", "javadoc-jar":
 		return []string{"local-overlay", "shared-machine"}
 	default:
 		return []string{"local-overlay"}
@@ -358,6 +361,8 @@ func estimatedBytesForAction(action graph.Action) int64 {
 		return estimatedProbeBytesCompile
 	case "compile-tests":
 		return estimatedProbeBytesCompileTests
+	case "lint":
+		return estimatedProbeBytesLint
 	case "assemble":
 		return estimatedProbeBytesAssemble
 	case "test":
@@ -375,6 +380,8 @@ func workerClassForAction(action graph.Action) string {
 		return "kotlin-compile"
 	case "compile-tests":
 		return "test-compile"
+	case "lint":
+		return "lint"
 	case "assemble":
 		return "android-package"
 	case "install":
@@ -390,7 +397,7 @@ func workerClassForAction(action graph.Action) string {
 
 func resourceClassForWorkerClass(workerClass string) string {
 	switch workerClass {
-	case "kotlin-compile", "test-compile", "junit", "javadoc":
+	case "kotlin-compile", "test-compile", "lint", "junit", "javadoc":
 		return "jvm-process"
 	case "android-package":
 		return "android-tools"
@@ -403,7 +410,7 @@ func resourceClassForWorkerClass(workerClass string) string {
 
 func resourceCostForWorkerClass(workerClass string) int {
 	switch workerClass {
-	case "kotlin-compile", "test-compile", "junit", "android-package", "adb-install", "javadoc":
+	case "kotlin-compile", "test-compile", "lint", "junit", "android-package", "adb-install", "javadoc":
 		return 1
 	default:
 		return 1
@@ -454,7 +461,7 @@ func maxParallelismForWorkerClass(workerClass string) int {
 	switch workerClass {
 	case "kotlin-compile", "test-compile":
 		return 2
-	case "android-package", "adb-install", "junit", "javadoc":
+	case "lint", "android-package", "adb-install", "junit", "javadoc":
 		return 1
 	default:
 		return 1
@@ -578,6 +585,8 @@ func (m *Model) androidActionsForResolvedCommand(g *graph.Graph, modulePath, com
 	switch command {
 	case "compile-debug", "compileDebugSources", "compileReleaseSources":
 		return expandActionDependencies(g, m.actionsForVariants(g, modulePath, names, "compile")), nil
+	case "lint-debug", "lintDebug", "lint-release", "lintRelease", "lint":
+		return expandActionDependencies(g, m.actionsForVariants(g, modulePath, names, "lint")), nil
 	case "install", "install-debug", "installDebug", "installRelease":
 		return expandActionDependencies(g, m.actionsForVariants(g, modulePath, names, "install")), nil
 	case "assemble-debug", "assembleDebug", "assemble-release", "assembleRelease", "assemble":

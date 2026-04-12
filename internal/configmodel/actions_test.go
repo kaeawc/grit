@@ -210,6 +210,27 @@ func TestScheduleStepEstimatedBytesFollowOperationHeuristic(t *testing.T) {
 	if installStep.EstimatedBytes != 0 {
 		t.Fatalf("expected non-cacheable install step to have zero estimated bytes, got %#v", installStep)
 	}
+
+	lintStep := model.scheduleStepForAction(graph.Action{
+		ID:   graph.ActionID("action:lint"),
+		Name: "lintDebug",
+		Kind: graph.ActionKindLint,
+		Attributes: map[string]string{
+			"operation": "lint",
+		},
+	}, nil)
+	if !lintStep.Cacheable || len(lintStep.ProbeOrder) == 0 || !lintStep.ExecuteOnMiss {
+		t.Fatalf("expected lint step to be cacheable, got %#v", lintStep)
+	}
+	if got, want := lintStep.WorkerClass, "lint"; got != want {
+		t.Fatalf("lint worker class = %q, want %q", got, want)
+	}
+	if got, want := lintStep.ResourceClass, "jvm-process"; got != want {
+		t.Fatalf("lint resource class = %q, want %q", got, want)
+	}
+	if lintStep.EstimatedBytes <= 0 {
+		t.Fatalf("expected lint step to carry estimated bytes, got %#v", lintStep)
+	}
 }
 
 func TestScheduleStepEstimatedBytesUseObservedRemoteBytesAsFloor(t *testing.T) {
@@ -320,6 +341,23 @@ func TestActionsForResolvedCommandUsesFlavorAwareDebugVariants(t *testing.T) {
 		if action.Attributes["variantName"] != "freeDebug" {
 			t.Fatalf("expected compile-tests actions to stay on freeDebug, got %#v", compileTests)
 		}
+	}
+
+	lintActions, err := model.ActionsForCommand(":app", "android-application", "lintDebug", []string{"freeDebug"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lintActions) != 1 {
+		t.Fatalf("expected one lint action for freeDebug, got %#v", lintActions)
+	}
+	if got, want := lintActions[0].Kind, graph.ActionKindLint; got != want {
+		t.Fatalf("lint action kind = %q, want %q", got, want)
+	}
+	if got, want := lintActions[0].Attributes["operation"], "lint"; got != want {
+		t.Fatalf("lint action operation = %q, want %q", got, want)
+	}
+	if got, want := lintActions[0].Attributes["variantName"], "freeDebug"; got != want {
+		t.Fatalf("lint action variant = %q, want %q", got, want)
 	}
 }
 

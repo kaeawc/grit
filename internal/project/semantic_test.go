@@ -240,6 +240,81 @@ dependencies {
 	}
 }
 
+func TestSemanticActionsForCommand_LintUsesRegisteredLintKindAndDependencyInputs(t *testing.T) {
+	root := t.TempDir()
+	prj := &Project{
+		Name:    "SemanticTest",
+		RootDir: root,
+		Modules: []Module{
+			{
+				Path:      ":app",
+				Dir:       filepath.Join(root, "app"),
+				BuildFile: filepath.Join(root, "app", "build.gradle.kts"),
+				Type:      "android-application",
+				BuildTypes: map[string]BuildType{
+					"debug":   {Name: "debug"},
+					"release": {Name: "release"},
+				},
+			},
+			{
+				Path:      ":lib",
+				Dir:       filepath.Join(root, "lib"),
+				BuildFile: filepath.Join(root, "lib", "build.gradle.kts"),
+				Type:      "android-library",
+				BuildTypes: map[string]BuildType{
+					"debug": {Name: "debug"},
+				},
+			},
+		},
+	}
+	for _, mod := range prj.Modules {
+		if err := os.MkdirAll(mod.Dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWriteSemanticFile(t, prj.FindModule(":app").BuildFile, `
+dependencies {
+  implementation(projects.lib)
+}
+`)
+	mustWriteSemanticFile(t, prj.FindModule(":lib").BuildFile, `dependencies {}`)
+
+	g := prj.SemanticGraphDetailed()
+	actions, err := prj.SemanticActionsForCommand(":app", "lintDebug", []string{"debug"})
+	if err != nil {
+		t.Fatalf("SemanticActionsForCommand returned error: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("expected one lint action, got %#v", actions)
+	}
+	action := actions[0]
+	if got, want := action.Kind, graph.ActionKindLint; got != want {
+		t.Fatalf("lint action kind = %q, want %q", got, want)
+	}
+	if got, want := action.Attributes["operation"], "lint"; got != want {
+		t.Fatalf("lint action operation = %q, want %q", got, want)
+	}
+	if got, want := action.Name, "lintDebug"; got != want {
+		t.Fatalf("lint action name = %q, want %q", got, want)
+	}
+
+	libDebug, ok := prj.SemanticVariant(":lib", "debug")
+	if !ok {
+		t.Fatal("expected lib debug variant")
+	}
+	inputs := g.ActionInputs(action.ID)
+	foundInput := false
+	for _, input := range inputs {
+		if input.MaterializationID == graph.MaterializationID(libDebug.Materialization.ID) {
+			foundInput = true
+			break
+		}
+	}
+	if !foundInput {
+		t.Fatalf("expected lint action to consume lib debug artifact, got %#v", inputs)
+	}
+}
+
 func TestSemanticGraphSummaryIncludesDependencyClosure(t *testing.T) {
 	root := t.TempDir()
 	prj := &Project{
@@ -368,6 +443,9 @@ func TestAndroidModuleDefaultsExposeFlavorAwareTaskSurface(t *testing.T) {
 	}
 	if !hasTask(tasks, "installFreeDebugAndroidTest") || !hasTask(tasks, "uninstallFreeDebugAndroidTest") {
 		t.Fatalf("expected flavor-aware androidTest install tasks, got %#v", tasks)
+	}
+	if !taskSupported(tasks, "lint") || !taskSupported(tasks, "lintDebug") || !taskSupported(tasks, "lintRelease") {
+		t.Fatalf("expected lint tasks to be marked supported, got %#v", tasks)
 	}
 	if hasTask(tasks, "installDebug") || hasTask(tasks, "assembleDebug") {
 		t.Fatalf("expected task surface to prefer flavor-qualified variants, got %#v", tasks)
@@ -886,6 +964,15 @@ func hasTask(tasks []Task, name string) bool {
 	for _, task := range tasks {
 		if task.Name == name {
 			return true
+		}
+	}
+	return false
+}
+
+func taskSupported(tasks []Task, name string) bool {
+	for _, task := range tasks {
+		if task.Name == name {
+			return task.Supported
 		}
 	}
 	return false
