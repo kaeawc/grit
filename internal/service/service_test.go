@@ -1,9 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,11 +15,13 @@ import (
 	"time"
 
 	"github.com/kaeawc/grit/internal/admission"
+	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/integration"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
+	"github.com/kaeawc/grit/internal/remotecache"
 	"github.com/kaeawc/grit/internal/responsepayload"
 	"github.com/kaeawc/grit/internal/testsupport"
 	"github.com/kaeawc/grit/internal/testutil"
@@ -25,6 +30,16 @@ import (
 
 type androidTestCompilerStub struct {
 	calls []string
+}
+
+type remoteReadCompiler struct {
+	*testsupport.CompilerRecorder
+	client *remotecache.Client
+	hash   cas.Hash
+	reads  []bool
+
+	mu    sync.Mutex
+	index int
 }
 
 func (f *androidTestCompilerStub) SetTracker(perf.Tracker) {}
@@ -53,6 +68,24 @@ func (f *androidTestCompilerStub) InstallAndroidTestVariant(ctx context.Context,
 func (f *androidTestCompilerStub) UninstallAndroidTestVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, deviceSerial string, stdout, stderr *os.File) error {
 	f.calls = append(f.calls, fmt.Sprintf("uninstall-android-tests:%s:%s:%s", modulePath, variantName, deviceSerial))
 	return nil
+}
+
+func (f *remoteReadCompiler) CompileVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	if err := f.CompilerRecorder.CompileVariant(ctx, prj, modulePath, variantName, stdout, stderr); err != nil {
+		return err
+	}
+
+	f.mu.Lock()
+	index := f.index
+	f.index++
+	shouldRead := index < len(f.reads) && f.reads[index]
+	f.mu.Unlock()
+	if !shouldRead {
+		return nil
+	}
+
+	_, err := f.client.GetBlob(ctx, f.hash)
+	return err
 }
 
 func TestResolveBuildPlanPrefersCommandSemantics(t *testing.T) {
@@ -1585,6 +1618,123 @@ func TestExecuteScheduleUsesSchedulerRemoteProbeDecisionsWithoutDoubleSpend(t *t
 	}
 	if summary.BudgetRemainingBytes != 80 {
 		t.Fatalf("expected admitted estimate to be returned after zero-byte execution, got %+v", summary)
+	}
+}
+
+func TestExecuteScheduleSchedulerReconciliationUsesActualRemoteBytesOnce(t *testing.T) {
+	blob := bytes.Repeat([]byte("x"), 40)
+	hash := cas.HashBytes(blob)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/cas/"+hash.String() {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(blob)
+	}))
+	defer ts.Close()
+
+	client, err := remotecache.New(ts.URL, "")
+	if err != nil {
+		t.Fatalf("remotecache.New: %v", err)
+	}
+
+	fake := &remoteReadCompiler{
+		CompilerRecorder: &testsupport.CompilerRecorder{},
+		client:           client,
+		hash:             hash,
+		reads:            []bool{true, false},
+	}
+	svc := NewWithCompiler(fake)
+
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 1},
+	})
+	ac.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	}))
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	schedule := configmodel.ActionSchedule{
+		Steps: []configmodel.ActionScheduleStep{
+			{
+				Action: graph.Action{
+					ID:   graph.ActionID("action:compile1"),
+					Name: "compileDebug1",
+					Attributes: map[string]string{
+						"operation":   "compile",
+						"modulePath":  ":app",
+						"variantName": "debug",
+					},
+				},
+				WorkerClass:    "kotlin-compile",
+				MaxParallelism: 1,
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				EstimatedBytes: 80,
+			},
+			{
+				Action: graph.Action{
+					ID:   graph.ActionID("action:compile2"),
+					Name: "compileDebug2",
+					Attributes: map[string]string{
+						"operation":   "compile",
+						"modulePath":  ":app",
+						"variantName": "debug",
+					},
+				},
+				Dependencies:   []graph.ActionID{"action:compile1"},
+				WorkerClass:    "kotlin-compile",
+				MaxParallelism: 1,
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				EstimatedBytes: 80,
+			},
+		},
+		Dependencies: map[graph.ActionID][]graph.ActionID{
+			"action:compile2": {"action:compile1"},
+		},
+		Dependents: map[graph.ActionID][]graph.ActionID{
+			"action:compile1": {"action:compile2"},
+		},
+	}
+
+	outcomes, err := svc.executeSchedule(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, schedule, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("executeSchedule returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected 2 outcomes, got %d", len(outcomes))
+	}
+	if outcomes[0].ActionExecutions[0].RemoteBytesRead != 40 {
+		t.Fatalf("expected first action to observe 40 remote bytes, got %#v", outcomes[0].ActionExecutions[0])
+	}
+	if outcomes[0].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected first action to keep remote probing enabled, got %#v", outcomes[0].ActionExecutions[0])
+	}
+	if !outcomes[1].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected second action to defer after only 60 bytes were restored, got %#v", outcomes[1].ActionExecutions[0])
+	}
+
+	summary := ac.BandwidthSummary()
+	if summary == nil {
+		t.Fatal("expected bandwidth summary")
+	}
+	if summary.TotalAdmittedBytes != 80 || summary.TotalDeniedBytes != 80 {
+		t.Fatalf("expected one admitted and one denied scheduler probe, got %+v", summary)
+	}
+	if summary.BudgetRemainingBytes != 60 {
+		t.Fatalf("expected only the unused 40 bytes to be returned, got %+v", summary)
 	}
 }
 

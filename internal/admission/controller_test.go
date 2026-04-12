@@ -83,6 +83,47 @@ func TestTryAdmitWithRemoteProbeDecisionUsesPrecomputedBudgetReservation(t *test
 	}
 }
 
+func TestTryAdmitWithRemoteProbeDecisionLeavesActualByteReconciliationToScheduler(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{{ResourceClass: "jvm-process", Capacity: 1}})
+	c.SetNetworkBudget(NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	}))
+	s := configmodel.ActionScheduleStep{
+		Action: graph.Action{
+			ID:         graph.ActionID("a1"),
+			Attributes: map[string]string{"operation": "compile"},
+		},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+
+	remoteProbe := c.AdmitRemoteProbe(s)
+	if remoteProbe.DeferRemote {
+		t.Fatalf("expected precomputed remote probe admission, got %+v", remoteProbe)
+	}
+	if decision := c.TryAdmitWithRemoteProbeDecision(s, remoteProbe); !decision.Admitted {
+		t.Fatalf("expected admission using precomputed probe decision, got %+v", decision)
+	}
+
+	if err := c.ReleaseWithActual("a1", 40); err != nil {
+		t.Fatalf("release with actual: %v", err)
+	}
+	if snap := c.NetworkBudgetSnapshot(); snap == nil || snap.Available != 20 {
+		t.Fatalf("expected controller release to leave scheduler-owned budget unchanged, got %+v", snap)
+	}
+
+	c.ReconcileRemoteProbe(remoteProbe, 40)
+	if snap := c.NetworkBudgetSnapshot(); snap == nil || snap.Available != 60 {
+		t.Fatalf("expected scheduler reconciliation to return only the unused 40 bytes, got %+v", snap)
+	}
+}
+
 func TestAdmitRejectsExhaustedPool(t *testing.T) {
 	c := NewController(budgets())
 	s1 := step("a1", "compile", "kotlin-compile", "jvm-process", 1, 2)

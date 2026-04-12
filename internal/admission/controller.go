@@ -99,11 +99,12 @@ type workerSlot struct {
 }
 
 type admittedAction struct {
-	resourceClass  string
-	resourceCost   int
-	workerClass    string
-	estimatedBytes int64
-	deferRemote    bool
+	resourceClass          string
+	resourceCost           int
+	workerClass            string
+	estimatedBytes         int64
+	deferRemote            bool
+	remoteProbePrecomputed bool
 }
 
 // NewController creates a Controller pre-loaded with the given resource budgets.
@@ -171,7 +172,9 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 // TryAdmitWithRemoteProbeDecision reserves worker and resource capacity using
 // a remote-probe decision that was already computed by the scheduler. This
 // avoids double-consuming network budget when the scheduler admits or defers
-// remote probes ahead of execution.
+// remote probes ahead of execution. The scheduler still owns later byte
+// reconciliation for that reservation once execution reports the actual
+// remote-cache traffic.
 func (c *Controller) TryAdmitWithRemoteProbeDecision(step configmodel.ActionScheduleStep, remoteProbe RemoteProbeDecision) Decision {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -223,11 +226,12 @@ func (c *Controller) tryAdmitLocked(step configmodel.ActionScheduleStep, remoteP
 	remoteProbe := c.remoteProbeDecisionLocked(step, remoteProbeOverride)
 
 	c.admitted[actionID] = admittedAction{
-		resourceClass:  step.ResourceClass,
-		resourceCost:   step.ResourceCost,
-		workerClass:    step.WorkerClass,
-		estimatedBytes: remoteProbe.EstimatedBytes,
-		deferRemote:    remoteProbe.DeferRemote,
+		resourceClass:          step.ResourceClass,
+		resourceCost:           step.ResourceCost,
+		workerClass:            step.WorkerClass,
+		estimatedBytes:         remoteProbe.EstimatedBytes,
+		deferRemote:            remoteProbe.DeferRemote,
+		remoteProbePrecomputed: remoteProbeOverride != nil,
 	}
 
 	return Decision{
@@ -286,6 +290,10 @@ func (c *Controller) Release(actionID string) error {
 // the actual bytes transferred. If the action used fewer bytes than estimated,
 // the surplus is returned to the budget. If actualBytes is zero and the action
 // was deferred (DeferRemote=true), the full estimate is returned.
+//
+// When the action was admitted with a scheduler-precomputed remote-probe
+// decision, this only frees worker/resource slots. The scheduler remains
+// responsible for reconciling the reserved bytes once it completes the action.
 func (c *Controller) ReleaseWithActual(actionID string, actualBytes int64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -321,6 +329,9 @@ func (c *Controller) releaseLocked(actionID string, actualBytes int64) error {
 			// Action was deferred — no remote bytes consumed at all. The
 			// budget already denied the request so no tokens were taken,
 			// nothing to return.
+		} else if entry.remoteProbePrecomputed {
+			// The scheduler pre-reserved bandwidth for this remote probe, so it
+			// also owns the later actual-byte reconciliation.
 		} else if actualBytes >= 0 && actualBytes < entry.estimatedBytes {
 			// Action used fewer bytes than estimated; return the surplus.
 			c.networkBudget.Return(entry.estimatedBytes - actualBytes)
