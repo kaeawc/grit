@@ -240,6 +240,65 @@ func TestModelDryRunCleanupPlanClassifiesProtectedAndEvictableRecords(t *testing
 	}
 }
 
+func TestModelWorktreeRootsExtractsProtectedIDs(t *testing.T) {
+	t.Parallel()
+
+	model := &Model{
+		CacheKeyValue: "model-key-123",
+		Summary: project.SemanticGraphSummary{
+			Modules: []project.SemanticModuleSummary{{
+				Path: ":app",
+				Variants: []project.SemanticVariantSummary{{
+					Name: "debug",
+					Actions: []project.SemanticActionSummary{{
+						ID:      "action.compile",
+						Inputs:  []string{"artifact.input"},
+						Outputs: []string{"artifact.output"},
+					}},
+					Materialization: project.SemanticMaterializationSummary{
+						ID:                  "mat.debug",
+						BackingArtifactID:   "artifact.input",
+						ProducedArtifactIDs: []string{"artifact.output"},
+						ConsumingActionIDs:  []string{"action.compile"},
+					},
+				}},
+			}},
+		},
+	}
+
+	now := time.Date(2026, time.April, 12, 10, 0, 0, 0, time.UTC)
+	wr := model.WorktreeRoots("/project/root", now)
+
+	if wr.WorkRoot != "/project/root" {
+		t.Fatalf("expected work root, got %q", wr.WorkRoot)
+	}
+	if wr.ModelCacheKey != "model-key-123" {
+		t.Fatalf("expected model cache key, got %q", wr.ModelCacheKey)
+	}
+	if !wr.RecordedAt.Equal(now) {
+		t.Fatalf("expected recorded-at time, got %v", wr.RecordedAt)
+	}
+	if !wr.Actions["action.compile"] {
+		t.Fatalf("expected action.compile in roots, got %v", wr.Actions)
+	}
+	if !wr.Artifacts["artifact.input"] || !wr.Artifacts["artifact.output"] {
+		t.Fatalf("expected input and output artifacts in roots, got %v", wr.Artifacts)
+	}
+	if !wr.Materializations["mat.debug"] {
+		t.Fatalf("expected mat.debug in roots, got %v", wr.Materializations)
+	}
+
+	// Verify that a root set can aggregate this.
+	rs := &cachepolicy.ManifestRootSet{}
+	rs.AddWorktreeRoots(wr)
+	if !rs.ProtectsAction("action.compile") {
+		t.Fatal("root set should protect action from contributed worktree roots")
+	}
+	if !rs.ProtectsArtifact("artifact.input") {
+		t.Fatal("root set should protect artifact from contributed worktree roots")
+	}
+}
+
 func TestModelDryRunCleanupPlanAcceptsFakeStatterAndStableClock(t *testing.T) {
 	const orphanPath = "/cache/orphan.jar"
 	const livePath = "/cache/live.jar"

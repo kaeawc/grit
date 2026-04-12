@@ -274,6 +274,25 @@ func populateCleanupRecordStat(record *cachepolicy.CleanupRecord, now time.Time,
 	}
 }
 
+// WorktreeRoots returns a WorktreeRoots snapshot for this model, suitable
+// for inclusion in a ManifestRootSet.  The workRoot identifies the worktree
+// and now is the recording timestamp.
+func (m *Model) WorktreeRoots(workRoot string, now time.Time) cachepolicy.WorktreeRoots {
+	wr := cachepolicy.WorktreeRoots{
+		WorkRoot:      workRoot,
+		ModelCacheKey: m.CacheKey(),
+		RecordedAt:    now,
+	}
+	if m == nil {
+		return wr
+	}
+	actions, artifacts, materializations := protectedSummaryRoots(m.Summary)
+	wr.Actions = actions
+	wr.Artifacts = artifacts
+	wr.Materializations = materializations
+	return wr
+}
+
 func protectedSummaryRoots(summary project.SemanticGraphSummary) (map[string]bool, map[string]bool, map[string]bool) {
 	protectedActions := map[string]bool{}
 	protectedArtifacts := map[string]bool{}
