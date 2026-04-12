@@ -1,9 +1,6 @@
 package configmodel
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -376,7 +373,7 @@ func (m *Model) ActionSummariesByClasspathSnapshot(snapshotID string) []ActionSu
 	return out
 }
 
-func buildActionSummaries(g *graph.Graph) []ActionSummary {
+func buildActionSummaries(m *Model, g *graph.Graph) []ActionSummary {
 	if g == nil {
 		return nil
 	}
@@ -397,7 +394,7 @@ func buildActionSummaries(g *graph.Graph) []ActionSummary {
 			Inputs:         artifactIDs(action.Inputs),
 			Outputs:        artifactIDs(action.Outputs),
 			Note:           action.Note,
-			CacheKey:       actionCacheKey(action),
+			CacheKey:       actionCacheKeyForModel(m, action),
 			WorkerClass:    workerClass,
 			ResourceClass:  resourceClassForWorkerClass(workerClass),
 			ResourceCost:   resourceCostForWorkerClass(workerClass),
@@ -590,25 +587,4 @@ func manifestPathsForSourceRoots(sourceRoots []string) []string {
 		out = append(out, filepath.Join(root, "AndroidManifest.xml"))
 	}
 	return uniqueStrings(out)
-}
-
-func actionCacheKey(action graph.Action) string {
-	sum := sha256.New()
-	parts := []string{
-		action.ID.String(),
-		action.ModuleID.String(),
-		action.VariantID.String(),
-		action.Name,
-		string(action.Kind),
-		action.Attributes["operation"],
-		action.Attributes["variantName"],
-		strings.Join(artifactIDs(action.Inputs), ","),
-		strings.Join(artifactIDs(action.Outputs), ","),
-		action.Note,
-	}
-	for _, part := range parts {
-		fmt.Fprint(sum, part)
-		sum.Write([]byte{0})
-	}
-	return hex.EncodeToString(sum.Sum(nil))
 }

@@ -13,11 +13,11 @@ import (
 	"github.com/kaeawc/grit/internal/cas"
 )
 
-// Action is the declared shape of a lint invocation.
+// LintAction is the declared shape of a lint invocation.
 //
 // Actions are value types. Two Actions that canonicalize to equal fields
 // must produce the same CacheKey.
-type Action struct {
+type LintAction struct {
 	// Sources is the set of source files to lint. Order is not part of
 	// identity: sources are sorted during canonicalization.
 	Sources []FileInput
@@ -42,6 +42,10 @@ type Action struct {
 	ToolVersion string
 }
 
+// Action preserves the original public name while the roadmap converges on the
+// more explicit LintAction type name.
+type Action = LintAction
+
 // FileInput pairs a logical path with a content hash so that the cache key
 // captures both identity and content.
 type FileInput struct {
@@ -52,11 +56,11 @@ type FileInput struct {
 // CacheKey computes a deterministic hash over all declared inputs. The
 // canonical encoding sorts unordered collections and uses a versioned JSON
 // envelope so that future field additions naturally invalidate old keys.
-func (a Action) CacheKey() cas.Hash {
+func (a LintAction) CacheKey() cas.Hash {
 	return cas.HashBytes(a.canonicalBytes())
 }
 
-func (a Action) canonicalBytes() []byte {
+func (a LintAction) canonicalBytes() []byte {
 	sources := append([]FileInput(nil), a.Sources...)
 	sort.Slice(sources, func(i, j int) bool {
 		if sources[i].Path != sources[j].Path {

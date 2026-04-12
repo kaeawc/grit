@@ -5,8 +5,9 @@ import "github.com/kaeawc/grit/internal/project"
 // ActionFromVariant constructs a lint Action from the resolved variant
 // configuration, threading variant-level paths into the action's declared
 // inputs so they participate in cache keying.
-func ActionFromVariant(v project.ResolvedVariant) Action {
-	return Action{
+func ActionFromVariant(v project.ResolvedVariant) LintAction {
+	return LintAction{
+		ResourceDirs: append([]string(nil), v.ResourceArtifactPaths...),
 		ManifestPath: firstNonEmpty(v.ManifestPaths),
 		Baseline:     v.LintBaselinePath,
 	}

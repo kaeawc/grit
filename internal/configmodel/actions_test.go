@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kaeawc/grit/internal/graph"
+	"github.com/kaeawc/grit/internal/lint"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/responsepayload"
 	"github.com/kaeawc/grit/internal/testutil"
@@ -265,6 +266,79 @@ func TestScheduleStepEstimatedBytesUseObservedRemoteBytesAsFloor(t *testing.T) {
 	}, nil)
 	if got, want := smallObserved.EstimatedBytes, estimatedProbeBytesCompile; got != want {
 		t.Fatalf("expected small observed bytes to preserve heuristic floor %d, got %d", want, got)
+	}
+}
+
+func TestLintActionCacheKeyUsesResolvedVariantInputs(t *testing.T) {
+	moduleID := graph.LogicalModuleID("module:app")
+	variantID := graph.VariantID("variant:app:debug")
+	action := graph.Action{
+		ID:        graph.ActionID("action:lint"),
+		ModuleID:  moduleID,
+		VariantID: variantID,
+		Name:      "lintDebug",
+		Kind:      graph.ActionKindLint,
+		Attributes: map[string]string{
+			"operation":   "lint",
+			"modulePath":  ":app",
+			"variantName": "debug",
+		},
+	}
+
+	g := graph.New()
+	if err := g.AddLogicalModule(graph.LogicalModule{ID: moduleID, Path: ":app", Kind: graph.ModuleKindAndroidApplication}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddVariant(graph.Variant{ID: variantID, ModuleID: moduleID, Name: "debug", BuildType: "debug"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.AddAction(action); err != nil {
+		t.Fatal(err)
+	}
+
+	model := &Model{
+		Summary: project.SemanticGraphSummary{
+			Modules: []project.SemanticModuleSummary{{
+				ID:   moduleID.String(),
+				Path: ":app",
+				Kind: "android-application",
+				Variants: []project.SemanticVariantSummary{{
+					ID:   variantID.String(),
+					Name: "debug",
+					Materialization: project.SemanticMaterializationSummary{
+						ResourceArtifactPaths: []string{"app/src/main/res"},
+					},
+				}},
+			}},
+		},
+		ProvenanceSummaries: []ProvenanceSummary{{
+			ModuleID:      moduleID.String(),
+			ModulePath:    ":app",
+			VariantID:     variantID.String(),
+			VariantName:   "debug",
+			ManifestPaths: []string{"app/src/main/AndroidManifest.xml"},
+		}},
+		Snapshot: g.Snapshot(),
+	}
+
+	resolved, ok := model.ResolvedVariant(":app", "debug")
+	if !ok {
+		t.Fatal("expected resolved variant for lint action")
+	}
+	want := lint.ActionFromVariant(resolved).CacheKey().String()
+	if got := model.scheduleStepForAction(action, nil).CacheKey; got != want {
+		t.Fatalf("schedule lint cache key = %q, want %q", got, want)
+	}
+
+	summaries := buildActionSummaries(model, g)
+	if len(summaries) != 1 {
+		t.Fatalf("expected one action summary, got %#v", summaries)
+	}
+	if got := summaries[0].CacheKey; got != want {
+		t.Fatalf("summary lint cache key = %q, want %q", got, want)
+	}
+	if got := actionCacheKey(action); got == want {
+		t.Fatalf("expected model-aware lint cache key to differ from generic fallback, got %q", got)
 	}
 }
 

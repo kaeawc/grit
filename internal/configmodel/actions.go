@@ -488,7 +488,7 @@ func (m *Model) scheduleStepForAction(action graph.Action, deps []graph.ActionID
 		MaxParallelism: maxParallelismForWorkerClass(workerClass),
 		ResourceClass:  resourceClassForWorkerClass(workerClass),
 		ResourceCost:   resourceCostForWorkerClass(workerClass),
-		CacheKey:       actionCacheKey(action),
+		CacheKey:       actionCacheKeyForModel(m, action),
 		Cacheable:      actionCacheable(action),
 		ProbeOrder:     probeOrderForAction(action),
 		ExecuteOnMiss:  true,

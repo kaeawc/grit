@@ -116,17 +116,19 @@ func (s *Store) LoadOrBuild(ctx context.Context, prj *project.Project) (*Model, 
 
 func (DefaultBuilder) Build(prj *project.Project) (*Model, error) {
 	g := prj.SemanticGraphDetailed()
-	actionSummaries := buildActionSummaries(g)
 	artifactSummaries := buildArtifactSummaries(g)
 	provenanceSummaries := buildProvenanceSummaries(g)
-	return &Model{
-		Summary:             enrichSummary(prj.SemanticGraphSummary(), actionSummaries, artifactSummaries, provenanceSummaries),
-		ActionSummaries:     actionSummaries,
+	model := &Model{
+		Summary:             enrichSummary(prj.SemanticGraphSummary(), nil, artifactSummaries, provenanceSummaries),
 		ArtifactSummaries:   artifactSummaries,
 		ProvenanceSummaries: provenanceSummaries,
 		CachePolicy:         cachepolicy.DefaultPolicy(),
 		Snapshot:            g.Snapshot(),
-	}, nil
+	}
+	actionSummaries := buildActionSummaries(model, g)
+	model.ActionSummaries = actionSummaries
+	model.Summary = enrichSummary(prj.SemanticGraphSummary(), actionSummaries, artifactSummaries, provenanceSummaries)
+	return model, nil
 }
 
 func (m *Model) CacheKey() string {

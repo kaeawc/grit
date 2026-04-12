@@ -34,6 +34,16 @@ func TestActionFromVariant_ManifestFromPaths(t *testing.T) {
 	}
 }
 
+func TestActionFromVariant_ResourceDirsThreaded(t *testing.T) {
+	v := project.ResolvedVariant{
+		ResourceArtifactPaths: []string{"src/main/res", "src/debug/res"},
+	}
+	action := ActionFromVariant(v)
+	if got, want := action.ResourceDirs, []string{"src/main/res", "src/debug/res"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("expected ResourceDirs %#v, got %#v", want, got)
+	}
+}
+
 func TestActionFromVariant_BaselineAffectsCacheKey(t *testing.T) {
 	v1 := project.ResolvedVariant{
 		LintBaselinePath: "lint-baseline.xml",
