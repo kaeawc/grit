@@ -1436,6 +1436,158 @@ func TestExecuteBatchDeferRemoteWithAdmissionController(t *testing.T) {
 	}
 }
 
+func TestExecuteScheduleUsesSchedulerForStepOnlyDependencies(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	first := configmodel.ActionScheduleStep{
+		Action: graph.Action{
+			ID:   graph.ActionID("action:compile"),
+			Name: "compileDebug",
+			Attributes: map[string]string{
+				"operation":   "compile",
+				"modulePath":  ":app",
+				"variantName": "debug",
+			},
+		},
+		WorkerClass:    "kotlin-compile",
+		MaxParallelism: 1,
+		ResourceClass:  "cpu",
+		ResourceCost:   1,
+	}
+	second := configmodel.ActionScheduleStep{
+		Action: graph.Action{
+			ID:   graph.ActionID("action:test-compile"),
+			Name: "compileDebugUnit",
+			Attributes: map[string]string{
+				"operation":   "compile-tests",
+				"modulePath":  ":app",
+				"variantName": "debug",
+			},
+		},
+		Dependencies:   []graph.ActionID{"action:compile"},
+		WorkerClass:    "test-compile",
+		MaxParallelism: 1,
+		ResourceClass:  "cpu",
+		ResourceCost:   1,
+	}
+	schedule := configmodel.ActionSchedule{
+		Steps: []configmodel.ActionScheduleStep{second, first},
+		Dependencies: map[graph.ActionID][]graph.ActionID{
+			"action:test-compile": {"action:compile"},
+		},
+		Dependents: map[graph.ActionID][]graph.ActionID{
+			"action:compile": {"action:test-compile"},
+		},
+	}
+
+	outcomes, err := svc.executeSchedule(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, schedule, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("executeSchedule returned error: %v", err)
+	}
+	if got, want := fake.CallsSnapshot(), []string{"compile::app:debug", "compile-tests::app:debug"}; !slices.Equal(got, want) {
+		t.Fatalf("expected scheduler to honor dependency order, got %#v want %#v", got, want)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected 2 outcomes, got %d", len(outcomes))
+	}
+	if outcomes[0].ActionExecutions[0].ActionID != "action:compile" || outcomes[1].ActionExecutions[0].ActionID != "action:test-compile" {
+		t.Fatalf("expected dependency-first execution order, got %#v", outcomes)
+	}
+}
+
+func TestExecuteScheduleUsesSchedulerRemoteProbeDecisionsWithoutDoubleSpend(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+
+	ac := admission.NewController([]configmodel.ResourceBudget{
+		{ResourceClass: "cpu", Capacity: 2},
+	})
+	ac.SetNetworkBudget(admission.NewNetworkBudget(admission.NetworkBudgetConfig{
+		CapacityBytes:     80,
+		RefillBytesPerSec: 0,
+	}))
+	svc.SetAdmissionController(ac)
+
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	schedule := configmodel.ActionSchedule{
+		Steps: []configmodel.ActionScheduleStep{
+			{
+				Action: graph.Action{
+					ID:   graph.ActionID("action:compile1"),
+					Name: "compileDebug1",
+					Attributes: map[string]string{
+						"operation":   "compile",
+						"modulePath":  ":app",
+						"variantName": "debug",
+					},
+				},
+				WorkerClass:    "kotlin-compile",
+				MaxParallelism: 2,
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				EstimatedBytes: 80,
+			},
+			{
+				Action: graph.Action{
+					ID:   graph.ActionID("action:compile2"),
+					Name: "compileDebug2",
+					Attributes: map[string]string{
+						"operation":   "compile",
+						"modulePath":  ":app",
+						"variantName": "debug",
+					},
+				},
+				WorkerClass:    "kotlin-compile",
+				MaxParallelism: 2,
+				ResourceClass:  "cpu",
+				ResourceCost:   1,
+				Cacheable:      true,
+				ProbeOrder:     []string{"local-overlay", "remote"},
+				EstimatedBytes: 80,
+			},
+		},
+	}
+
+	outcomes, err := svc.executeSchedule(context.Background(), prj, mod, &configmodel.Model{}, graph.New(), BuildRequest{Command: "compile-debug"}, schedule, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("executeSchedule returned error: %v", err)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("expected 2 outcomes, got %d", len(outcomes))
+	}
+	if outcomes[0].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected first action to keep remote probing enabled, got %#v", outcomes[0].ActionExecutions[0])
+	}
+	if !outcomes[1].ActionExecutions[0].DeferRemote {
+		t.Fatalf("expected second action to defer remote probing, got %#v", outcomes[1].ActionExecutions[0])
+	}
+
+	summary := ac.BandwidthSummary()
+	if summary == nil {
+		t.Fatal("expected bandwidth summary")
+	}
+	if summary.TotalAdmittedBytes != 80 || summary.TotalDeniedBytes != 80 {
+		t.Fatalf("expected scheduler decisions to consume and deny the budget once, got %+v", summary)
+	}
+	if summary.BudgetRemainingBytes != 80 {
+		t.Fatalf("expected admitted estimate to be returned after zero-byte execution, got %+v", summary)
+	}
+}
+
 func TestExecuteBatchRestoresNetworkBudgetFromMeasuredRemoteBytes(t *testing.T) {
 	svc := NewWithCompiler(&testsupport.CompilerRecorder{})
 

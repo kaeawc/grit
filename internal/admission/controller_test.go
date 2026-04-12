@@ -44,6 +44,45 @@ func TestAdmitSingleAction(t *testing.T) {
 	}
 }
 
+func TestTryAdmitWithRemoteProbeDecisionUsesPrecomputedBudgetReservation(t *testing.T) {
+	c := NewController([]configmodel.ResourceBudget{{ResourceClass: "jvm-process", Capacity: 1}})
+	c.SetNetworkBudget(NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     80,
+		RefillBytesPerSec: 0,
+	}))
+	s := configmodel.ActionScheduleStep{
+		Action: graph.Action{
+			ID:         graph.ActionID("a1"),
+			Attributes: map[string]string{"operation": "compile"},
+		},
+		WorkerClass:    "kotlin-compile",
+		ResourceClass:  "jvm-process",
+		ResourceCost:   1,
+		MaxParallelism: 1,
+		Cacheable:      true,
+		ProbeOrder:     []string{"local-overlay", "remote"},
+		EstimatedBytes: 80,
+	}
+
+	remoteProbe := c.AdmitRemoteProbe(s)
+	if remoteProbe.DeferRemote {
+		t.Fatalf("expected precomputed remote probe admission, got %+v", remoteProbe)
+	}
+
+	d := c.TryAdmitWithRemoteProbeDecision(s, remoteProbe)
+	if !d.Admitted {
+		t.Fatalf("expected action admission using precomputed remote probe, got %+v", d)
+	}
+
+	summary := c.BandwidthSummary()
+	if summary == nil {
+		t.Fatal("expected bandwidth summary")
+	}
+	if summary.TotalAdmittedBytes != 80 || summary.TotalDeniedBytes != 0 {
+		t.Fatalf("expected precomputed decision to avoid double-spending budget, got %+v", summary)
+	}
+}
+
 func TestAdmitRejectsExhaustedPool(t *testing.T) {
 	c := NewController(budgets())
 	s1 := step("a1", "compile", "kotlin-compile", "jvm-process", 1, 2)

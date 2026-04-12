@@ -326,31 +326,31 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		s.admissionController = admission.NewControllerFromSchedule(plan.Schedule)
 	}
 
-	executionBatches := plan.Schedule.Batches
-	if len(executionBatches) == 0 && len(plan.Schedule.Steps) > 0 {
-		for _, step := range plan.Schedule.Steps {
-			executionBatches = append(executionBatches, []configmodel.ActionScheduleStep{step})
-		}
-	}
-	if len(executionBatches) == 0 && len(plan.Actions) > 0 {
+	results, executeErr := s.executeSchedule(ctx, prj, mod, model, semanticGraph, req, plan.Schedule, stdout, stderr, tracker)
+	if len(results) == 0 && len(plan.Actions) > 0 {
+		var executionBatches [][]configmodel.ActionScheduleStep
 		for _, action := range plan.Actions {
 			executionBatches = append(executionBatches, []configmodel.ActionScheduleStep{{Action: action}})
 		}
-	}
-	for i, batch := range executionBatches {
-		batchStart := time.Now()
-		results, batchErr := s.executeBatch(ctx, prj, mod, model, semanticGraph, req, i, batch, stdout, stderr)
-		recordBatchTiming(tracker, i, results, time.Since(batchStart).Milliseconds())
-		if batchErr != nil {
-			outcome = mergeBatchOutcome(outcome, results)
-			s.finalizeRunSummaryState(&outcome, plan)
-			if s.models != nil {
-				_ = s.models.RecordRuntimeObservations(prj.RootDir, model.CacheKey(), runtimeObservationsFromExecutions(outcome.ActionExecutions))
+		for i, batch := range executionBatches {
+			batchStart := time.Now()
+			fallbackResults, batchErr := s.executeBatch(ctx, prj, mod, model, semanticGraph, req, i, batch, stdout, stderr)
+			recordBatchTiming(tracker, i, fallbackResults, time.Since(batchStart).Milliseconds())
+			results = append(results, fallbackResults...)
+			if batchErr != nil && executeErr == nil {
+				executeErr = batchErr
+				break
 			}
-			outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), batchErr)
-			return outcome, batchErr
 		}
-		outcome = mergeBatchOutcome(outcome, results)
+	}
+	outcome = mergeBatchOutcome(outcome, results)
+	if executeErr != nil {
+		s.finalizeRunSummaryState(&outcome, plan)
+		if s.models != nil {
+			_ = s.models.RecordRuntimeObservations(prj.RootDir, model.CacheKey(), runtimeObservationsFromExecutions(outcome.ActionExecutions))
+		}
+		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), executeErr)
+		return outcome, executeErr
 	}
 	s.finalizeRunSummaryState(&outcome, plan)
 	if s.models != nil {

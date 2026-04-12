@@ -165,7 +165,20 @@ func (c *Controller) RegisterWorkerClass(workerClass string, maxParallelism int)
 func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.tryAdmitLocked(step, nil)
+}
 
+// TryAdmitWithRemoteProbeDecision reserves worker and resource capacity using
+// a remote-probe decision that was already computed by the scheduler. This
+// avoids double-consuming network budget when the scheduler admits or defers
+// remote probes ahead of execution.
+func (c *Controller) TryAdmitWithRemoteProbeDecision(step configmodel.ActionScheduleStep, remoteProbe RemoteProbeDecision) Decision {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.tryAdmitLocked(step, &remoteProbe)
+}
+
+func (c *Controller) tryAdmitLocked(step configmodel.ActionScheduleStep, remoteProbeOverride *RemoteProbeDecision) Decision {
 	actionID := step.Action.ID.String()
 	if _, ok := c.admitted[actionID]; ok {
 		return Decision{
@@ -207,7 +220,7 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 	w.active++
 
 	// Check network budget for cacheable actions with remote probe tiers.
-	remoteProbe := c.admitRemoteProbeLocked(step)
+	remoteProbe := c.remoteProbeDecisionLocked(step, remoteProbeOverride)
 
 	c.admitted[actionID] = admittedAction{
 		resourceClass:  step.ResourceClass,
@@ -444,6 +457,18 @@ func (c *Controller) admitRemoteProbeLocked(step configmodel.ActionScheduleStep)
 	decision.BudgetBeforeBytes = admission.AvailableBefore
 	decision.BudgetAfterBytes = admission.AvailableAfter
 	decision.DeferRemote = !admission.Admitted
+	return decision
+}
+
+func (c *Controller) remoteProbeDecisionLocked(step configmodel.ActionScheduleStep, override *RemoteProbeDecision) RemoteProbeDecision {
+	if override == nil {
+		return c.admitRemoteProbeLocked(step)
+	}
+	decision := *override
+	decision.ActionID = step.Action.ID.String()
+	if decision.Eligible && decision.EstimatedBytes <= 0 {
+		decision.EstimatedBytes = step.EstimatedBytes
+	}
 	return decision
 }
 

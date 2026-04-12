@@ -10,8 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/execbackend"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/griterr"
@@ -38,16 +40,20 @@ type androidTestUninstaller interface {
 }
 
 func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, stdout, stderr *os.File) ([]BuildOutcome, error) {
+	return s.executeBatchWithRemoteProbeDecisions(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, nil, stdout, stderr)
+}
+
+func (s *Service) executeBatchWithRemoteProbeDecisions(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, remoteProbeDecisions map[string]admission.RemoteProbeDecision, stdout, stderr *os.File) ([]BuildOutcome, error) {
 	if len(batch) == 0 {
 		return nil, nil
 	}
 	if s.admissionController != nil {
-		return s.executeBatchWithAdmission(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, stdout, stderr)
+		return s.executeBatchWithAdmission(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, remoteProbeDecisions, stdout, stderr)
 	}
-	return s.executeBatchWithWorkerQueues(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, stdout, stderr)
+	return s.executeBatchWithWorkerQueues(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, remoteProbeDecisions, stdout, stderr)
 }
 
-func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, stdout, stderr *os.File) ([]BuildOutcome, error) {
+func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, remoteProbeDecisions map[string]admission.RemoteProbeDecision, stdout, stderr *os.File) ([]BuildOutcome, error) {
 	results := make([]actionResult, len(batch))
 	type completedAction struct {
 		index  int
@@ -84,7 +90,12 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 		progressed := false
 		nextPending := pending[:0]
 		for _, idx := range pending {
-			decision := s.admissionController.TryAdmit(batch[idx])
+			var decision admission.Decision
+			if remoteProbeDecision, ok := remoteProbeDecisionForStep(batch[idx], remoteProbeDecisions); ok {
+				decision = s.admissionController.TryAdmitWithRemoteProbeDecision(batch[idx], remoteProbeDecision)
+			} else {
+				decision = s.admissionController.TryAdmit(batch[idx])
+			}
 			if decision.Admitted {
 				launch(idx, decision.DeferRemote, true)
 				progressed = true
@@ -103,6 +114,9 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 			idx := pending[0]
 			pending = pending[1:]
 			deferRemote := s.admissionController.AdmitRemoteProbe(batch[idx]).DeferRemote
+			if remoteProbeDecision, ok := remoteProbeDecisionForStep(batch[idx], remoteProbeDecisions); ok {
+				deferRemote = remoteProbeDecision.DeferRemote
+			}
 			launch(idx, deferRemote, false)
 			continue
 		}
@@ -117,7 +131,7 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 	return batchOutcomes(results, batchErr)
 }
 
-func (s *Service) executeBatchWithWorkerQueues(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, stdout, stderr *os.File) ([]BuildOutcome, error) {
+func (s *Service) executeBatchWithWorkerQueues(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, remoteProbeDecisions map[string]admission.RemoteProbeDecision, stdout, stderr *os.File) ([]BuildOutcome, error) {
 	results := make([]actionResult, len(batch))
 
 	// Consult the admission controller for network budget decisions. When set,
@@ -125,7 +139,11 @@ func (s *Service) executeBatchWithWorkerQueues(ctx context.Context, prj *project
 	deferRemoteFlags := make([]bool, len(batch))
 	if s.admissionController != nil {
 		for i, step := range batch {
-			deferRemoteFlags[i] = s.admissionController.AdmitRemoteProbe(step).DeferRemote
+			if remoteProbeDecision, ok := remoteProbeDecisionForStep(step, remoteProbeDecisions); ok {
+				deferRemoteFlags[i] = remoteProbeDecision.DeferRemote
+			} else {
+				deferRemoteFlags[i] = s.admissionController.AdmitRemoteProbe(step).DeferRemote
+			}
 		}
 	}
 
@@ -264,6 +282,70 @@ func prioritizedBatchIndexes(batch []configmodel.ActionScheduleStep) []int {
 		ordered = append(ordered, indexes...)
 	}
 	return ordered
+}
+
+func (s *Service) executeSchedule(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, schedule configmodel.ActionSchedule, stdout, stderr *os.File, tracker perf.Tracker) ([]BuildOutcome, error) {
+	if len(schedule.Steps) == 0 && len(schedule.Batches) == 0 {
+		return nil, nil
+	}
+	if len(schedule.Batches) != 0 || len(schedule.Steps) == 0 {
+		executionBatches := schedule.Batches
+		if len(executionBatches) == 0 && len(schedule.Steps) > 0 {
+			for _, step := range schedule.Steps {
+				executionBatches = append(executionBatches, []configmodel.ActionScheduleStep{step})
+			}
+		}
+		var outcomes []BuildOutcome
+		for i, batch := range executionBatches {
+			batchStart := time.Now()
+			results, batchErr := s.executeBatch(ctx, prj, rootMod, model, semanticGraph, req, i, batch, stdout, stderr)
+			recordBatchTiming(tracker, i, results, time.Since(batchStart).Milliseconds())
+			outcomes = append(outcomes, results...)
+			if batchErr != nil {
+				return outcomes, batchErr
+			}
+		}
+		return outcomes, nil
+	}
+
+	scheduler := execbackend.NewScheduler(schedule, s.admissionController)
+	var outcomes []BuildOutcome
+	for batchIndex := 0; ; batchIndex++ {
+		ready := scheduler.ReadyWithRemoteProbeDecisions()
+		if len(ready) == 0 {
+			break
+		}
+		batch := make([]configmodel.ActionScheduleStep, 0, len(ready))
+		remoteProbeDecisions := make(map[string]admission.RemoteProbeDecision, len(ready))
+		for _, readyAction := range ready {
+			batch = append(batch, readyAction.Step)
+			remoteProbeDecisions[readyAction.Step.Action.ID.String()] = readyAction.RemoteProbeDecision
+		}
+
+		batchStart := time.Now()
+		results, batchErr := s.executeBatchWithRemoteProbeDecisions(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, remoteProbeDecisions, stdout, stderr)
+		recordBatchTiming(tracker, batchIndex, results, time.Since(batchStart).Milliseconds())
+		outcomes = append(outcomes, results...)
+		for _, result := range results {
+			for _, execution := range result.ActionExecutions {
+				if err := scheduler.CompleteWithActualRemoteBytes(graph.ActionID(execution.ActionID), execution.RemoteBytesRead); err != nil && batchErr == nil {
+					batchErr = err
+				}
+			}
+		}
+		if batchErr != nil {
+			return outcomes, batchErr
+		}
+	}
+	return outcomes, nil
+}
+
+func remoteProbeDecisionForStep(step configmodel.ActionScheduleStep, remoteProbeDecisions map[string]admission.RemoteProbeDecision) (admission.RemoteProbeDecision, bool) {
+	if len(remoteProbeDecisions) == 0 {
+		return admission.RemoteProbeDecision{}, false
+	}
+	decision, ok := remoteProbeDecisions[step.Action.ID.String()]
+	return decision, ok
 }
 
 func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, step configmodel.ActionScheduleStep, queueWaitMs int64, deferRemote bool, stdout, stderr *os.File) actionResult {
