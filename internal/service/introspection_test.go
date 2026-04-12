@@ -1257,8 +1257,14 @@ func TestToPlanScheduleResultPredictsDeferredRemoteProbes(t *testing.T) {
 	if first.DeferRemote {
 		t.Fatalf("expected first action to keep remote probes enabled, got %#v", first)
 	}
+	if first.RemoteProbeAdmission == nil || first.RemoteProbeAdmission.Deferred || first.RemoteProbeAdmission.BudgetBeforeBytes != 100 || first.RemoteProbeAdmission.BudgetAfterBytes != 20 {
+		t.Fatalf("expected first action admission details, got %#v", first.RemoteProbeAdmission)
+	}
 	if !second.DeferRemote {
 		t.Fatalf("expected second action to predict deferred remote probes, got %#v", second)
+	}
+	if second.RemoteProbeAdmission == nil || !second.RemoteProbeAdmission.Deferred || second.RemoteProbeAdmission.BudgetBeforeBytes != 20 || second.RemoteProbeAdmission.BudgetAfterBytes != 20 {
+		t.Fatalf("expected deferred action admission details, got %#v", second.RemoteProbeAdmission)
 	}
 }
 
@@ -1307,11 +1313,17 @@ func TestPlannedRemoteProbeDecisionsUsesStepsWithoutBatches(t *testing.T) {
 	if len(decisions) != 2 {
 		t.Fatalf("expected decisions for steps-only schedule, got %#v", decisions)
 	}
-	if decisions["action:first"] {
+	if decisions["action:first"].DeferRemote {
 		t.Fatalf("expected first step to keep remote probes enabled, got %#v", decisions)
 	}
-	if !decisions["action:second"] {
+	if decisions["action:first"].BudgetBeforeBytes != 80 || decisions["action:first"].BudgetAfterBytes != 0 {
+		t.Fatalf("expected first step budget details, got %#v", decisions["action:first"])
+	}
+	if !decisions["action:second"].DeferRemote {
 		t.Fatalf("expected second step to defer remote probes once the budget is exhausted, got %#v", decisions)
+	}
+	if decisions["action:second"].BudgetBeforeBytes != 0 || decisions["action:second"].BudgetAfterBytes != 0 {
+		t.Fatalf("expected deferred step budget details, got %#v", decisions["action:second"])
 	}
 }
 

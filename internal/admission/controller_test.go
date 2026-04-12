@@ -341,6 +341,8 @@ func TestAdmitRemoteProbeConsumesOnlyNetworkBudget(t *testing.T) {
 
 	if decision := c.AdmitRemoteProbe(first); decision.ActionID != "a1" || decision.DeferRemote {
 		t.Fatalf("expected first remote probe to consume budget without deferral, got %+v", decision)
+	} else if !decision.Eligible || decision.EstimatedBytes != 80 || decision.BudgetBeforeBytes != 100 || decision.BudgetAfterBytes != 20 {
+		t.Fatalf("expected detailed budget accounting on first probe, got %+v", decision)
 	}
 	if c.ActiveCount() != 0 {
 		t.Fatalf("expected remote-probe admission to avoid action reservations, got %d active", c.ActiveCount())
@@ -352,6 +354,8 @@ func TestAdmitRemoteProbeConsumesOnlyNetworkBudget(t *testing.T) {
 
 	if decision := c.AdmitRemoteProbe(second); decision.ActionID != "a2" || !decision.DeferRemote {
 		t.Fatalf("expected second remote probe to defer, got %+v", decision)
+	} else if !decision.Eligible || decision.EstimatedBytes != 80 || decision.BudgetBeforeBytes != 20 || decision.BudgetAfterBytes != 20 {
+		t.Fatalf("expected denied probe to preserve before/after budget state, got %+v", decision)
 	}
 	snap = nb.Snapshot()
 	if snap.Available != 20 {
@@ -382,6 +386,8 @@ func TestAdmitRemoteProbeSkipsBudgetForSharedMachineTier(t *testing.T) {
 
 	if decision := c.AdmitRemoteProbe(step); decision.ActionID != "a1" || decision.DeferRemote {
 		t.Fatalf("expected shared-machine probe to bypass remote deferral, got %+v", decision)
+	} else if decision.Eligible || decision.EstimatedBytes != 0 || decision.BudgetBeforeBytes != 0 || decision.BudgetAfterBytes != 0 {
+		t.Fatalf("expected non-remote tier to skip bandwidth accounting, got %+v", decision)
 	}
 	if snap := nb.Snapshot(); snap.Available != 100 || snap.TotalAdmitted != 0 || snap.TotalDenied != 0 {
 		t.Fatalf("expected shared-machine probe to leave network budget untouched, got %+v", snap)

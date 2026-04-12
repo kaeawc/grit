@@ -33,6 +33,15 @@ type NetworkBudget struct {
 	totalDenied   int64
 }
 
+// NetworkBudgetAdmission captures the result of a single token-bucket
+// admission attempt.
+type NetworkBudgetAdmission struct {
+	RequestedBytes  int64
+	Admitted        bool
+	AvailableBefore int64
+	AvailableAfter  int64
+}
+
 // NetworkBudgetConfig holds the parameters for creating a NetworkBudget.
 type NetworkBudgetConfig struct {
 	// CapacityBytes is the maximum burst size in bytes.
@@ -65,22 +74,35 @@ func NewNetworkBudget(cfg NetworkBudgetConfig) *NetworkBudget {
 // it deducts the tokens and returns true. Otherwise it returns false without
 // modifying the budget — the caller should fall back to local-only resolution.
 func (nb *NetworkBudget) Admit(estimatedBytes int64) bool {
-	if estimatedBytes <= 0 {
-		return true
-	}
+	return nb.AdmitDetailed(estimatedBytes).Admitted
+}
 
+// AdmitDetailed performs the same token-bucket check as Admit while also
+// returning the budget state before and after the attempt.
+func (nb *NetworkBudget) AdmitDetailed(estimatedBytes int64) NetworkBudgetAdmission {
 	nb.mu.Lock()
 	defer nb.mu.Unlock()
 
 	nb.refillLocked()
 
+	admission := NetworkBudgetAdmission{
+		RequestedBytes:  estimatedBytes,
+		AvailableBefore: nb.available,
+		AvailableAfter:  nb.available,
+	}
+	if estimatedBytes <= 0 {
+		admission.Admitted = true
+		return admission
+	}
 	if nb.available >= estimatedBytes {
 		nb.available -= estimatedBytes
 		nb.totalAdmitted += estimatedBytes
-		return true
+		admission.Admitted = true
+		admission.AvailableAfter = nb.available
+		return admission
 	}
 	nb.totalDenied += estimatedBytes
-	return false
+	return admission
 }
 
 // Return gives back unused byte-tokens (e.g. when a cache probe turns out

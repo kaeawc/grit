@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/cachepolicy"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/dependencywiring"
@@ -52,27 +53,28 @@ type PlanExplanationResult struct {
 }
 
 type InspectPlannedAction struct {
-	ID             string                      `json:"id"`
-	Name           string                      `json:"name,omitempty"`
-	Operation      string                      `json:"operation,omitempty"`
-	ModulePath     string                      `json:"modulePath,omitempty"`
-	VariantName    string                      `json:"variantName,omitempty"`
-	WorkerClass    string                      `json:"workerClass,omitempty"`
-	ResourceClass  string                      `json:"resourceClass,omitempty"`
-	ResourceCost   int                         `json:"resourceCost,omitempty"`
-	MaxParallelism int                         `json:"maxParallelism,omitempty"`
-	CacheKey       string                      `json:"cacheKey,omitempty"`
-	Cacheable      bool                        `json:"cacheable,omitempty"`
-	ProbeOrder     []string                    `json:"probeOrder,omitempty"`
-	ExecuteOnMiss  bool                        `json:"executeOnMiss,omitempty"`
-	EstimatedBytes int64                       `json:"estimatedBytes,omitempty"`
-	DeferRemote    bool                        `json:"deferRemote,omitempty"`
-	ProbeHint      *responsepayload.CacheProbe `json:"probeHint,omitempty"`
-	RetentionClass string                      `json:"retentionClass,omitempty"`
-	Shareability   string                      `json:"shareability,omitempty"`
-	Dependencies   []string                    `json:"dependencies,omitempty"`
-	Inputs         []string                    `json:"inputs,omitempty"`
-	Outputs        []string                    `json:"outputs,omitempty"`
+	ID                   string                      `json:"id"`
+	Name                 string                      `json:"name,omitempty"`
+	Operation            string                      `json:"operation,omitempty"`
+	ModulePath           string                      `json:"modulePath,omitempty"`
+	VariantName          string                      `json:"variantName,omitempty"`
+	WorkerClass          string                      `json:"workerClass,omitempty"`
+	ResourceClass        string                      `json:"resourceClass,omitempty"`
+	ResourceCost         int                         `json:"resourceCost,omitempty"`
+	MaxParallelism       int                         `json:"maxParallelism,omitempty"`
+	CacheKey             string                      `json:"cacheKey,omitempty"`
+	Cacheable            bool                        `json:"cacheable,omitempty"`
+	ProbeOrder           []string                    `json:"probeOrder,omitempty"`
+	ExecuteOnMiss        bool                        `json:"executeOnMiss,omitempty"`
+	EstimatedBytes       int64                       `json:"estimatedBytes,omitempty"`
+	DeferRemote          bool                        `json:"deferRemote,omitempty"`
+	RemoteProbeAdmission *PlanRemoteProbeAdmission   `json:"remoteProbeAdmission,omitempty"`
+	ProbeHint            *responsepayload.CacheProbe `json:"probeHint,omitempty"`
+	RetentionClass       string                      `json:"retentionClass,omitempty"`
+	Shareability         string                      `json:"shareability,omitempty"`
+	Dependencies         []string                    `json:"dependencies,omitempty"`
+	Inputs               []string                    `json:"inputs,omitempty"`
+	Outputs              []string                    `json:"outputs,omitempty"`
 }
 
 type PlanScheduleResult struct {
@@ -86,6 +88,14 @@ type PlanScheduleResult struct {
 type PlanNetworkBudget struct {
 	CapacityBytes     int64 `json:"capacityBytes"`
 	RefillBytesPerSec int64 `json:"refillBytesPerSec"`
+}
+
+// PlanRemoteProbeAdmission surfaces the scheduler's bandwidth-aware probe
+// admission decision for a planned action.
+type PlanRemoteProbeAdmission struct {
+	Deferred          bool  `json:"deferred,omitempty"`
+	BudgetBeforeBytes int64 `json:"budgetBeforeBytes,omitempty"`
+	BudgetAfterBytes  int64 `json:"budgetAfterBytes,omitempty"`
 }
 
 type PlanResourceBudget struct {
@@ -1075,28 +1085,30 @@ func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *pr
 	}
 	remoteDecisions := plannedRemoteProbeDecisions(plan.Schedule)
 	for _, step := range plan.Schedule.Steps {
+		remoteDecision := remoteDecisions[step.Action.ID.String()]
 		result.Actions = append(result.Actions, InspectPlannedAction{
-			ID:             step.Action.ID.String(),
-			Name:           step.Action.Name,
-			Operation:      step.Action.Attributes["operation"],
-			ModulePath:     step.Action.Attributes["modulePath"],
-			VariantName:    step.Action.Attributes["variantName"],
-			WorkerClass:    step.WorkerClass,
-			ResourceClass:  step.ResourceClass,
-			ResourceCost:   step.ResourceCost,
-			MaxParallelism: step.MaxParallelism,
-			CacheKey:       step.CacheKey,
-			Cacheable:      step.Cacheable,
-			ProbeOrder:     append([]string(nil), step.ProbeOrder...),
-			ExecuteOnMiss:  step.ExecuteOnMiss,
-			EstimatedBytes: step.EstimatedBytes,
-			DeferRemote:    remoteDecisions[step.Action.ID.String()],
-			ProbeHint:      step.ProbeHint,
-			RetentionClass: step.RetentionClass,
-			Shareability:   step.Shareability,
-			Dependencies:   actionIDs(step.Dependencies),
-			Inputs:         artifactIDs(step.Action.Inputs),
-			Outputs:        artifactIDs(step.Action.Outputs),
+			ID:                   step.Action.ID.String(),
+			Name:                 step.Action.Name,
+			Operation:            step.Action.Attributes["operation"],
+			ModulePath:           step.Action.Attributes["modulePath"],
+			VariantName:          step.Action.Attributes["variantName"],
+			WorkerClass:          step.WorkerClass,
+			ResourceClass:        step.ResourceClass,
+			ResourceCost:         step.ResourceCost,
+			MaxParallelism:       step.MaxParallelism,
+			CacheKey:             step.CacheKey,
+			Cacheable:            step.Cacheable,
+			ProbeOrder:           append([]string(nil), step.ProbeOrder...),
+			ExecuteOnMiss:        step.ExecuteOnMiss,
+			EstimatedBytes:       step.EstimatedBytes,
+			DeferRemote:          remoteDecision.DeferRemote,
+			RemoteProbeAdmission: toPlanRemoteProbeAdmission(remoteDecision),
+			ProbeHint:            step.ProbeHint,
+			RetentionClass:       step.RetentionClass,
+			Shareability:         step.Shareability,
+			Dependencies:         actionIDs(step.Dependencies),
+			Inputs:               artifactIDs(step.Action.Inputs),
+			Outputs:              artifactIDs(step.Action.Outputs),
 		})
 	}
 	return result, nil
@@ -1123,28 +1135,30 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 	for batchIdx, batch := range schedule.Batches {
 		stepResults := make([]InspectPlannedAction, 0, len(batch))
 		for _, step := range batch {
+			remoteDecision := remoteDecisions[step.Action.ID.String()]
 			stepResults = append(stepResults, InspectPlannedAction{
-				ID:             step.Action.ID.String(),
-				Name:           step.Action.Name,
-				Operation:      step.Action.Attributes["operation"],
-				ModulePath:     step.Action.Attributes["modulePath"],
-				VariantName:    step.Action.Attributes["variantName"],
-				WorkerClass:    step.WorkerClass,
-				ResourceClass:  step.ResourceClass,
-				ResourceCost:   step.ResourceCost,
-				MaxParallelism: step.MaxParallelism,
-				CacheKey:       step.CacheKey,
-				Cacheable:      step.Cacheable,
-				ProbeOrder:     append([]string(nil), step.ProbeOrder...),
-				ExecuteOnMiss:  step.ExecuteOnMiss,
-				EstimatedBytes: step.EstimatedBytes,
-				DeferRemote:    remoteDecisions[step.Action.ID.String()],
-				ProbeHint:      step.ProbeHint,
-				RetentionClass: step.RetentionClass,
-				Shareability:   step.Shareability,
-				Dependencies:   actionIDs(step.Dependencies),
-				Inputs:         artifactIDs(step.Action.Inputs),
-				Outputs:        artifactIDs(step.Action.Outputs),
+				ID:                   step.Action.ID.String(),
+				Name:                 step.Action.Name,
+				Operation:            step.Action.Attributes["operation"],
+				ModulePath:           step.Action.Attributes["modulePath"],
+				VariantName:          step.Action.Attributes["variantName"],
+				WorkerClass:          step.WorkerClass,
+				ResourceClass:        step.ResourceClass,
+				ResourceCost:         step.ResourceCost,
+				MaxParallelism:       step.MaxParallelism,
+				CacheKey:             step.CacheKey,
+				Cacheable:            step.Cacheable,
+				ProbeOrder:           append([]string(nil), step.ProbeOrder...),
+				ExecuteOnMiss:        step.ExecuteOnMiss,
+				EstimatedBytes:       step.EstimatedBytes,
+				DeferRemote:          remoteDecision.DeferRemote,
+				RemoteProbeAdmission: toPlanRemoteProbeAdmission(remoteDecision),
+				ProbeHint:            step.ProbeHint,
+				RetentionClass:       step.RetentionClass,
+				Shareability:         step.Shareability,
+				Dependencies:         actionIDs(step.Dependencies),
+				Inputs:               artifactIDs(step.Action.Inputs),
+				Outputs:              artifactIDs(step.Action.Outputs),
 			})
 		}
 		resources := []PlanResourceUsage(nil)
@@ -1167,19 +1181,19 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 	return out
 }
 
-func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string]bool {
+func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string]admission.RemoteProbeDecision {
 	if schedule.NetworkBudgetConfig == nil || (len(schedule.Batches) == 0 && len(schedule.Steps) == 0) {
 		return nil
 	}
 	scheduler := execbackend.NewSchedulerFromSchedule(schedule)
-	decisions := make(map[string]bool, len(schedule.Steps))
+	decisions := make(map[string]admission.RemoteProbeDecision, len(schedule.Steps))
 	for {
 		ready := scheduler.ReadyWithRemoteProbeDecisions()
 		if len(ready) == 0 {
 			break
 		}
 		for _, action := range ready {
-			decisions[action.Step.Action.ID.String()] = action.RemoteProbeDecision.DeferRemote
+			decisions[action.Step.Action.ID.String()] = action.RemoteProbeDecision
 		}
 		for _, action := range ready {
 			if err := scheduler.Complete(action.Step.Action.ID); err != nil {
@@ -1191,6 +1205,17 @@ func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string
 		return nil
 	}
 	return decisions
+}
+
+func toPlanRemoteProbeAdmission(decision admission.RemoteProbeDecision) *PlanRemoteProbeAdmission {
+	if !decision.Eligible {
+		return nil
+	}
+	return &PlanRemoteProbeAdmission{
+		Deferred:          decision.DeferRemote,
+		BudgetBeforeBytes: decision.BudgetBeforeBytes,
+		BudgetAfterBytes:  decision.BudgetAfterBytes,
+	}
 }
 
 func (s *Service) VariantProvenance(ctx context.Context, prj *project.Project, modulePath, variantName string) (ProvenanceResult, error) {

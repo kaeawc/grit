@@ -33,13 +33,21 @@ type Decision struct {
 	// denied the remote probe. The executor should skip the remote cache tier
 	// and resolve locally.
 	DeferRemote bool
+
+	// RemoteProbe captures the bandwidth-aware probe decision taken during
+	// admission.
+	RemoteProbe RemoteProbeDecision
 }
 
 // RemoteProbeDecision describes whether a cacheable action should skip remote
 // cache probes because the network budget is exhausted.
 type RemoteProbeDecision struct {
-	ActionID    string
-	DeferRemote bool
+	ActionID          string
+	Eligible          bool
+	DeferRemote       bool
+	EstimatedBytes    int64
+	BudgetBeforeBytes int64
+	BudgetAfterBytes  int64
 }
 
 // PoolSnapshot captures the state of a single resource pool at a point in time.
@@ -199,21 +207,22 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 	w.active++
 
 	// Check network budget for cacheable actions with remote probe tiers.
-	deferRemote, estimatedBytes := c.admitRemoteProbeLocked(step)
+	remoteProbe := c.admitRemoteProbeLocked(step)
 
 	c.admitted[actionID] = admittedAction{
 		resourceClass:  step.ResourceClass,
 		resourceCost:   step.ResourceCost,
 		workerClass:    step.WorkerClass,
-		estimatedBytes: estimatedBytes,
-		deferRemote:    deferRemote,
+		estimatedBytes: remoteProbe.EstimatedBytes,
+		deferRemote:    remoteProbe.DeferRemote,
 	}
 
 	return Decision{
 		Admitted:    true,
 		ActionID:    actionID,
 		Reason:      "admitted",
-		DeferRemote: deferRemote,
+		DeferRemote: remoteProbe.DeferRemote,
+		RemoteProbe: remoteProbe,
 		PoolUsage:   c.snapshotPoolsLocked(),
 		WorkerUsage: c.snapshotWorkersLocked(),
 	}
@@ -226,11 +235,7 @@ func (c *Controller) TryAdmit(step configmodel.ActionScheduleStep) Decision {
 func (c *Controller) AdmitRemoteProbe(step configmodel.ActionScheduleStep) RemoteProbeDecision {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	deferRemote, _ := c.admitRemoteProbeLocked(step)
-	return RemoteProbeDecision{
-		ActionID:    step.Action.ID.String(),
-		DeferRemote: deferRemote,
-	}
+	return c.admitRemoteProbeLocked(step)
 }
 
 // Release frees the resources held by a previously admitted action. It returns
@@ -395,15 +400,18 @@ func (c *Controller) ensurePool(resourceClass string) *pool {
 	return p
 }
 
-func (c *Controller) admitRemoteProbeLocked(step configmodel.ActionScheduleStep) (deferRemote bool, estimatedBytes int64) {
+func (c *Controller) admitRemoteProbeLocked(step configmodel.ActionScheduleStep) RemoteProbeDecision {
+	decision := RemoteProbeDecision{ActionID: step.Action.ID.String()}
 	if c.networkBudget == nil || !step.Cacheable || !tieredcas.HasRemoteProbeTier(step.ProbeOrder) {
-		return false, 0
+		return decision
 	}
-	estimatedBytes = step.EstimatedBytes
-	if !c.networkBudget.Admit(step.EstimatedBytes) {
-		return true, estimatedBytes
-	}
-	return false, estimatedBytes
+	admission := c.networkBudget.AdmitDetailed(step.EstimatedBytes)
+	decision.Eligible = true
+	decision.EstimatedBytes = step.EstimatedBytes
+	decision.BudgetBeforeBytes = admission.AvailableBefore
+	decision.BudgetAfterBytes = admission.AvailableAfter
+	decision.DeferRemote = !admission.Admitted
+	return decision
 }
 
 func (c *Controller) ensureWorker(workerClass string, maxParallelism int) *workerSlot {

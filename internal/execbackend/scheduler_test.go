@@ -181,8 +181,14 @@ func TestSchedulerReadyWithRemoteProbeDecisionsRetriesDeferredActionsAfterBudget
 	if firstReady[0].RemoteProbeDecision.DeferRemote {
 		t.Fatalf("expected first action to consume the available budget, got %#v", firstReady[0])
 	}
+	if !firstReady[0].RemoteProbeDecision.Eligible || firstReady[0].RemoteProbeDecision.BudgetBeforeBytes != 80 || firstReady[0].RemoteProbeDecision.BudgetAfterBytes != 0 {
+		t.Fatalf("expected scheduler to surface admitted probe budget details, got %#v", firstReady[0].RemoteProbeDecision)
+	}
 	if !firstReady[1].RemoteProbeDecision.DeferRemote {
 		t.Fatalf("expected second action to defer after budget exhaustion, got %#v", firstReady[1])
+	}
+	if !firstReady[1].RemoteProbeDecision.Eligible || firstReady[1].RemoteProbeDecision.BudgetBeforeBytes != 0 || firstReady[1].RemoteProbeDecision.BudgetAfterBytes != 0 {
+		t.Fatalf("expected scheduler to surface denied probe budget details, got %#v", firstReady[1].RemoteProbeDecision)
 	}
 	if snap := nb.Snapshot(); snap.TotalDenied != 80 {
 		t.Fatalf("expected one denied remote probe attempt, got %+v", snap)

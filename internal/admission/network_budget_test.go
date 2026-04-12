@@ -144,6 +144,23 @@ func TestNetworkBudgetSnapshot(t *testing.T) {
 	}
 }
 
+func TestNetworkBudgetAdmitDetailedReportsBeforeAndAfter(t *testing.T) {
+	nb := NewNetworkBudget(NetworkBudgetConfig{
+		CapacityBytes:     100,
+		RefillBytesPerSec: 0,
+	})
+
+	first := nb.AdmitDetailed(80)
+	if !first.Admitted || first.RequestedBytes != 80 || first.AvailableBefore != 100 || first.AvailableAfter != 20 {
+		t.Fatalf("unexpected first admission: %+v", first)
+	}
+
+	second := nb.AdmitDetailed(40)
+	if second.Admitted || second.RequestedBytes != 40 || second.AvailableBefore != 20 || second.AvailableAfter != 20 {
+		t.Fatalf("unexpected denied admission: %+v", second)
+	}
+}
+
 func TestNetworkBudgetDefaultCapacity(t *testing.T) {
 	nb := NewNetworkBudget(NetworkBudgetConfig{
 		CapacityBytes:     0,
