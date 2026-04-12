@@ -2,6 +2,7 @@ package nativecompile
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +208,146 @@ func assembleAndroidTestAPK(ctx context.Context, prj *project.Project, mod *proj
 		return "", err
 	}
 	return finalAPK, nil
+}
+
+func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod *project.Module, variant project.BuildType, classesDir string, runtimeCP []string, resources []androidResourceArtifact, stdout, stderr *os.File, tracker perf.Tracker) (string, error) {
+	variantDir := moduleOutputRelPath(mod.Path)
+	outRoot := filepath.Join(prj.RootDir, "build", "grit", variantDir, variant.Name)
+	dexDir := filepath.Join(outRoot, "dex")
+	libDexDir := filepath.Join(outRoot, "lib-dex")
+	appDexDir := filepath.Join(outRoot, "app-dex")
+	classesJar := filepath.Join(outRoot, "app-classes.jar")
+	moduleZipDir := filepath.Join(outRoot, "module-zip")
+	baseZip := filepath.Join(moduleZipDir, "base.zip")
+	unsignedAAB := filepath.Join(outRoot, "app-"+variant.Name+"-unsigned.aab")
+	finalAAB := filepath.Join(outRoot, "app-"+variant.Name+".aab")
+
+	if err := os.MkdirAll(dexDir, 0o755); err != nil {
+		return "", err
+	}
+
+	// Resolve bundletool toolchain.
+	tc, err := s.bundletoolToolchainForProject()
+	if err != nil {
+		return "", err
+	}
+
+	// Jar classes.
+	if err := tracker.Track("jarClasses", func() error {
+		jarStampPath := classesJar + ".stamp"
+		jarStampValue := classesJarStampValue(classesDir)
+		if stampMatches(jarStampPath, jarStampValue) && pathIsFile(classesJar) {
+			recordCacheProbe(tracker, "jarClasses", true, "local-up-to-date", "class jar stamp matched local outputs")
+			return nil
+		}
+		if outputsNewerThanInputs(classesJar, []string{classesDir}) {
+			_ = writeStamp(jarStampPath, jarStampValue)
+			recordCacheProbe(tracker, "jarClasses", true, "local-up-to-date", "class jar newer than classes directory")
+			return nil
+		}
+		recordCacheProbe(tracker, "jarClasses", false, "cache-miss", "class jar required fresh packaging")
+		if err := jarClasses(ctx, classesDir, classesJar, stdout, stderr); err != nil {
+			return err
+		}
+		return writeStamp(jarStampPath, jarStampValue)
+	}); err != nil {
+		return "", err
+	}
+
+	// Dex.
+	if variant.IsMinifyEnabled {
+		if err := tracker.Track("runR8", func() error {
+			return runR8(ctx, mod, variant, classesJar, dexDir, runtimeCP, stdout, stderr)
+		}); err != nil {
+			return "", err
+		}
+	} else if err := tracker.Track("runD8", func() error {
+		if outputsNewerThanInputs(dexDir, append([]string{classesJar}, runtimeCP...)) {
+			recordCacheProbe(tracker, "runD8", true, "local-up-to-date", "dex outputs newer than classes and runtime classpath")
+		} else {
+			recordCacheProbe(tracker, "runD8", false, "cache-miss", "dex outputs required D8 execution")
+		}
+		return runD8(ctx, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
+	}); err != nil {
+		return "", err
+	}
+
+	// Assemble module zip.
+	if err := tracker.Track("assembleModuleZip", func() error {
+		manifestPath := manifestForPackagingPathOrEmpty(prj, mod, variant.Name)
+		if manifestPath == "" {
+			return fmt.Errorf("assembleAAB: manifest not found for %s/%s", mod.Path, variant.Name)
+		}
+		inputs := moduleZipInputs{
+			ManifestPath: manifestPath,
+			DexDir:       dexDir,
+		}
+		// Discover assets directory if it exists.
+		assetsDir := filepath.Join(mod.Dir, "src", "main", "assets")
+		if pathIsDir(assetsDir) {
+			inputs.AssetsDir = assetsDir
+		}
+		// Discover JNI libs directory if it exists.
+		jniLibsDir := filepath.Join(mod.Dir, "src", "main", "jniLibs")
+		if pathIsDir(jniLibsDir) {
+			entries, dirErr := os.ReadDir(jniLibsDir)
+			if dirErr == nil {
+				nativeLibs := make(map[string]string)
+				for _, e := range entries {
+					if e.IsDir() {
+						nativeLibs[e.Name()] = filepath.Join(jniLibsDir, e.Name())
+					}
+				}
+				if len(nativeLibs) > 0 {
+					inputs.NativeLibDirs = nativeLibs
+				}
+			}
+		}
+		zipInputs := []string{inputs.ManifestPath, dexDir}
+		if outputsNewerThanInputs(baseZip, zipInputs) {
+			recordCacheProbe(tracker, "assembleModuleZip", true, "local-up-to-date", "module zip newer than manifest and dex inputs")
+			return nil
+		}
+		recordCacheProbe(tracker, "assembleModuleZip", false, "cache-miss", "module zip required fresh assembly")
+		return assembleModuleZip(inputs, baseZip)
+	}); err != nil {
+		return "", err
+	}
+
+	// Run bundletool build-bundle.
+	if err := tracker.Track("bundletoolBuildBundle", func() error {
+		if outputsNewerThanInputs(unsignedAAB, []string{baseZip}) {
+			recordCacheProbe(tracker, "bundletoolBuildBundle", true, "local-up-to-date", "unsigned AAB newer than module zip")
+			return nil
+		}
+		recordCacheProbe(tracker, "bundletoolBuildBundle", false, "cache-miss", "unsigned AAB required bundletool execution")
+		return runBundletoolBuildBundle(ctx, tc, []string{baseZip}, unsignedAAB, "", stdout, stderr)
+	}); err != nil {
+		return "", err
+	}
+
+	// Sign AAB.
+	if err := tracker.Track("signAAB", func() error {
+		signingName, signing := selectSigningConfig(mod, variant)
+		if signingName == "" {
+			if outputsNewerThanInputs(finalAAB, []string{unsignedAAB}) {
+				recordCacheProbe(tracker, "signAAB", true, "local-up-to-date", "unsigned AAB copied previously and final AAB is current")
+			} else {
+				recordCacheProbe(tracker, "signAAB", false, "cache-miss", "final AAB required unsigned copy")
+			}
+		} else if restoreSharedSignedAAB(finalAAB, sharedSignedAABPath(unsignedAAB, signingName, signing)) {
+			recordCacheProbe(tracker, "signAAB", true, "shared-cache-hit", "restored signed AAB from shared cache")
+		} else if outputsNewerThanInputs(finalAAB, []string{unsignedAAB, signing.StoreFile}) {
+			recordCacheProbe(tracker, "signAAB", true, "local-up-to-date", "signed AAB newer than unsigned AAB and keystore")
+		} else {
+			recordCacheProbe(tracker, "signAAB", false, "cache-miss", "signing required jarsigner execution for AAB")
+		}
+		return signAAB(ctx, mod, variant, unsignedAAB, finalAAB, stdout, stderr)
+	}); err != nil {
+		return "", err
+	}
+
+	return finalAAB, nil
 }
 
 func manifestForPackagingPathOrEmpty(prj *project.Project, mod *project.Module, variantName string) string {
