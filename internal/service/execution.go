@@ -288,6 +288,8 @@ func (s *Service) executeSchedule(ctx context.Context, prj *project.Project, roo
 	if len(schedule.Steps) == 0 && len(schedule.Batches) == 0 {
 		return nil, nil
 	}
+	restoreAdmission := s.installScheduleAdmissionController(schedule)
+	defer restoreAdmission()
 	if len(schedule.Batches) != 0 || len(schedule.Steps) == 0 {
 		executionBatches := schedule.Batches
 		if len(executionBatches) == 0 && len(schedule.Steps) > 0 {

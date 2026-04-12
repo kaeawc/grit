@@ -44,11 +44,11 @@ func NewSchedulerFromSchedule(schedule configmodel.ActionSchedule) *Scheduler {
 
 // NewScheduler constructs a scheduler stub over a schedule using the provided
 // admission controller. When controller is nil, a fresh controller is created
-// from the schedule's resource budgets.
+// from the full schedule so resource and network budgets are both wired in.
 func NewScheduler(schedule configmodel.ActionSchedule, controller *admission.Controller) *Scheduler {
 	steps := scheduledSteps(schedule)
 	if controller == nil {
-		controller = admission.NewController(schedule.ResourceBudgets)
+		controller = admission.NewControllerFromSchedule(schedule)
 	}
 	s := &Scheduler{
 		steps:         make(map[graph.ActionID]configmodel.ActionScheduleStep, len(steps)),

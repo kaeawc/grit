@@ -319,12 +319,8 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err)
 		return outcome, err
 	}
-	// Auto-create an admission controller from the schedule when one was not
-	// injected externally. This wires the schedule's resource budgets and
-	// network budget config into the runtime admission path automatically.
-	if s.admissionController == nil {
-		s.admissionController = admission.NewControllerFromSchedule(plan.Schedule)
-	}
+	restoreAdmission := s.installScheduleAdmissionController(plan.Schedule)
+	defer restoreAdmission()
 
 	results, executeErr := s.executeSchedule(ctx, prj, mod, model, semanticGraph, req, plan.Schedule, stdout, stderr, tracker)
 	if len(results) == 0 && len(plan.Actions) > 0 {
@@ -389,6 +385,20 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		return outcome, nil
 	default:
 		return outcome, griterr.Newf(griterr.ErrUnsupported, "command %s", req.Command)
+	}
+}
+
+// installScheduleAdmissionController wires a schedule-derived controller into
+// the service for the duration of a single build or direct execution call.
+// Externally injected controllers are preserved; only auto-created controllers
+// are removed on restore so bandwidth state does not leak across builds.
+func (s *Service) installScheduleAdmissionController(schedule configmodel.ActionSchedule) func() {
+	if s == nil || s.admissionController != nil {
+		return func() {}
+	}
+	s.admissionController = admission.NewControllerFromSchedule(schedule)
+	return func() {
+		s.admissionController = nil
 	}
 }
 

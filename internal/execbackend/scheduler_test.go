@@ -307,3 +307,29 @@ func TestSchedulerSetNetworkBudgetOverridesDefaultControllerBudget(t *testing.T)
 		t.Fatalf("expected second action to defer after injected budget is exhausted, got %#v", decisions)
 	}
 }
+
+func TestSchedulerNilControllerUsesScheduleNetworkBudgetConfig(t *testing.T) {
+	schedule := configmodel.ActionSchedule{
+		ResourceBudgets: []configmodel.ResourceBudget{{ResourceClass: "cpu", Capacity: 2}},
+		NetworkBudgetConfig: &configmodel.ScheduleNetworkBudget{
+			CapacityBytes:     80,
+			RefillBytesPerSec: 0,
+		},
+		Steps: []configmodel.ActionScheduleStep{
+			schedulerStep("action:first"),
+			schedulerStep("action:second"),
+		},
+	}
+
+	scheduler := NewScheduler(schedule, nil)
+	ready := scheduler.ReadyWithRemoteProbeDecisions()
+	if len(ready) != 2 {
+		t.Fatalf("expected two ready actions, got %#v", ready)
+	}
+	if ready[0].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected first action to consume schedule-provided budget, got %#v", ready[0])
+	}
+	if !ready[1].RemoteProbeDecision.DeferRemote {
+		t.Fatalf("expected second action to defer after schedule-provided budget is exhausted, got %#v", ready[1])
+	}
+}
