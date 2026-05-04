@@ -12,6 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/kaeawc/grit/internal/clock"
+	"github.com/kaeawc/grit/internal/fsutil"
 )
 
 // FilesystemStore is a Store backed by a local directory.
@@ -24,15 +27,29 @@ import (
 // where <hh> is the first two hex characters of the blob hash and
 // <remaining> is the remaining 62 characters.
 type FilesystemStore struct {
-	root string
-	now  func() time.Time
+	root  string
+	clock clock.Clock
 }
 
 // NewFilesystemStore returns a store rooted at dir. The directory is created
-// on first write; callers do not need to pre-create it.
+// on first write; callers do not need to pre-create it. Uses clock.System
+// for provenance timestamps; tests should set Clock via NewFilesystemStoreWithClock.
 func NewFilesystemStore(dir string) *FilesystemStore {
-	return &FilesystemStore{root: dir, now: time.Now}
+	return NewFilesystemStoreWithClock(dir, clock.System{})
 }
+
+// NewFilesystemStoreWithClock returns a FilesystemStore that uses c for
+// provenance and summary timestamps. Tests pass clock.NewFake.
+func NewFilesystemStoreWithClock(dir string, c clock.Clock) *FilesystemStore {
+	if c == nil {
+		c = clock.System{}
+	}
+	return &FilesystemStore{root: dir, clock: c}
+}
+
+// now returns the store's current time. Used for provenance defaulting and
+// summary timestamps; preserved as a method to keep call sites short.
+func (s *FilesystemStore) now() time.Time { return s.clock.Now() }
 
 // Root returns the filesystem root of the store.
 func (s *FilesystemStore) Root() string { return s.root }
@@ -190,25 +207,7 @@ func (s *FilesystemStore) writeProvenanceIfMissing(h Hash, prov Provenance) erro
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".prov-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(encoded); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return fsutil.WriteFileAtomic(path, encoded, 0o644)
 }
 
 func (s *FilesystemStore) PutActionResult(ctx context.Context, result ActionResult) error {
@@ -226,25 +225,7 @@ func (s *FilesystemStore) PutActionResult(ctx context.Context, result ActionResu
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".action-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(encoded); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return fsutil.WriteFileAtomic(path, encoded, 0o644)
 }
 
 func (s *FilesystemStore) GetActionResult(ctx context.Context, actionHash Hash) (ActionResult, error) {

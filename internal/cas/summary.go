@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/kaeawc/grit/internal/fsutil"
 )
 
 // ProbeStep is a single tier probe captured in a CacheSummary. Mirrors the
@@ -61,25 +63,7 @@ func (s *FilesystemStore) PutActionSummary(ctx context.Context, summary CacheSum
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".summary-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(encoded); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return nil
+	return fsutil.WriteFileAtomic(path, encoded, 0o644)
 }
 
 // GetActionSummary returns the sidecar CacheSummary for actionHash, or

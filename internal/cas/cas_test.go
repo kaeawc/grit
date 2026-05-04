@@ -7,6 +7,8 @@ import (
 	"io"
 	"testing"
 	"time"
+
+	"github.com/kaeawc/grit/internal/clock"
 )
 
 func TestHashBytesDeterministic(t *testing.T) {
@@ -221,9 +223,8 @@ func TestFilesystemStoreGetNotFound(t *testing.T) {
 }
 
 func TestFilesystemStoreInjectedClock(t *testing.T) {
-	s := NewFilesystemStore(t.TempDir())
 	fixed := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
-	s.now = func() time.Time { return fixed }
+	s := NewFilesystemStoreWithClock(t.TempDir(), clock.NewFake(fixed))
 	ctx := context.Background()
 	info, err := s.PutBytes(ctx, []byte("fixed time"), Provenance{
 		Source: Source{Kind: SourceImport, Import: &ImportSource{Note: "t"}},
