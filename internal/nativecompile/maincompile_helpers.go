@@ -274,12 +274,32 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 		if toolchainErr != nil {
 			return toolchainErr
 		}
-		if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
-			return err
+		hasKotlin := false
+		for _, src := range prepared.mainSources {
+			if strings.HasSuffix(src, ".kt") {
+				hasKotlin = true
+				break
+			}
 		}
-		if javaSrcs := collectGeneratedJavaSources(prepared.kspJavaGenDir); len(javaSrcs) > 0 {
+		if hasKotlin {
+			if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
+				return err
+			}
+		}
+		javaSrcs := collectGeneratedJavaSources(prepared.kspJavaGenDir)
+		if !hasKotlin {
+			for _, src := range prepared.mainSources {
+				if strings.HasSuffix(src, ".java") {
+					javaSrcs = append(javaSrcs, src)
+				}
+			}
+		}
+		if len(javaSrcs) > 0 {
 			javacCP := append([]string{prepared.mainOut}, prepared.effectiveCompile...)
 			javacCP = append(javacCP, toolchain.RuntimeJars...)
+			if prepared.androidModuleType {
+				javacCP = append([]string{androidJarPath()}, javacCP...)
+			}
 			if err := runJavac(ctx, javaSrcs, prepared.mainOut, javacCP, stdout, stderr); err != nil {
 				return err
 			}
