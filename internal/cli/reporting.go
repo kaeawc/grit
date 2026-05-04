@@ -1805,6 +1805,7 @@ func runCacheProbes(ctx context.Context, args []string, stdout, stderr io.Writer
 	repo := fs.String("repo", ".", "Path to repository root")
 	modulePath := fs.String("module", "", "Module path")
 	command := fs.String("command", "", "Build command")
+	actionFilter := fs.String("action", "", "Filter probes to those matching this action ID (exact match)")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -1822,6 +1823,15 @@ func runCacheProbes(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
+	if filter := strings.TrimSpace(*actionFilter); filter != "" {
+		filtered := result.Probes[:0:0]
+		for _, p := range result.Probes {
+			if p.ActionID == filter {
+				filtered = append(filtered, p)
+			}
+		}
+		result.Probes = filtered
+	}
 	return cmd.success(resultJSON(cacheProbesResult(result)))
 }
 
@@ -1832,6 +1842,8 @@ func runCacheProbeRecords(ctx context.Context, args []string, stdout, stderr io.
 	repo := fs.String("repo", ".", "Path to repository root")
 	modulePath := fs.String("module", "", "Module path")
 	command := fs.String("command", "", "Build command")
+	actionFilter := fs.String("action", "", "Filter records to those matching this action ID (exact match)")
+	stepFilter := fs.String("step", "", "Filter records to those matching this probe step name (exact match)")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -1848,6 +1860,21 @@ func runCacheProbeRecords(ctx context.Context, args []string, stdout, stderr io.
 	result, err := cmd.svc.CacheProbeRecords(ctx, prj, *modulePath, *command)
 	if err != nil {
 		return cmd.fail(1, err)
+	}
+	actionF := strings.TrimSpace(*actionFilter)
+	stepF := strings.TrimSpace(*stepFilter)
+	if actionF != "" || stepF != "" {
+		filtered := result.Records[:0:0]
+		for _, r := range result.Records {
+			if actionF != "" && r.ActionID != actionF {
+				continue
+			}
+			if stepF != "" && r.StepName != stepF {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		result.Records = filtered
 	}
 	return cmd.success(resultJSON(cacheProbeRecordsResult(result)))
 }

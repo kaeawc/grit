@@ -2743,6 +2743,63 @@ func TestRunSummaryCommandsExposePersistedRunSummaryArtifacts(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
+	if exitCode := Run(context.Background(), []string{"cacheProbes", "--repo", root, "--module", ":app", "--command", "assemble", "--action", "action:does-not-exist"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("cacheProbes filter exited with %d: stderr=%s", exitCode, stderr.String())
+	}
+	var cacheProbesFilteredResp struct {
+		Result struct {
+			Probes []struct {
+				ActionID string `json:"actionId"`
+			} `json:"probes"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &cacheProbesFilteredResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(cacheProbesFilteredResp.Result.Probes) != 0 {
+		t.Fatalf("expected --action filter to drop unmatched probes, got %#v", cacheProbesFilteredResp.Result.Probes)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run(context.Background(), []string{"cacheProbeRecords", "--repo", root, "--module", ":app", "--command", "assemble", "--step", "no-such-step"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("cacheProbeRecords step filter exited with %d: stderr=%s", exitCode, stderr.String())
+	}
+	var cacheProbeRecordsStepResp struct {
+		Result struct {
+			Records []struct {
+				StepName string `json:"stepName"`
+			} `json:"records"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &cacheProbeRecordsStepResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(cacheProbeRecordsStepResp.Result.Records) != 0 {
+		t.Fatalf("expected --step filter to drop unmatched records, got %#v", cacheProbeRecordsStepResp.Result.Records)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run(context.Background(), []string{"cacheProbeRecords", "--repo", root, "--module", ":app", "--command", "assemble", "--action", "action:compile"}, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("cacheProbeRecords action filter exited with %d: stderr=%s", exitCode, stderr.String())
+	}
+	var cacheProbeRecordsKeepResp struct {
+		Result struct {
+			Records []struct {
+				ActionID string `json:"actionId"`
+			} `json:"records"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &cacheProbeRecordsKeepResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(cacheProbeRecordsKeepResp.Result.Records) != 1 || cacheProbeRecordsKeepResp.Result.Records[0].ActionID != "action:compile" {
+		t.Fatalf("expected --action filter to keep matching record, got %#v", cacheProbeRecordsKeepResp.Result.Records)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
 	if exitCode := Run(context.Background(), []string{"reuseDecision", "--repo", root, "--module", ":app", "--command", "assemble", "--action", "action:compile"}, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("reuseDecision exited with %d: stderr=%s", exitCode, stderr.String())
 	}
