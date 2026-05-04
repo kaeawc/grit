@@ -2,6 +2,7 @@ package dependencywiring
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -160,10 +161,62 @@ func (r *wiredResolver) Topology() m2local.CacheTopology {
 	return r.topology
 }
 
-// Resolver constructs the production dependency resolver for prj.
+// EnvUseTieredCache is the opt-in flag that switches Resolver to the
+// tieredcas → m2localbridge → produce path once that wiring lands.
+// Callers don't read it directly; Resolver consults it.
+const EnvUseTieredCache = "GRIT_USE_TIERED_CACHE"
+
+// ResolverOptions controls Resolver's construction. Zero-value preserves
+// the legacy m2local-only path. The fields are intentionally simple so
+// nativecompile and service can opt into the new path without learning
+// the construction details of either implementation.
+type ResolverOptions struct {
+	// UseTieredCache, when true, asks Resolver to construct the
+	// tieredcas → m2localbridge → produce chain. If the new path isn't
+	// available yet, Resolver returns ErrTieredCacheUnavailable and the
+	// caller must fall back explicitly. Reads default to whatever
+	// EnvUseTieredCache resolves to in the environment when nil options
+	// are passed.
+	UseTieredCache bool
+}
+
+// ErrTieredCacheUnavailable is returned by Resolver when UseTieredCache
+// is set but the tieredcas-backed path has not been wired up yet. This
+// is a load-bearing signal: callers can detect it and fall back to the
+// legacy path without parsing error strings.
+var ErrTieredCacheUnavailable = errors.New("dependencywiring: tiered-cache resolver path not yet implemented")
+
+// resolverOptionsFromEnv returns options seeded from the process
+// environment. Used when callers pass a nil options value.
+func resolverOptionsFromEnv() ResolverOptions {
+	v := strings.TrimSpace(os.Getenv(EnvUseTieredCache))
+	switch v {
+	case "1", "true", "TRUE", "True", "yes", "YES", "Yes":
+		return ResolverOptions{UseTieredCache: true}
+	default:
+		return ResolverOptions{}
+	}
+}
+
+// Resolver constructs the production dependency resolver for prj using
+// the default options derived from the environment. See ResolverWith
+// for explicit option control.
 func Resolver(prj *project.Project, tracker perf.Tracker) (DependencyResolver, error) {
+	opts := resolverOptionsFromEnv()
+	return ResolverWith(prj, tracker, opts)
+}
+
+// ResolverWith constructs the production dependency resolver for prj
+// with explicit options.
+func ResolverWith(prj *project.Project, tracker perf.Tracker, opts ResolverOptions) (DependencyResolver, error) {
 	if prj == nil {
 		return nil, os.ErrInvalid
+	}
+	if opts.UseTieredCache {
+		// Plumbing is in place; the tieredcas → m2localbridge → produce
+		// chain is tracked by the production-cache-wiring concept and
+		// will replace this branch's body when it lands.
+		return nil, ErrTieredCacheUnavailable
 	}
 	cat, err := LoadCatalog(prj)
 	if err != nil {
