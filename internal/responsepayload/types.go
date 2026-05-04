@@ -32,6 +32,7 @@ type PropertiesValues struct {
 	TestInstrumentationRunner string   `json:"testInstrumentationRunner,omitempty"`
 	UsesCompose               bool     `json:"usesCompose"`
 	UsesMetro                 bool     `json:"usesMetro"`
+	UsesWire                  bool     `json:"usesWire,omitempty"`
 	KotlinFreeCompilerArgs    []string `json:"kotlinFreeCompilerArgs,omitempty"`
 	LintDisabledChecks        []string `json:"lintDisabledChecks,omitempty"`
 	ConsumerProguardFiles     []string `json:"consumerProguardFiles,omitempty"`

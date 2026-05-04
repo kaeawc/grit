@@ -880,6 +880,8 @@ type InspectModule struct {
 	AndroidTestFiles          int
 	UsesCompose               bool
 	UsesMetro                 bool
+	UsesWire                  bool
+	WireConfig                *project.WireConfig
 	UsesKSP                   bool
 	KSPProcessors             []string
 	KSPOptions                map[string]string
@@ -1050,6 +1052,8 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 			AndroidTestFiles:          mod.AndroidTestFileCount,
 			UsesCompose:               mod.UsesCompose,
 			UsesMetro:                 mod.UsesMetro,
+			UsesWire:                  mod.UsesWire,
+			WireConfig:                wireConfigPointer(mod),
 			UsesKSP:                   mod.UsesKSP,
 			KSPProcessors:             kspProcessorCoords(mod.KSP.Processors),
 			KSPOptions:                mod.KSP.Options,
@@ -3482,6 +3486,7 @@ func (s *Service) Properties(mod *project.Module, prj *project.Project) Properti
 			TestInstrumentationRunner: mod.TestInstrumentationRunner,
 			UsesCompose:               mod.UsesCompose,
 			UsesMetro:                 mod.UsesMetro,
+			UsesWire:                  mod.UsesWire,
 			KotlinFreeCompilerArgs:    mod.KotlinFreeCompilerArgs,
 			LintDisabledChecks:        mod.LintDisabledChecks,
 			ConsumerProguardFiles:     mod.ConsumerProguardFiles,
@@ -3716,4 +3721,12 @@ func refsToStrings(refs []modulebuild.Ref) []string {
 		out = append(out, ref.Kind+":"+ref.Value)
 	}
 	return out
+}
+
+func wireConfigPointer(mod project.Module) *project.WireConfig {
+	if !mod.UsesWire {
+		return nil
+	}
+	cfg := mod.WireConfig
+	return &cfg
 }

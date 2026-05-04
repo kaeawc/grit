@@ -57,6 +57,7 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 		UsesCompose:               strings.Contains(body, "compose = true") || strings.Contains(body, "compose-compiler"),
 		UsesKotlinSerialization:   strings.Contains(body, "libs.plugins.kotlin.serialization"),
 		UsesMetro:                 strings.Contains(body, "libs.plugins.metro"),
+		UsesWire:                  detectWirePlugin(body),
 		UsesKSP:                   detectKSPApplied(body),
 		KSP:                       parseKSPConfig(body),
 		BuildFeatures:             parseBuildFeatures(body),
@@ -71,6 +72,9 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 		BuildTypes:                mergeBuildTypeMaps(parseBuildTypes(body, modDir), parseCustomVariants(body, modDir)),
 	}
 	mod.CompilerPlugins = buildCompilerPluginRegistry(mod, body)
+	if mod.UsesWire {
+		mod.WireConfig = parseWireConfig(body, modDir)
+	}
 	mod.Plugins = collectPluginIDs(body)
 
 	mod.SourceFileCount = countFiles(filepath.Join(modDir, "src", "main"), func(path string) bool {

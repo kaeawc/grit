@@ -152,6 +152,17 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 			out.androidResources = appendResourceArtifacts(out.androidResources, artifact)
 		}
 	}
+	var wireResult wireCodegenResult
+	if mod.UsesWire {
+		err = c.track("wireCodegen", func() error {
+			var innerErr error
+			wireResult, innerErr = c.runWireCodegen(ctx, prj, mod, variantName, stdout, stderr)
+			return innerErr
+		})
+		if err != nil {
+			return out, err
+		}
+	}
 	err = c.track("collectMainSources", func() error {
 		var innerErr error
 		out.mainSources, innerErr = collectMainSourcesForVariant(mod, variantName)
@@ -159,6 +170,16 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	})
 	if err != nil {
 		return out, err
+	}
+	if wireResult.GeneratedDir != "" {
+		generatedSources, gerr := collectSourcesFromRoots([]string{wireResult.GeneratedDir})
+		if gerr != nil {
+			return out, gerr
+		}
+		out.mainSources = append(out.mainSources, generatedSources...)
+	}
+	if len(wireResult.RuntimeClasspath) > 0 {
+		out.compileCP = mergePaths(out.compileCP, wireResult.RuntimeClasspath)
 	}
 	if err := os.MkdirAll(out.mainOut, 0o755); err != nil {
 		return out, err
@@ -193,6 +214,12 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	out.compileInputs = append(out.compileInputs, toolchain.CompilerClasspath...)
 	out.compileInputs = append(out.compileInputs, out.pluginPaths...)
 	out.compileInputs = append(out.compileInputs, out.pluginOptions...)
+	if len(wireResult.CacheInputs) > 0 {
+		out.compileInputs = append(out.compileInputs, wireResult.CacheInputs...)
+	}
+	if wireResult.CompilerJar != "" {
+		out.compileInputs = append(out.compileInputs, wireResult.CompilerJar)
+	}
 	out.compileInputs = append(out.compileInputs, kspHashTokens(kspResult.Version, mod.KSP.Processors, mod.KSP.Options)...)
 	if len(kspResult.ProcessorCP) > 0 {
 		out.compileInputs = append(out.compileInputs, kspResult.ProcessorCP...)

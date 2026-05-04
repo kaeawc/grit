@@ -60,6 +60,7 @@ type Module struct {
 	UsesCompose               bool          `json:"usesCompose,omitempty"`
 	UsesKotlinSerialization   bool          `json:"usesKotlinSerialization,omitempty"`
 	UsesMetro                 bool          `json:"usesMetro,omitempty"`
+	UsesWire                  bool          `json:"usesWire,omitempty"`
 	KotlinFreeCompilerArgs    []string      `json:"kotlinFreeCompilerArgs,omitempty"`
 	LintDisabledChecks        []string      `json:"lintDisabledChecks,omitempty"`
 	ConsumerProguardFiles     []string      `json:"consumerProguardFiles,omitempty"`

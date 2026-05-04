@@ -62,6 +62,8 @@ type Module struct {
 	UsesCompose               bool
 	UsesKotlinSerialization   bool
 	UsesMetro                 bool
+	UsesWire                  bool
+	WireConfig                WireConfig
 	UsesKSP                   bool
 	KSP                       modulebuild.KSPConfig
 	Plugins                   []string
@@ -75,6 +77,31 @@ type Module struct {
 	FlavorDimensions          []string
 	ProductFlavors            map[string]ProductFlavor
 	BuildTypes                map[string]BuildType
+}
+
+// WireConfig captures the resolved settings from a `wire { }` block on a
+// module that applies the `com.squareup.wire` Gradle plugin. Fields default
+// to wire's documented defaults when the corresponding key is absent from
+// the build script.
+type WireConfig struct {
+	// SourcePaths are proto source roots resolved relative to the module dir.
+	// Defaults to "src/main/proto" when no `sourcePath { srcDir(...) }` is
+	// declared (mirroring the wire plugin's default).
+	SourcePaths []string
+	// ProtoPaths are include-only proto roots that supply imported types but
+	// do not produce generated sources.
+	ProtoPaths []string
+	// KotlinTarget is true when the wire { kotlin { } } block is present.
+	KotlinTarget bool
+	// JavaTarget is true when the wire { java { } } block is present.
+	JavaTarget bool
+	// JavaInterop mirrors `kotlin { javaInterop = true }`.
+	JavaInterop bool
+	// ProtoLibrary mirrors `protoLibrary = true`.
+	ProtoLibrary bool
+	// Includes / Excludes select / filter types within the proto roots.
+	Includes []string
+	Excludes []string
 }
 
 // BuildFeatures represents the android { buildFeatures { } } block.

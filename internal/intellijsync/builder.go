@@ -111,6 +111,7 @@ func buildModule(cfg *configmodel.Model, g *graph.Graph, mod project.Module) Mod
 		UsesCompose:               mod.UsesCompose,
 		UsesKotlinSerialization:   mod.UsesKotlinSerialization,
 		UsesMetro:                 mod.UsesMetro,
+		UsesWire:                  mod.UsesWire,
 		KotlinFreeCompilerArgs:    append([]string(nil), mod.KotlinFreeCompilerArgs...),
 		LintDisabledChecks:        append([]string(nil), mod.LintDisabledChecks...),
 		ConsumerProguardFiles:     append([]string(nil), mod.ConsumerProguardFiles...),

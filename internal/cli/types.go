@@ -66,6 +66,8 @@ type inspectModule struct {
 	AndroidTestFiles          int                       `json:"androidTestFiles"`
 	UsesCompose               bool                      `json:"usesCompose"`
 	UsesMetro                 bool                      `json:"usesMetro"`
+	UsesWire                  bool                      `json:"usesWire,omitempty"`
+	WireConfig                *project.WireConfig       `json:"wireConfig,omitempty"`
 	Plugins                   []string                  `json:"plugins,omitempty"`
 	KotlinFreeArgs            []string                  `json:"kotlinFreeCompilerArgs,omitempty"`
 	LintDisabled              []string                  `json:"lintDisabledChecks,omitempty"`
