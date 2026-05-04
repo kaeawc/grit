@@ -1,6 +1,7 @@
 package nativecompile
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,56 +23,117 @@ func TestProjectKSPVersionPrefersCatalogKey(t *testing.T) {
 
 func TestProjectKSPVersionFallsBackThroughKnownKeys(t *testing.T) {
 	prj := &project.Project{
-		VersionCatalogData: map[string]string{"ksp": "1.9.24-1.0.20"},
+		VersionCatalogData: map[string]string{"ksp": "2.0.21-1.0.26"},
 	}
-	if got, want := projectKSPVersion(prj), "1.9.24-1.0.20"; got != want {
+	if got, want := projectKSPVersion(prj), "2.0.21-1.0.26"; got != want {
 		t.Fatalf("ksp key: got %q want %q", got, want)
 	}
 }
 
-func TestKSPPluginOptionsContainsRequiredKeys(t *testing.T) {
-	procCP := []string{"/m2/glide-ksp.jar", "/m2/glide-annotations.jar"}
-	opts := kspPluginOptions(
-		procCP,
+func TestKSPLanguageVersionDropsPatch(t *testing.T) {
+	cases := map[string]string{
+		"2.1.20":  "2.1",
+		"2.0.21":  "2.0",
+		"1.9.24":  "1.9",
+		"2":       "",
+		"":        "",
+		"invalid": "",
+	}
+	for in, want := range cases {
+		if got := kspLanguageVersion(in); got != want {
+			t.Fatalf("kspLanguageVersion(%q) = %q want %q", in, got, want)
+		}
+	}
+}
+
+func TestKSPProcessorOptionsArgFormat(t *testing.T) {
+	got := kspProcessorOptionsArg(map[string]string{
+		"room.schemaLocation": "/schemas",
+		"dagger.fastInit":     "enabled",
+	})
+	sep := string(os.PathListSeparator)
+	want := "dagger.fastInit=enabled" + sep + "room.schemaLocation=/schemas"
+	if got != want {
+		t.Fatalf("processor options arg:\n got  %q\n want %q", got, want)
+	}
+}
+
+func TestKSPProcessorOptionsArgEmpty(t *testing.T) {
+	if got := kspProcessorOptionsArg(nil); got != "" {
+		t.Fatalf("nil opts should produce empty arg, got %q", got)
+	}
+}
+
+func TestKSP2ArgsContainsRequiredFlags(t *testing.T) {
+	args := ksp2Args(
+		"glide-config",
 		"/proj/glide-config",
+		"/out/classes",
 		"/out/ksp/kotlin",
 		"/out/ksp/java",
 		"/out/ksp/resources",
-		"/out/classes",
 		"/out/ksp/caches",
-		map[string]string{"glide.generated.module.package": "org.signal"},
+		"/out/ksp",
+		"/proj/glide-config/src/main",
+		"/m2/glide.jar:/m2/android.jar",
+		"2.1",
+		"21",
+		"room.schemaLocation=/schemas",
+		[]string{"/m2/glide-ksp.jar", "/m2/kotlinpoet.jar"},
 	)
-	want := []string{
-		"apclasspath=",
-		"projectBaseDir=/proj/glide-config",
-		"classOutputDir=/out/classes",
-		"javaOutputDir=/out/ksp/java",
-		"kotlinOutputDir=/out/ksp/kotlin",
-		"resourceOutputDir=/out/ksp/resources",
-		"kspOutputDir=/out/ksp",
-		"cachesDir=/out/ksp/caches",
-		"incremental=false",
-		"withCompilation=true",
-		"apoption=glide.generated.module.package=org.signal",
+	required := []string{
+		"-module-name=glide-config",
+		"-source-roots=/proj/glide-config/src/main",
+		"-project-base-dir=/proj/glide-config",
+		"-output-base-dir=/out/ksp",
+		"-caches-dir=/out/ksp/caches",
+		"-class-output-dir=/out/classes",
+		"-kotlin-output-dir=/out/ksp/kotlin",
+		"-java-output-dir=/out/ksp/java",
+		"-resource-output-dir=/out/ksp/resources",
+		"-jvm-target=21",
+		"-language-version=2.1",
+		"-api-version=2.1",
+		"-libraries=/m2/glide.jar:/m2/android.jar",
+		"-processor-options=room.schemaLocation=/schemas",
 	}
-	joined := strings.Join(opts, "\n")
-	for _, fragment := range want {
-		if !strings.Contains(joined, fragment) {
-			t.Fatalf("missing option fragment %q in:\n%s", fragment, joined)
+	joined := strings.Join(args, "\n")
+	for _, want := range required {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("ksp2 args missing %q in:\n%s", want, joined)
 		}
 	}
-	idPrefix := "plugin:" + modulebuild.KSPCompilerPluginID + ":"
-	for _, opt := range opts {
-		if !strings.HasPrefix(opt, idPrefix) {
-			t.Fatalf("option missing plugin id prefix: %q", opt)
+	// Processor jars are positional and must trail any flag args.
+	last := args[len(args)-1]
+	if last != "/m2/kotlinpoet.jar" {
+		t.Fatalf("expected last positional jar /m2/kotlinpoet.jar, got %q", last)
+	}
+}
+
+func TestKSP2ArgsOmitsEmptyOptionalFlags(t *testing.T) {
+	args := ksp2Args("m", "/m", "/c", "/k", "/j", "/r", "/cs", "/o", "/m/src", "", "2.0", "21", "", []string{"/p.jar"})
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-libraries=") || strings.HasPrefix(arg, "-processor-options=") {
+			t.Fatalf("expected empty optional flags omitted, got %q", arg)
 		}
 	}
-	for _, opt := range opts {
-		if strings.HasPrefix(opt, idPrefix+"apclasspath=") {
-			cp := strings.TrimPrefix(opt, idPrefix+"apclasspath=")
-			if !strings.Contains(cp, "/m2/glide-ksp.jar") || !strings.Contains(cp, "/m2/glide-annotations.jar") {
-				t.Fatalf("apclasspath missing processor jars: %q", cp)
-			}
+}
+
+func TestKSP2ModuleNameStable(t *testing.T) {
+	cases := []struct {
+		path    string
+		variant string
+		want    string
+	}{
+		{":glide-config", "debug", "glide-config-debug"},
+		{":app", "playProdDebug", "app-playProdDebug"},
+		{":nested:lib", "debug", "nested-lib-debug"},
+		{":app", "", "app"},
+	}
+	for _, tc := range cases {
+		got := ksp2ModuleName(&project.Module{Path: tc.path}, tc.variant)
+		if got != tc.want {
+			t.Fatalf("ksp2ModuleName(%q, %q) = %q want %q", tc.path, tc.variant, got, tc.want)
 		}
 	}
 }
@@ -98,7 +160,7 @@ func TestKSPOutputRootsLayout(t *testing.T) {
 		t.Fatalf("caches dir: got %q", caches)
 	}
 	if classes != classOut {
-		t.Fatalf("class dir should pass through unchanged: got %q want %q", classes, classOut)
+		t.Fatalf("class dir should pass through: got %q want %q", classes, classOut)
 	}
 }
 
@@ -139,5 +201,35 @@ func TestKSPHashTokensSortedRegardlessOfInputOrder(t *testing.T) {
 func TestKSPHashTokensEmpty(t *testing.T) {
 	if got := kspHashTokens("", nil, nil); got != nil {
 		t.Fatalf("empty input should produce nil tokens, got %v", got)
+	}
+}
+
+func TestCollectGeneratedKotlinSources(t *testing.T) {
+	dir := t.TempDir()
+	subdir := filepath.Join(dir, "pkg")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"A.kt", "B.kt", "ignored.txt"} {
+		if err := os.WriteFile(filepath.Join(subdir, name), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := collectGeneratedKotlinSources(dir)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 .kt files, got %d (%v)", len(got), got)
+	}
+	if !strings.HasSuffix(got[0], "A.kt") || !strings.HasSuffix(got[1], "B.kt") {
+		t.Fatalf("unexpected order: %v", got)
+	}
+}
+
+func TestCollectGeneratedKotlinSourcesEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	if got := collectGeneratedKotlinSources(dir); len(got) != 0 {
+		t.Fatalf("empty dir should yield nil, got %v", got)
+	}
+	if got := collectGeneratedKotlinSources(""); len(got) != 0 {
+		t.Fatalf("empty path should yield nil, got %v", got)
 	}
 }

@@ -57,6 +57,42 @@ func runKotlinc(ctx context.Context, toolchain *kotlinToolchain, sources []strin
 	return err
 }
 
+// runKSP2 invokes the KSP2 driver as a separate JVM process. The
+// runtimeJars list must contain symbol-processing-aa-embeddable plus
+// its api/common-deps companions (and stdlib if not already on the
+// system classpath). All processor jars are passed positionally inside
+// args. KSP2 prints diagnostics to stderr; we mirror that to grit's
+// stderr while also buffering for tooldiag categorization.
+func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, stderr *os.File) error {
+	stdlib := kotlinRuntimeJars()
+	classpath := mergePaths(runtimeJars, stdlib)
+	javaArgs, err := javaMainArgs(classpath, ksp2MainClass, args)
+	if err != nil {
+		return err
+	}
+	if err := prepareJavaStartupArgs(javaArgs); err != nil {
+		return err
+	}
+	if strings.TrimSpace(os.Getenv("GRIT_TRACE_KSP")) != "" {
+		fmt.Fprintln(stderr, "TRACE ksp2 classpath:")
+		for i, entry := range classpath {
+			fmt.Fprintf(stderr, "  cp[%d]=%s\n", i, entry)
+		}
+		fmt.Fprintln(stderr, "TRACE ksp2 args:")
+		for _, a := range args {
+			fmt.Fprintf(stderr, "  %s\n", a)
+		}
+	}
+	cmd := exec.CommandContext(ctx, "java", javaArgs...)
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(stdout, &stdoutBuf)
+	cmd.Stderr = io.MultiWriter(stderr, &stderrBuf)
+	err = cmd.Run()
+	recordToolDiagnostics(ctx, "ksp2", stderrBuf.String(), stdoutBuf.String())
+	return err
+}
+
 func runJUnit(ctx context.Context, tests []string, classpath []string, stdout, stderr *os.File) error {
 	classpath = mergePaths(classpath, runtimeSupportJars())
 	return runJavaMain(ctx, classpath, "grit.junit.PlatformRunner", tests, stdout, stderr)

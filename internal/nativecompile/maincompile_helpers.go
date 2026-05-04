@@ -168,15 +168,16 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		return out, err
 	}
 	out.pluginPaths, out.pluginOptions = compilerPluginsForModule(mod, variantName, toolchain)
-	kspEntry, err := state.kspPluginForModule(prj, mod, variantName, out.mainOut)
+	kspResult, err := c.runKSP2ForModule(ctx, state, prj, mod, variantName, out.mainOut, out.compileCP, stdout, stderr)
 	if err != nil {
 		return out, err
 	}
-	if len(kspEntry.PluginJars) > 0 {
-		out.pluginPaths = append(out.pluginPaths, kspEntry.PluginJars...)
-		out.pluginOptions = append(out.pluginOptions, kspEntry.Options...)
-		out.kspJavaGenDir = kspEntry.JavaGenDir
-		out.kspResourceDir = kspEntry.ResourceDir
+	if kspResult.Ran {
+		out.kspJavaGenDir = kspResult.JavaGenDir
+		out.kspResourceDir = kspResult.ResourceDir
+		// Generated Kotlin sources fold into the main kotlinc invocation
+		// alongside originals; generated Java handled by post-kotlinc javac.
+		out.mainSources = append(out.mainSources, kspResult.GeneratedKotlinFiles...)
 	}
 	out.effectiveCompile = out.compileCP
 	kotlinInputs := append([]string{}, out.mainSources...)
@@ -192,9 +193,9 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	out.compileInputs = append(out.compileInputs, toolchain.CompilerClasspath...)
 	out.compileInputs = append(out.compileInputs, out.pluginPaths...)
 	out.compileInputs = append(out.compileInputs, out.pluginOptions...)
-	out.compileInputs = append(out.compileInputs, kspHashTokens(kspEntry.KSPVersion, mod.KSP.Processors, mod.KSP.Options)...)
-	if len(kspEntry.ProcessorCP) > 0 {
-		out.compileInputs = append(out.compileInputs, kspEntry.ProcessorCP...)
+	out.compileInputs = append(out.compileInputs, kspHashTokens(kspResult.Version, mod.KSP.Processors, mod.KSP.Options)...)
+	if len(kspResult.ProcessorCP) > 0 {
+		out.compileInputs = append(out.compileInputs, kspResult.ProcessorCP...)
 	}
 	out.sharedCompileDir = moduleCompileCacheDir(mod.Path, variantName, mod.ResolveVariant(variantName).ConfigHash(), out.compileInputs)
 	out.moduleJarPath = filepath.Join(filepath.Dir(out.mainOut), "module-classes.jar")
