@@ -102,6 +102,98 @@ func TestLintActionCacheKeyUsesModuleLintFiles(t *testing.T) {
 	}
 }
 
+func TestLintActionCacheKeyUsesDependencyInputs(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "app")
+	libDir := filepath.Join(root, "lib")
+	appSourceRoot := filepath.Join(appDir, "src", "main")
+	libSourceRoot := filepath.Join(libDir, "src", "main")
+	mustWriteActionKeyFile(t, filepath.Join(appSourceRoot, "java", "MainActivity.kt"), "class MainActivity")
+	libSource := filepath.Join(libSourceRoot, "java", "Lib.kt")
+	mustWriteActionKeyFile(t, libSource, "class Lib")
+
+	model := &Model{
+		Summary: project.SemanticGraphSummary{
+			Modules: []project.SemanticModuleSummary{
+				{
+					Path: ":app",
+					Dir:  appDir,
+					Variants: []project.SemanticVariantSummary{{
+						Name: "debug",
+						Materialization: project.SemanticMaterializationSummary{
+							ID:          "materialization:app:debug",
+							SourceRoots: []string{appSourceRoot},
+						},
+					}},
+				},
+				{
+					Path: ":lib",
+					Dir:  libDir,
+					Variants: []project.SemanticVariantSummary{{
+						Name: "debug",
+						Materialization: project.SemanticMaterializationSummary{
+							ID:          "materialization:lib:debug",
+							SourceRoots: []string{libSourceRoot},
+						},
+					}},
+				},
+			},
+		},
+		ArtifactSummaries: []ArtifactSummary{
+			{
+				ID:                "artifact:app:sources",
+				ModulePath:        ":app",
+				VariantName:       "debug",
+				MaterializationID: "materialization:app:debug",
+				Kind:              string(graph.ArtifactKindDirectory),
+				Path:              appSourceRoot,
+			},
+			{
+				ID:                "artifact:lib:sources",
+				ModulePath:        ":lib",
+				VariantName:       "debug",
+				MaterializationID: "materialization:lib:debug",
+				Kind:              string(graph.ArtifactKindDirectory),
+				Path:              libSourceRoot,
+			},
+		},
+		ProvenanceSummaries: []ProvenanceSummary{
+			{
+				MaterializationID: "materialization:app:debug",
+				ModulePath:        ":app",
+				VariantName:       "debug",
+				SourceRoots:       []string{appSourceRoot},
+				ManifestPaths:     []string{filepath.Join(appDir, "src", "main", "AndroidManifest.xml")},
+			},
+			{
+				MaterializationID: "materialization:lib:debug",
+				ModulePath:        ":lib",
+				VariantName:       "debug",
+				SourceRoots:       []string{libSourceRoot},
+				ManifestPaths:     []string{filepath.Join(libDir, "src", "main", "AndroidManifest.xml")},
+			},
+		},
+	}
+	action := graph.Action{
+		Kind: graph.ActionKindLint,
+		Inputs: []graph.ArtifactID{
+			graph.ArtifactID("artifact:app:sources"),
+			graph.ArtifactID("artifact:lib:sources"),
+		},
+		Attributes: map[string]string{
+			"modulePath":  ":app",
+			"variantName": "debug",
+		},
+	}
+
+	before := lintActionCacheKey(model, action)
+	mustWriteActionKeyFile(t, libSource, "class LibChanged")
+	after := lintActionCacheKey(model, action)
+	if before == after {
+		t.Fatal("changing dependency input content must change lint cache key")
+	}
+}
+
 func assertPanics(t *testing.T, fn func()) {
 	t.Helper()
 	defer func() {
