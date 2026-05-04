@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/proc"
 	"github.com/kaeawc/grit/internal/project"
 )
 
@@ -104,23 +105,21 @@ func classesJarForDir(ctx context.Context, classesDir string, stdout, stderr *os
 }
 
 func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	cmd := exec.CommandContext(ctx, "d8", args...)
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-	err := cmd.Run()
-	recordToolDiagnostics(ctx, "d8", stderrBuf.String(), stdoutBuf.String())
+	res, err := defaultRunner.Run(ctx, proc.Cmd{Name: "d8", Args: args})
+	if err == nil && res.ExitCode != 0 {
+		err = fmt.Errorf("d8 exited with %d", res.ExitCode)
+	}
+	recordToolDiagnostics(ctx, "d8", string(res.Stderr), string(res.Stdout))
 	if err != nil {
-		if _, writeErr := stdout.Write(stdoutBuf.Bytes()); writeErr != nil {
+		if _, writeErr := stdout.Write(res.Stdout); writeErr != nil {
 			return fmt.Errorf("d8 failed: %w (additionally failed to write stdout: %v)", err, writeErr)
 		}
-		if _, writeErr := stderr.Write(stderrBuf.Bytes()); writeErr != nil {
+		if _, writeErr := stderr.Write(res.Stderr); writeErr != nil {
 			return fmt.Errorf("d8 failed: %w (additionally failed to write stderr: %v)", err, writeErr)
 		}
 		return err
 	}
-	if warningLines := countNonEmptyLines(stdoutBuf.String()) + countNonEmptyLines(stderrBuf.String()); warningLines > 0 {
+	if warningLines := countNonEmptyLines(string(res.Stdout)) + countNonEmptyLines(string(res.Stderr)); warningLines > 0 {
 		fmt.Fprintf(stderr, "d8 emitted %d warning lines; suppressed after successful build\n", warningLines)
 	}
 	return nil
@@ -139,37 +138,28 @@ func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, 
 	if err := prepareJavaStartupArgs(args); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "java", args...)
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-	err = cmd.Run()
-	recordToolDiagnostics(ctx, "r8", stderrBuf.String(), stdoutBuf.String())
+	res, err := defaultRunner.Run(ctx, proc.Cmd{Name: "java", Args: args})
+	if err == nil && res.ExitCode != 0 {
+		err = fmt.Errorf("r8 exited with %d", res.ExitCode)
+	}
+	recordToolDiagnostics(ctx, "r8", string(res.Stderr), string(res.Stdout))
 	if err != nil {
-		if _, writeErr := stdout.Write(stdoutBuf.Bytes()); writeErr != nil {
+		if _, writeErr := stdout.Write(res.Stdout); writeErr != nil {
 			return fmt.Errorf("r8 failed: %w (additionally failed to write stdout: %v)", err, writeErr)
 		}
-		if _, writeErr := stderr.Write(stderrBuf.Bytes()); writeErr != nil {
+		if _, writeErr := stderr.Write(res.Stderr); writeErr != nil {
 			return fmt.Errorf("r8 failed: %w (additionally failed to write stderr: %v)", err, writeErr)
 		}
 		return err
 	}
-	if warningLines := countNonEmptyLines(stdoutBuf.String()) + countNonEmptyLines(stderrBuf.String()); warningLines > 0 {
+	if warningLines := countNonEmptyLines(string(res.Stdout)) + countNonEmptyLines(string(res.Stderr)); warningLines > 0 {
 		fmt.Fprintf(stderr, "r8 emitted %d warning lines; suppressed after successful build\n", warningLines)
 	}
 	return nil
 }
 
 func runCmd(ctx context.Context, bin string, args []string, stdout, stderr *os.File) error {
-	cmd := exec.CommandContext(ctx, bin, args...)
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = io.MultiWriter(stdout, &stdoutBuf)
-	cmd.Stderr = io.MultiWriter(stderr, &stderrBuf)
-	err := cmd.Run()
-	recordToolDiagnostics(ctx, bin, stderrBuf.String(), stdoutBuf.String())
-	return err
+	return runBuffered(ctx, bin, proc.Cmd{Name: bin, Args: args}, stdout, stderr)
 }
 
 func installAPK(ctx context.Context, apkPath, deviceSerial string, stdout, stderr *os.File) error {
