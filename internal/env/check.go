@@ -24,6 +24,7 @@ func Check(prj *project.Project) Report {
 		checkCommand("kotlinc"),
 		checkAndroidJar(),
 		checkComposeCompilerPlugin(),
+		checkSerializationCompilerPlugin(),
 		checkMetroCompilerPlugin(),
 	}
 	return Report{Items: items}
@@ -47,12 +48,19 @@ func checkAndroidJar() Item {
 }
 
 func checkComposeCompilerPlugin() Item {
-	path := "/opt/homebrew/Cellar/kotlin/2.3.20/libexec/lib/compose-compiler-plugin.jar"
-	_, err := os.Stat(path)
-	if err != nil {
-		return Item{Name: "compose-compiler-plugin", Detail: path, OK: false}
+	path := LocateComposeCompilerPlugin()
+	if path == "" {
+		return Item{Name: "compose-compiler-plugin", Detail: "not found alongside kotlinc or in Gradle cache", OK: false}
 	}
 	return Item{Name: "compose-compiler-plugin", Detail: path, OK: true}
+}
+
+func checkSerializationCompilerPlugin() Item {
+	path := LocateSerializationCompilerPlugin()
+	if path == "" {
+		return Item{Name: "kotlin-serialization-compiler-plugin", Detail: "not found alongside kotlinc or in Gradle cache", OK: false}
+	}
+	return Item{Name: "kotlin-serialization-compiler-plugin", Detail: path, OK: true}
 }
 
 func checkMetroCompilerPlugin() Item {

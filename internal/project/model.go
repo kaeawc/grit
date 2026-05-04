@@ -64,6 +64,7 @@ type Module struct {
 	UsesMetro                 bool
 	UsesKSP                   bool
 	KSP                       modulebuild.KSPConfig
+	Plugins                   []string
 	BuildFeatures             BuildFeatures
 	CompilerPlugins           *modulebuild.PluginRegistry
 	KotlinFreeCompilerArgs    []string
