@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/modulebuild"
@@ -153,7 +152,7 @@ func discoverJUnitTests(root string) ([]string, error) {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".kt") {
 			return err
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec
 		if err != nil {
 			return err
 		}
@@ -228,60 +227,6 @@ func filterAutoMobile(classes []string) []string {
 		out = append(out, class)
 	}
 	return out
-}
-
-func transformedClassPath() []string {
-	if cached := loadTransformedClassPathCache(); len(cached) > 0 {
-		return cached
-	}
-	patterns := []string{
-		filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "*", "transforms", "*", "transformed", "*", "jars", "classes.jar"),
-	}
-	var out []string
-	for _, pattern := range patterns {
-		matches, _ := filepath.Glob(pattern)
-		out = append(out, matches...)
-	}
-	sort.Strings(out)
-	saveTransformedClassPathCache(out)
-	return out
-}
-
-var transformedClassPathMu sync.Mutex
-
-func loadTransformedClassPathCache() []string {
-	transformedClassPathMu.Lock()
-	defer transformedClassPathMu.Unlock()
-	path := filepath.Join(os.Getenv("HOME"), ".grit", "transformed-classpath.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
-	}
-	var cached []string
-	if err := json.Unmarshal(data, &cached); err != nil {
-		return nil
-	}
-	var out []string
-	for _, entry := range cached {
-		if _, err := os.Stat(entry); err == nil {
-			out = append(out, entry)
-		}
-	}
-	return out
-}
-
-func saveTransformedClassPathCache(entries []string) {
-	transformedClassPathMu.Lock()
-	defer transformedClassPathMu.Unlock()
-	path := filepath.Join(os.Getenv("HOME"), ".grit", "transformed-classpath.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
-	}
-	data, err := json.Marshal(entries)
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(path, data, 0o644)
 }
 
 func mergePaths(parts ...[]string) []string {
@@ -561,7 +506,7 @@ func runtimeSupportJars() []string {
 	candidates = append(candidates, junitPlatformRunnerJar())
 	var out []string
 	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
+		if _, err := os.Stat(candidate); err == nil { // #nosec
 			out = append(out, candidate)
 		}
 	}

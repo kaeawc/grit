@@ -153,22 +153,6 @@ func captureSubmatch(body string, indexes []int, submatch int) string {
 	return body[start:end]
 }
 
-func collectPluginAliases(body string) []string {
-	re := regexp.MustCompile(`alias\(libs\.plugins\.([A-Za-z0-9\.\-_]+)\)`)
-	matches := re.FindAllStringSubmatch(body, -1)
-	seen := map[string]bool{}
-	var out []string
-	for _, match := range matches {
-		name := match[1]
-		if !seen[name] {
-			seen[name] = true
-			out = append(out, name)
-		}
-	}
-	sortStrings(out)
-	return out
-}
-
 // collectPluginIDs returns all plugin identifiers applied within the
 // top-level plugins { } block of a build.gradle(.kts) body. It captures
 // both alias(libs.plugins.X) — yielding the dotted alias key — and the

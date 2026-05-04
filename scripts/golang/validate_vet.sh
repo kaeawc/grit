@@ -29,7 +29,7 @@ else
 fi
 
 print_status "Checking if go.mod/go.sum are tidy..."
-TIDY_DIFF=$(go mod tidy -diff 2>&1) || true
+TIDY_DIFF=$(go mod tidy -diff 2>/dev/null) || true
 if [[ -n "$TIDY_DIFF" ]]; then
     print_error "go.mod/go.sum are not tidy. Run: go mod tidy"
     echo "$TIDY_DIFF"

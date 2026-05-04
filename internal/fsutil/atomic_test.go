@@ -116,7 +116,7 @@ func TestStreamVariant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var got payload
 	if err := gob.NewDecoder(f).Decode(&got); err != nil {

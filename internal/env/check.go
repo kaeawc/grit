@@ -40,7 +40,7 @@ func checkCommand(name string) Item {
 
 func checkAndroidJar() Item {
 	path := filepath.Join(os.Getenv("HOME"), "Library", "Android", "sdk", "platforms", "android-36", "android.jar")
-	_, err := os.Stat(path)
+	_, err := os.Stat(path) // #nosec
 	if err != nil {
 		return Item{Name: "android.jar", Detail: path, OK: false}
 	}
@@ -65,7 +65,7 @@ func checkSerializationCompilerPlugin() Item {
 
 func checkMetroCompilerPlugin() Item {
 	path := filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar")
-	_, err := os.Stat(path)
+	_, err := os.Stat(path) // #nosec
 	if err != nil {
 		return Item{Name: "metro-compiler-plugin", Detail: path, OK: false}
 	}

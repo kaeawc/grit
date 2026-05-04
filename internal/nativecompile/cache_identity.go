@@ -189,7 +189,7 @@ func fileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sum := sha256.New()
 	if _, err := io.Copy(sum, f); err != nil {
 		return "", err
@@ -202,7 +202,7 @@ func zipFingerprint(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	sum := sha256.New()
 	for _, f := range zr.File {
 		sum.Write([]byte(f.Name))
@@ -217,7 +217,7 @@ func zipFingerprint(path string) (string, error) {
 
 func dirFingerprint(root string) string {
 	sum := sha256.New()
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

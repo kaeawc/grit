@@ -2,6 +2,7 @@ package perf
 
 import (
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/kaeawc/grit/internal/explain"
@@ -117,6 +118,7 @@ type timingBlock struct {
 }
 
 type DefaultTracker struct {
+	mu      sync.Mutex
 	root    *timingBlock
 	current *timingBlock
 	enabled bool
@@ -166,11 +168,13 @@ func (t *DefaultTracker) Track(name string, fn func() error) error {
 	start := time.Now()
 	err := fn()
 	duration := time.Since(start).Milliseconds()
+	t.mu.Lock()
 	t.current.entries = append(t.current.entries, TimingEntry{
 		Name:        name,
 		DurationMs:  duration,
 		Explanation: explain.InferTiming(name, duration, err),
 	})
+	t.mu.Unlock()
 	return err
 }
 
@@ -178,7 +182,9 @@ func (t *DefaultTracker) Record(entry TimingEntry) {
 	if t.current == nil {
 		return
 	}
+	t.mu.Lock()
 	t.current.entries = append(t.current.entries, entry)
+	t.mu.Unlock()
 }
 
 func (t *DefaultTracker) End() Tracker {
@@ -210,15 +216,14 @@ func (t *DefaultTracker) IsEnabled() bool {
 }
 
 func (t *DefaultTracker) entriesData(block *timingBlock) *TimingData {
-	if block.kind == parallelBlock {
-		out := make([]TimingEntry, 0, len(block.entries))
-		for _, entry := range block.entries {
-			out = append(out, entry)
-		}
-		return newTimingMap(out)
-	}
+	t.mu.Lock()
 	out := make([]TimingEntry, len(block.entries))
 	copy(out, block.entries)
+	kind := block.kind
+	t.mu.Unlock()
+	if kind == parallelBlock {
+		return newTimingMap(out)
+	}
 	return newTimingList(out)
 }
 

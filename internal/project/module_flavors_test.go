@@ -56,11 +56,11 @@ func TestModuleVariantsExpandFlavorDimensions(t *testing.T) {
 			ApplicationID:     "dev.example",
 			VersionName:       "1.0",
 			MinSDK:            "21",
-			MissingDimensions: map[string][]string{"abi": []string{"x86", "arm64"}},
+			MissingDimensions: map[string][]string{"abi": {"x86", "arm64"}},
 		},
 		FlavorDimensions: []string{"tier", "api"},
 		ProductFlavors: map[string]ProductFlavor{
-			"free":     {Name: "free", Dimension: "tier", ApplicationIDSuffix: ".free", MissingDimensions: map[string][]string{"abi": []string{"arm64"}}},
+			"free":     {Name: "free", Dimension: "tier", ApplicationIDSuffix: ".free", MissingDimensions: map[string][]string{"abi": {"arm64"}}},
 			"pro":      {Name: "pro", Dimension: "tier"},
 			"minApi21": {Name: "minApi21", Dimension: "api", MinSDK: "21"},
 			"minApi24": {Name: "minApi24", Dimension: "api", MinSDK: "24", VersionNameSuffix: "-minApi24"},

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/downloader"
 	"github.com/kaeawc/grit/internal/downloader/chain"
 	"github.com/kaeawc/grit/internal/downloader/gradlecache"
@@ -24,8 +24,8 @@ import (
 	"github.com/kaeawc/grit/internal/m2localbridge"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/perf"
-	mavenpublish "github.com/kaeawc/grit/internal/publish/mavenlocal"
 	"github.com/kaeawc/grit/internal/project"
+	mavenpublish "github.com/kaeawc/grit/internal/publish/mavenlocal"
 	"github.com/kaeawc/grit/internal/tieredcas"
 	"github.com/kaeawc/grit/internal/transform/aarextract"
 )

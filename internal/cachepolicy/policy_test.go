@@ -22,4 +22,3 @@ func TestDefaultPolicyHasExpectedRetentionClasses(t *testing.T) {
 		t.Fatalf("unexpected remote shareability: %q", got)
 	}
 }
-

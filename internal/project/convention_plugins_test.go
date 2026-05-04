@@ -21,12 +21,12 @@ android { ... }
 `
 	got := collectPluginIDs(body)
 	want := map[string]bool{
-		"com.android.application":                    true,
-		"kotlin-android":                             true,
-		"kotlin.serialization":                       true,
-		"com.squareup.wire":                          true,
-		"org.jetbrains.kotlin.plugin.compose":        true,
-		"org.jlleitschuh.gradle.ktlint":              true,
+		"com.android.application":             true,
+		"kotlin-android":                      true,
+		"kotlin.serialization":                true,
+		"com.squareup.wire":                   true,
+		"org.jetbrains.kotlin.plugin.compose": true,
+		"org.jlleitschuh.gradle.ktlint":       true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected %d plugins, got %d: %v", len(want), len(got), got)

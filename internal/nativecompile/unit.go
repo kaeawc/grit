@@ -57,7 +57,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return err
 	}
 	if len(testSources) == 0 {
-		fmt.Fprintln(stdout, "no test sources found")
+		_, _ = fmt.Fprintln(stdout, "no test sources found")
 		return nil
 	}
 
@@ -209,7 +209,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return err
 	}
 	if !run {
-		fmt.Fprintln(stdout, "unit test sources compiled")
+		_, _ = fmt.Fprintln(stdout, "unit test sources compiled")
 		return nil
 	}
 
@@ -223,7 +223,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return err
 	}
 	if len(testClasses) == 0 {
-		fmt.Fprintln(stdout, "compiled tests but found no JUnit test classes")
+		_, _ = fmt.Fprintln(stdout, "compiled tests but found no JUnit test classes")
 		return nil
 	}
 	testRuntimeCP := append(testCP, testOut)

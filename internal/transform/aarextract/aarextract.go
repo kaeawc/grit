@@ -183,10 +183,10 @@ func normalizedResourceTreeZip(entries map[string][]byte) ([]byte, error) {
 	zw := zip.NewWriter(&buf)
 	for _, name := range names {
 		header := &zip.FileHeader{
-			Name:   name,
-			Method: zip.Store,
+			Name:     name,
+			Method:   zip.Store,
+			Modified: reproducibleZipTime,
 		}
-		header.SetModTime(reproducibleZipTime)
 		w, err := zw.CreateHeader(header)
 		if err != nil {
 			return nil, fmt.Errorf("aarextract: create normalized resource entry %s: %w", name, err)

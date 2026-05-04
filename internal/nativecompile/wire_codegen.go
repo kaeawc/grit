@@ -19,12 +19,12 @@ import (
 // kotlinc input set, and the proto-related cache inputs are folded into
 // the compile cache key so changes invalidate stale outputs.
 type wireCodegenResult struct {
-	GeneratedDir   string
-	ProtoFiles     []string
-	CacheInputs    []string
-	WireVersion    string
-	CompilerJar    string
-	CompilerCP     []string
+	GeneratedDir     string
+	ProtoFiles       []string
+	CacheInputs      []string
+	WireVersion      string
+	CompilerJar      string
+	CompilerCP       []string
 	RuntimeClasspath []string
 }
 
@@ -64,7 +64,7 @@ func (c *Compiler) runWireCodegen(ctx context.Context, prj *project.Project, mod
 		// No wire compiler in the local cache — surface a soft warning via
 		// stderr so the user can prime the cache, and skip codegen.
 		if stderr != nil {
-			fmt.Fprintf(stderr, "grit: wire plugin applied on %s but com.squareup.wire:wire-compiler is not in the gradle cache — skipping codegen\n", mod.Path)
+			_, _ = fmt.Fprintf(stderr, "grit: wire plugin applied on %s but com.squareup.wire:wire-compiler is not in the gradle cache — skipping codegen\n", mod.Path)
 		}
 		return out, nil
 	}
@@ -72,14 +72,14 @@ func (c *Compiler) runWireCodegen(ctx context.Context, prj *project.Project, mod
 	compilerJar := firstWireCompilerJar(wireVersion)
 	if compilerJar == "" {
 		if stderr != nil {
-			fmt.Fprintf(stderr, "grit: wire-compiler-%s.jar not found in the gradle cache — skipping codegen\n", wireVersion)
+			_, _ = fmt.Fprintf(stderr, "grit: wire-compiler-%s.jar not found in the gradle cache — skipping codegen\n", wireVersion)
 		}
 		return out, nil
 	}
 	compilerCP := wireCompilerClasspath(wireVersion)
 	if len(compilerCP) == 0 {
 		if stderr != nil {
-			fmt.Fprintf(stderr, "grit: wire-compiler classpath could not be assembled from the gradle cache — skipping codegen\n")
+			_, _ = fmt.Fprintf(stderr, "grit: wire-compiler classpath could not be assembled from the gradle cache — skipping codegen\n")
 		}
 		return out, nil
 	}
@@ -270,7 +270,7 @@ func wireConfigFingerprint(cfg project.WireConfig) string {
 		sum.Write([]byte(pp))
 		sum.Write([]byte{0})
 	}
-	fmt.Fprintf(sum, "k:%v;j:%v;ji:%v;lib:%v;",
+	_, _ = fmt.Fprintf(sum, "k:%v;j:%v;ji:%v;lib:%v;",
 		cfg.KotlinTarget, cfg.JavaTarget, cfg.JavaInterop, cfg.ProtoLibrary)
 	for _, inc := range cfg.Includes {
 		sum.Write([]byte("inc:"))

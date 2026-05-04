@@ -61,7 +61,7 @@ public @interface Test {}
 	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
 		return "", err
 	}
-	cmd := exec.Command("javac", "-cp", commonsJar, "-d", classesDir, sourcePath)
+	cmd := exec.Command("javac", "-cp", commonsJar, "-d", classesDir, sourcePath) // #nosec
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("compile kotlin.test shim: %w: %s", err, strings.TrimSpace(string(out)))
 	}

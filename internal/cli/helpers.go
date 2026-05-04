@@ -41,13 +41,3 @@ func parseAPKPath(stdout string) string {
 	}
 	return ""
 }
-
-func taskNameForVariant(prefix, variantName string) string {
-	if variantName == "" {
-		return prefix
-	}
-	if len(variantName) == 1 {
-		return prefix + strings.ToUpper(variantName)
-	}
-	return prefix + strings.ToUpper(variantName[:1]) + variantName[1:]
-}

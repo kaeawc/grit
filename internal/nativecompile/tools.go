@@ -22,15 +22,15 @@ func runKotlinc(ctx context.Context, toolchain *kotlinToolchain, sources []strin
 	classpath = compilerRuntimeClasspath(toolchain, classpath)
 	args := kotlincArgs(androidJar, sources, outDir, classpath, plugins, pluginOptions, appMain, extraArgs)
 	if strings.TrimSpace(os.Getenv("GRIT_TRACE_KOTLINC")) != "" {
-		fmt.Fprintln(stderr, "TRACE kotlinc classpath:")
+		_, _ = fmt.Fprintln(stderr, "TRACE kotlinc classpath:")
 		for i, entry := range append([]string{}, classpath...) {
-			fmt.Fprintf(stderr, "  cp[%d]=%s\n", i, entry)
+			_, _ = fmt.Fprintf(stderr, "  cp[%d]=%s\n", i, entry)
 		}
 		if androidJar != "" {
-			fmt.Fprintf(stderr, "  androidJar=%s\n", androidJar)
+			_, _ = fmt.Fprintf(stderr, "  androidJar=%s\n", androidJar)
 		}
-		fmt.Fprintln(stderr, "TRACE kotlinc args:")
-		fmt.Fprintln(stderr, strings.Join(args, " "))
+		_, _ = fmt.Fprintln(stderr, "TRACE kotlinc args:")
+		_, _ = fmt.Fprintln(stderr, strings.Join(args, " "))
 	}
 	var cmd *exec.Cmd
 	var stdoutBuf bytes.Buffer
@@ -74,13 +74,13 @@ func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, s
 		return err
 	}
 	if strings.TrimSpace(os.Getenv("GRIT_TRACE_KSP")) != "" {
-		fmt.Fprintln(stderr, "TRACE ksp2 classpath:")
+		_, _ = fmt.Fprintln(stderr, "TRACE ksp2 classpath:")
 		for i, entry := range classpath {
-			fmt.Fprintf(stderr, "  cp[%d]=%s\n", i, entry)
+			_, _ = fmt.Fprintf(stderr, "  cp[%d]=%s\n", i, entry)
 		}
-		fmt.Fprintln(stderr, "TRACE ksp2 args:")
+		_, _ = fmt.Fprintln(stderr, "TRACE ksp2 args:")
 		for _, a := range args {
-			fmt.Fprintf(stderr, "  %s\n", a)
+			_, _ = fmt.Fprintf(stderr, "  %s\n", a)
 		}
 	}
 	cmd := exec.CommandContext(ctx, "java", javaArgs...)
@@ -156,7 +156,7 @@ func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) e
 		return err
 	}
 	if warningLines := countNonEmptyLines(string(res.Stdout)) + countNonEmptyLines(string(res.Stderr)); warningLines > 0 {
-		fmt.Fprintf(stderr, "d8 emitted %d warning lines; suppressed after successful build\n", warningLines)
+		_, _ = fmt.Fprintf(stderr, "d8 emitted %d warning lines; suppressed after successful build\n", warningLines)
 	}
 	return nil
 }
@@ -189,7 +189,7 @@ func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, 
 		return err
 	}
 	if warningLines := countNonEmptyLines(string(res.Stdout)) + countNonEmptyLines(string(res.Stderr)); warningLines > 0 {
-		fmt.Fprintf(stderr, "r8 emitted %d warning lines; suppressed after successful build\n", warningLines)
+		_, _ = fmt.Fprintf(stderr, "r8 emitted %d warning lines; suppressed after successful build\n", warningLines)
 	}
 	return nil
 }

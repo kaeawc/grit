@@ -2,10 +2,10 @@ package nativecompile
 
 // Device represents a connected Android device with its capabilities.
 type Device struct {
-	Serial  string
+	Serial   string
 	APILevel int
-	ABIs    []string
-	Density int
+	ABIs     []string
+	Density  int
 }
 
 // DeviceConstraints describes the requirements a variant places on a device.

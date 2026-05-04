@@ -22,8 +22,8 @@ func newLogCapture() (*logCapture, error) {
 	}
 	stderrFile, err := os.CreateTemp("", "grit-stderr-*.log")
 	if err != nil {
-		stdoutFile.Close()
-		os.Remove(stdoutFile.Name())
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
 		return nil, err
 	}
 	return &logCapture{
@@ -35,8 +35,8 @@ func newLogCapture() (*logCapture, error) {
 }
 
 func (c *logCapture) Logs() responseLogs {
-	c.Stdout.Sync()
-	c.Stderr.Sync()
+	_ = c.Stdout.Sync()
+	_ = c.Stderr.Sync()
 	stdoutData, _ := os.ReadFile(c.stdoutPath)
 	stderrData, _ := os.ReadFile(c.stderrPath)
 	return responseLogs{
@@ -47,12 +47,12 @@ func (c *logCapture) Logs() responseLogs {
 
 func (c *logCapture) Close() {
 	if c.Stdout != nil {
-		c.Stdout.Close()
-		os.Remove(c.stdoutPath)
+		_ = c.Stdout.Close()
+		_ = os.Remove(c.stdoutPath)
 	}
 	if c.Stderr != nil {
-		c.Stderr.Close()
-		os.Remove(c.stderrPath)
+		_ = c.Stderr.Close()
+		_ = os.Remove(c.stderrPath)
 	}
 }
 
@@ -63,7 +63,7 @@ func writeResponse(stdout io.Writer, resp response, exitCode int, stderr io.Writ
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(resp); err != nil {
-		fmt.Fprintf(stderr, "{\"success\":false,\"command\":\"internal-error\",\"error\":{\"message\":%q}}\n", err.Error())
+		_, _ = fmt.Fprintf(stderr, "{\"success\":false,\"command\":\"internal-error\",\"error\":{\"message\":%q}}\n", err.Error())
 		return 1
 	}
 	return exitCode

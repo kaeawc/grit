@@ -116,13 +116,13 @@ func (g *Graph) ProjectModuleDependencies() ModuleDependencyGraph {
 
 // TaskEntry represents a single available task (action) in a task catalog.
 type TaskEntry struct {
-	ActionID   ActionID        `json:"actionId"`
-	Name       string          `json:"name"`
-	Kind       ActionKind      `json:"kind"`
-	ModuleID   LogicalModuleID `json:"moduleId"`
-	VariantID  VariantID       `json:"variantId,omitempty"`
-	InputCount int             `json:"inputCount"`
-	OutputCount int            `json:"outputCount"`
+	ActionID    ActionID        `json:"actionId"`
+	Name        string          `json:"name"`
+	Kind        ActionKind      `json:"kind"`
+	ModuleID    LogicalModuleID `json:"moduleId"`
+	VariantID   VariantID       `json:"variantId,omitempty"`
+	InputCount  int             `json:"inputCount"`
+	OutputCount int             `json:"outputCount"`
 }
 
 // TaskCatalog groups available tasks by module, suitable for IDE task menus.
@@ -168,8 +168,8 @@ func (g *Graph) ProjectTaskCatalog() TaskCatalog {
 
 // ContentRoot represents a source or resource root for a variant.
 type ContentRoot struct {
-	Path               string              `json:"path"`
-	MaterializationID  MaterializationID   `json:"materializationId"`
+	Path                string              `json:"path"`
+	MaterializationID   MaterializationID   `json:"materializationId"`
 	MaterializationKind MaterializationKind `json:"materializationKind"`
 }
 

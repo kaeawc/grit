@@ -231,7 +231,7 @@ func extractProtoAPK(protoAPK, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("open proto APK: %w", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -246,12 +246,12 @@ func extractProtoAPK(protoAPK, destDir string) error {
 		}
 		out, err := os.Create(target)
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return err
 		}
 		_, copyErr := io.Copy(out, rc)
-		rc.Close()
-		out.Close()
+		_ = rc.Close()
+		_ = out.Close()
 		if copyErr != nil {
 			return copyErr
 		}
@@ -306,8 +306,8 @@ func traceAAPT2Args(subcommand string, args []string, stderr *os.File) {
 	if strings.TrimSpace(os.Getenv("GRIT_TRACE_AAPT2")) == "" {
 		return
 	}
-	fmt.Fprintf(stderr, "TRACE aapt2 %s args:\n", subcommand)
-	fmt.Fprintln(stderr, strings.Join(append([]string{subcommand}, args...), "\n"))
+	_, _ = fmt.Fprintf(stderr, "TRACE aapt2 %s args:\n", subcommand)
+	_, _ = fmt.Fprintln(stderr, strings.Join(append([]string{subcommand}, args...), "\n"))
 }
 
 func estimatedAAPT2ArgSize(compiledFiles []string) int {
@@ -1323,13 +1323,4 @@ func qualifiedXMLName(name xml.Name) string {
 		return name.Local
 	}
 	return name.Space + ":" + name.Local
-}
-
-func firstExistingPath(paths []string) (string, bool) {
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			return path, true
-		}
-	}
-	return "", false
 }

@@ -1151,40 +1151,6 @@ func compactStrings(in []string) []string {
 	return out
 }
 
-func mergeStringSlices(primary, fallback []string) []string {
-	return compactStrings(append(append([]string(nil), primary...), fallback...))
-}
-
-func mergeArtifacts(primary, fallback []Artifact) []Artifact {
-	seen := map[string]Artifact{}
-	for _, artifact := range fallback {
-		if strings.TrimSpace(artifact.ID) == "" {
-			continue
-		}
-		seen[artifact.ID] = artifact
-	}
-	for _, artifact := range primary {
-		if strings.TrimSpace(artifact.ID) == "" {
-			continue
-		}
-		existing, ok := seen[artifact.ID]
-		if !ok {
-			seen[artifact.ID] = artifact
-			continue
-		}
-		existing.Kind = firstNonEmptyString(artifact.Kind, existing.Kind)
-		existing.Path = firstNonEmptyString(artifact.Path, existing.Path)
-		existing.ProducedByActionID = firstNonEmptyString(artifact.ProducedByActionID, existing.ProducedByActionID)
-		seen[artifact.ID] = existing
-	}
-	out := make([]Artifact, 0, len(seen))
-	for _, artifact := range seen {
-		out = append(out, artifact)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
-}
-
 func ideModuleID(modulePath string) string {
 	modulePath = strings.TrimSpace(modulePath)
 	if modulePath == "" {
@@ -1206,18 +1172,6 @@ func moduleKindForTaskCatalog(kind string) intellijtask.ModuleKind {
 	default:
 		return intellijtask.ModuleKindUnknown
 	}
-}
-
-func qualifiedTaskName(modulePath, taskName string) string {
-	modulePath = strings.TrimSpace(modulePath)
-	taskName = strings.TrimSpace(taskName)
-	if modulePath == "" {
-		return taskName
-	}
-	if strings.HasPrefix(taskName, modulePath+":") {
-		return taskName
-	}
-	return modulePath + ":" + taskName
 }
 
 func ideSourceSetIDs(ideVariantID string, sourceSetNames []string) []string {

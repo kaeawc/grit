@@ -16,8 +16,8 @@ func TestExtractProtoAPK(t *testing.T) {
 	// Create a fake proto-format APK (zip) with the expected structure.
 	protoAPK := filepath.Join(tmp, "proto-resources.apk")
 	createTestZip(t, protoAPK, map[string]string{
-		"AndroidManifest.xml": "<manifest proto/>",
-		"resources.pb":        "proto-resource-table",
+		"AndroidManifest.xml":    "<manifest proto/>",
+		"resources.pb":           "proto-resource-table",
 		"res/values/strings.xml": "string-resources",
 		"res/drawable/icon.png":  "png-data",
 	})
@@ -107,7 +107,7 @@ func TestAssembleModuleZipWithResourceTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		if f.Name == "resources.pb" {
 			rc, err := f.Open()
@@ -116,7 +116,7 @@ func TestAssembleModuleZipWithResourceTable(t *testing.T) {
 			}
 			buf := make([]byte, 256)
 			n, _ := rc.Read(buf)
-			rc.Close()
+			_ = rc.Close()
 			if string(buf[:n]) != "proto-table" {
 				t.Fatalf("resources.pb content = %q, want %q", string(buf[:n]), "proto-table")
 			}
@@ -259,7 +259,7 @@ func createTestZip(t *testing.T, path string, entries map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := zip.NewWriter(f)
 	// Sort keys for deterministic output.
 	keys := make([]string, 0, len(entries))

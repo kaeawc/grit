@@ -180,8 +180,12 @@ func TestResolveBundleUnitTestIncludesMockkJvm(t *testing.T) {
 func TestResolveOneMockkJvmArtifact(t *testing.T) {
 	t.Parallel()
 
+	catalogPath := "/Users/jason/kaeawc/auto-mobile/android/gradle/libs.versions.toml"
+	if _, err := os.Stat(catalogPath); err != nil {
+		t.Skipf("catalog path missing: %v", err)
+	}
 	cacheRoot := filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1")
-	cat, err := catalog.Load("/Users/jason/kaeawc/auto-mobile/android/gradle/libs.versions.toml")
+	cat, err := catalog.Load(catalogPath)
 	if err != nil {
 		t.Fatalf("load catalog: %v", err)
 	}
@@ -201,7 +205,11 @@ func TestResolveOneMockkJvmArtifact(t *testing.T) {
 func TestExpandRefsBundleIncludesMockkJvm(t *testing.T) {
 	t.Parallel()
 
-	cat, err := catalog.Load("/Users/jason/kaeawc/auto-mobile/android/gradle/libs.versions.toml")
+	catalogPath := "/Users/jason/kaeawc/auto-mobile/android/gradle/libs.versions.toml"
+	if _, err := os.Stat(catalogPath); err != nil {
+		t.Skipf("catalog path missing: %v", err)
+	}
+	cat, err := catalog.Load(catalogPath)
 	if err != nil {
 		t.Fatalf("load catalog: %v", err)
 	}

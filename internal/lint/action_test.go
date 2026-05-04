@@ -8,7 +8,7 @@ import (
 
 func TestCacheKeyStable(t *testing.T) {
 	a := sampleAction()
-	if a.CacheKey() != a.CacheKey() {
+	if a.CacheKey() != a.CacheKey() { //nolint:staticcheck
 		t.Fatal("cache key not stable across calls")
 	}
 }

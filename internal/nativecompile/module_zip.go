@@ -68,8 +68,8 @@ func assembleModuleZip(inputs moduleZipInputs, outputPath string) error {
 	succeeded := false
 	defer func() {
 		if !succeeded {
-			f.Close()
-			os.Remove(outputPath)
+			_ = f.Close()
+			_ = os.Remove(outputPath)
 		}
 	}()
 
@@ -151,7 +151,7 @@ func addFileToZip(w *zip.Writer, srcPath, entryName string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	info, err := src.Stat()
 	if err != nil {

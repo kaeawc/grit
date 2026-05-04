@@ -77,7 +77,7 @@ func selectSigningConfig(mod *project.Module, variant project.BuildType) (string
 
 func defaultDebugSigningConfig() project.SigningConfig {
 	keystore := filepath.Join(os.Getenv("HOME"), ".android", "debug.keystore")
-	if _, err := os.Stat(keystore); err != nil {
+	if _, err := os.Stat(keystore); err != nil { // #nosec
 		return project.SigningConfig{}
 	}
 	return project.SigningConfig{

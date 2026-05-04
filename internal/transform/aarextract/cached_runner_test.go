@@ -18,8 +18,8 @@ import (
 // this, no two builds ever hit each other's cache.
 func TestExtractHashRoundTripAcrossStores(t *testing.T) {
 	aarBytes := buildAAR(t, map[string][]byte{
-		"AndroidManifest.xml": []byte(`<manifest package="com.example"/>`),
-		"classes.jar":         []byte("classes-payload"),
+		"AndroidManifest.xml":    []byte(`<manifest package="com.example"/>`),
+		"classes.jar":            []byte("classes-payload"),
 		"res/values/strings.xml": []byte(`<resources><string name="app">x</string></resources>`),
 		"res/drawable/icon.png":  []byte("icon-bytes"),
 	})

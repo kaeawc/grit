@@ -15,17 +15,17 @@ import (
 const maxAvailableAtDepth = 5
 
 type Resolver struct {
-	CacheRoot    string
-	WorkRoot     string
-	Repositories []project.Repository
-	Catalog      *catalog.Catalog
-	Tracker      perf.Tracker
-	mu             sync.Mutex
-	inflight       map[string]*resolveCall
-	fetched        map[string]ResolutionMetadataSource
-	report         ResolutionReport
-	replay         ResolutionReplay
-	redirectDepth  atomic.Int32
+	CacheRoot     string
+	WorkRoot      string
+	Repositories  []project.Repository
+	Catalog       *catalog.Catalog
+	Tracker       perf.Tracker
+	mu            sync.Mutex
+	inflight      map[string]*resolveCall
+	fetched       map[string]ResolutionMetadataSource
+	report        ResolutionReport
+	replay        ResolutionReplay
+	redirectDepth atomic.Int32
 }
 
 type resolveCall struct {

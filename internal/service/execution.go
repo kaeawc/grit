@@ -56,8 +56,9 @@ func (s *Service) executeBatchWithRemoteProbeDecisions(ctx context.Context, prj 
 func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, remoteProbeDecisions map[string]admission.RemoteProbeDecision, stdout, stderr *os.File) ([]BuildOutcome, error) {
 	results := make([]actionResult, len(batch))
 	type completedAction struct {
-		index  int
-		result actionResult
+		index   int
+		result  actionResult
+		release bool
 	}
 	done := make(chan completedAction, len(batch))
 	pending := prioritizedBatchIndexes(batch)
@@ -73,16 +74,7 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 		}
 		go func() {
 			result := s.executeAction(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch[i], queueWaitMs, deferRemote, stdout, stderr)
-			if release {
-				if err := s.admissionController.ReleaseWithActual(batch[i].Action.ID.String(), result.ActualRemoteBytes); err != nil {
-					if result.Err == nil {
-						result.Err = fmt.Errorf("release %s: %w", batch[i].Action.ID.String(), err)
-					} else {
-						result.Err = fmt.Errorf("%v; release %s: %v", result.Err, batch[i].Action.ID.String(), err)
-					}
-				}
-			}
-			done <- completedAction{index: i, result: result}
+			done <- completedAction{index: i, result: result, release: release}
 		}()
 	}
 
@@ -125,6 +117,20 @@ func (s *Service) executeBatchWithAdmission(ctx context.Context, prj *project.Pr
 
 		completed := <-done
 		running--
+		// Release budget in the main loop so network tokens are not returned
+		// before the next round of pending admissions, preserving the invariant
+		// that concurrent actions within a batch observe each other's budget
+		// consumption at admission time rather than after completion.
+		if completed.release {
+			actionID := batch[completed.index].Action.ID.String()
+			if err := s.admissionController.ReleaseWithActual(actionID, completed.result.ActualRemoteBytes); err != nil {
+				if completed.result.Err == nil {
+					completed.result.Err = fmt.Errorf("release %s: %w", actionID, err)
+				} else {
+					completed.result.Err = fmt.Errorf("%v; release %s: %v", completed.result.Err, actionID, err)
+				}
+			}
+		}
 		results[completed.index] = completed.result
 		if batchErr == nil && completed.result.Err != nil {
 			batchErr = completed.result.Err

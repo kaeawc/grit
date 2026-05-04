@@ -210,13 +210,13 @@ func TestDefaultPersistenceThresholdsAreConsistent(t *testing.T) {
 func TestPersistenceTierOrdering(t *testing.T) {
 	t.Parallel()
 
-	if !(PersistenceNone < PersistenceLocal) {
+	if PersistenceNone >= PersistenceLocal {
 		t.Fatal("none should be less than local")
 	}
-	if !(PersistenceLocal < PersistenceShared) {
+	if PersistenceLocal >= PersistenceShared {
 		t.Fatal("local should be less than shared")
 	}
-	if !(PersistenceShared < PersistenceRemote) {
+	if PersistenceShared >= PersistenceRemote {
 		t.Fatal("shared should be less than remote")
 	}
 }
