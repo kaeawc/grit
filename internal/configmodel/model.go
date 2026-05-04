@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/kaeawc/grit/internal/cachepolicy"
+	"github.com/kaeawc/grit/internal/fsutil"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/responsepayload"
@@ -602,25 +603,7 @@ func writeModel(path string, model *Model) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	return nil
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 func modelInputs(prj *project.Project) []string {

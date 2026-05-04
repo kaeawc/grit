@@ -34,6 +34,7 @@ import (
 	readadapter "github.com/kaeawc/grit/internal/downloader/mavenlocal"
 
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/fsutil"
 	"github.com/kaeawc/grit/internal/lockfile"
 	"github.com/kaeawc/grit/internal/mavenlocalroot"
 	"github.com/kaeawc/grit/internal/publish"
@@ -114,12 +115,6 @@ func (p *Publisher) publishBlob(ctx context.Context, store cas.Store, blobHash c
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".publish-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
 
 	// Maven clients expect SHA-1 and MD5 checksum sidecars. These are
 	// weak hashes by modern standards; grit does not rely on them for
@@ -127,17 +122,15 @@ func (p *Publisher) publishBlob(ctx context.Context, store cas.Store, blobHash c
 	// written for ecosystem compatibility only.
 	sh1 := sha1.New()
 	m5 := md5.New()
-	mw := io.MultiWriter(tmp, sh1, m5)
-
-	if _, err := io.Copy(mw, rc); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("copy blob %s: %w", blobHash, err)
-	}
-	if err := tmp.Close(); err != nil {
+	if err := fsutil.WriteFileAtomicStream(target, 0o644, func(w io.Writer) error {
+		mw := io.MultiWriter(w, sh1, m5)
+		_, copyErr := io.Copy(mw, rc)
+		if copyErr != nil {
+			return fmt.Errorf("copy blob %s: %w", blobHash, copyErr)
+		}
+		return nil
+	}); err != nil {
 		return err
-	}
-	if err := os.Rename(tmpName, target); err != nil {
-		return fmt.Errorf("rename %s: %w", target, err)
 	}
 	if err := writeSidecar(target+".sha1", sh1); err != nil {
 		return err
@@ -149,23 +142,7 @@ func (p *Publisher) publishBlob(ctx context.Context, store cas.Store, blobHash c
 }
 
 func writeFileAtomically(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".publish-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return err
-	}
-	return nil
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 func writeBytesWithSidecars(path string, data []byte) error {

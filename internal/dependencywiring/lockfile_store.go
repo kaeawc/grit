@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kaeawc/grit/internal/fsutil"
 	"github.com/kaeawc/grit/internal/lockfile"
 	"github.com/kaeawc/grit/internal/m2local"
 )
@@ -129,21 +130,7 @@ func loadCachedLockfile(workRoot string, resolved *m2local.Resolved) (lockfile.L
 
 // atomicWriteFile writes data to path via a temporary file and rename.
 func atomicWriteFile(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".lockfile-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return fsutil.WriteFileAtomic(path, data, 0o644)
 }
 
 // LockfilePath returns the persisted lockfile path for external consumers

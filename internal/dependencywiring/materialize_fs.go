@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/fsutil"
 )
 
 func copyBlobToFile(ctx context.Context, store cas.Store, hash cas.Hash, path string) error {
@@ -20,20 +21,10 @@ func copyBlobToFile(ctx context.Context, store cas.Store, hash cas.Hash, path st
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".materialize-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := io.Copy(tmp, rc); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return fsutil.WriteFileAtomicStream(path, 0o644, func(w io.Writer) error {
+		_, copyErr := io.Copy(w, rc)
+		return copyErr
+	})
 }
 
 func expandZipBlobToDir(ctx context.Context, store cas.Store, hash cas.Hash, dir string) error {
