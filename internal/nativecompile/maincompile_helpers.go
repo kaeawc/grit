@@ -36,6 +36,8 @@ type preparedMainCompile struct {
 	effectiveCompile  []string
 	compileInputs     []string
 	androidModuleType bool
+	kspJavaGenDir     string
+	kspResourceDir    string
 }
 
 func (c *Compiler) tryCompileMainCacheHit(prj *project.Project, mod *project.Module, variantName, key string, state *compileState) (compiledModule, bool) {
@@ -173,6 +175,8 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	if len(kspEntry.PluginJars) > 0 {
 		out.pluginPaths = append(out.pluginPaths, kspEntry.PluginJars...)
 		out.pluginOptions = append(out.pluginOptions, kspEntry.Options...)
+		out.kspJavaGenDir = kspEntry.JavaGenDir
+		out.kspResourceDir = kspEntry.ResourceDir
 	}
 	out.effectiveCompile = out.compileCP
 	kotlinInputs := append([]string{}, out.mainSources...)
@@ -244,6 +248,13 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 		}
 		if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
 			return err
+		}
+		if javaSrcs := collectGeneratedJavaSources(prepared.kspJavaGenDir); len(javaSrcs) > 0 {
+			javacCP := append([]string{prepared.mainOut}, prepared.effectiveCompile...)
+			javacCP = append(javacCP, toolchain.RuntimeJars...)
+			if err := runJavac(ctx, javaSrcs, prepared.mainOut, javacCP, stdout, stderr); err != nil {
+				return err
+			}
 		}
 		_ = writeStamp(prepared.compileStampPath, prepared.sharedCompileDir)
 		return nil

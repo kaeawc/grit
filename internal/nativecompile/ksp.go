@@ -69,7 +69,8 @@ func resolveKSPRuntime(state *compileState, prj *project.Project, version string
 	if err != nil {
 		return nil, fmt.Errorf("resolve ksp runtime %s: %w", version, err)
 	}
-	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
+	all := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
+	jars := filterKSPRuntimeJars(all)
 	if len(jars) == 0 {
 		// Fall back to the local Gradle cache if the resolver didn't
 		// materialize jars (common when offline). Both artifacts are
@@ -83,6 +84,24 @@ func resolveKSPRuntime(state *compileState, prj *project.Project, version string
 		return nil, fmt.Errorf("ksp runtime jars not found for version %s", version)
 	}
 	return jars, nil
+}
+
+// filterKSPRuntimeJars narrows a resolver classpath down to KSP's own
+// kotlinc-plugin jars. The resolver may surface unrelated transitive
+// jars (older KSP API versions hide in older processor poms,
+// kotlinx-serialization is a dependency of incremental-compile metadata,
+// etc.), but only the symbol-processing core/api jars belong on
+// kotlinc's -Xplugin classpath. Other transitives, if needed, flow in
+// through the regular compile classpath.
+func filterKSPRuntimeJars(jars []string) []string {
+	var out []string
+	for _, jar := range jars {
+		base := filepath.Base(jar)
+		if strings.HasPrefix(base, "symbol-processing-") || strings.HasPrefix(base, "symbol-processing-api-") {
+			out = append(out, jar)
+		}
+	}
+	return out
 }
 
 // resolveKSPProcessors resolves the per-module processor refs into an
@@ -201,6 +220,32 @@ func (s *compileState) kspPluginForModule(prj *project.Project, mod *project.Mod
 		ClassDir:     classDir,
 	}
 	return entry, nil
+}
+
+// collectGeneratedJavaSources walks dir for .java files and returns
+// their paths sorted for determinism. KSP-generated Kotlin is compiled
+// alongside originals by kotlinc in single-pass mode, but generated
+// Java needs a follow-up javac since kotlinc doesn't emit .class files
+// for Java sources.
+func collectGeneratedJavaSources(dir string) []string {
+	if strings.TrimSpace(dir) == "" {
+		return nil
+	}
+	var out []string
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".java") {
+			out = append(out, path)
+		}
+		return nil
+	})
+	sort.Strings(out)
+	return out
 }
 
 // kspHashTokens returns a deterministic, sorted token list summarizing
