@@ -117,3 +117,92 @@ func TestSweepNoPolicy(t *testing.T) {
 		t.Errorf("BlobsRemoved = %d, want 0", report.BlobsRemoved)
 	}
 }
+
+func TestSweepFreeSpaceBased(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := cas.NewFilesystemStore(dir)
+	ctx := context.Background()
+	now := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
+
+	for i, data := range []string{"aaaa", "bbbb", "cccc"} {
+		prov := cas.Provenance{
+			Source:    cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: data}},
+			CreatedAt: now.Add(time.Duration(-3+i) * time.Hour),
+		}
+		if _, err := store.PutBytes(ctx, []byte(data), prov); err != nil {
+			t.Fatalf("put %s: %v", data, err)
+		}
+	}
+
+	// Simulate a disk that starts with 100 free bytes and gains size back as
+	// blobs are evicted. MinFreeSpace 104 is exactly one 4-byte blob away.
+	free := int64(100)
+	policy := Policy{
+		MinFreeSpace: 104,
+		FreeSpaceFn:  func() (int64, error) { return free, nil },
+	}
+	report, err := Sweep(ctx, store, policy, now)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if report.BlobsRemoved != 1 {
+		t.Fatalf("BlobsRemoved = %d, want 1", report.BlobsRemoved)
+	}
+	if report.BytesFreed != 4 {
+		t.Fatalf("BytesFreed = %d, want 4", report.BytesFreed)
+	}
+
+	// Oldest blob ("aaaa") should be the one evicted.
+	blobs, err := store.ListBlobs(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(blobs) != 2 {
+		t.Fatalf("remaining blobs = %d, want 2", len(blobs))
+	}
+}
+
+func TestSweepFreeSpaceSatisfiedDoesNothing(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := cas.NewFilesystemStore(dir)
+	ctx := context.Background()
+	now := time.Now()
+	if _, err := store.PutBytes(ctx, []byte("x"), cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "keep"}},
+	}); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	policy := Policy{
+		MinFreeSpace: 100,
+		FreeSpaceFn:  func() (int64, error) { return 1024, nil },
+	}
+	report, err := Sweep(ctx, store, policy, now)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if report.BlobsRemoved != 0 {
+		t.Fatalf("BlobsRemoved = %d, want 0", report.BlobsRemoved)
+	}
+}
+
+func TestSweepFreeSpaceWithoutFreeSpaceFnIsNoop(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	store := cas.NewFilesystemStore(dir)
+	ctx := context.Background()
+	if _, err := store.PutBytes(ctx, []byte("x"), cas.Provenance{
+		Source: cas.Source{Kind: cas.SourceImport, Import: &cas.ImportSource{Note: "keep"}},
+	}); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	policy := Policy{MinFreeSpace: 1 << 30}
+	report, err := Sweep(ctx, store, policy, time.Now())
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if report.BlobsRemoved != 0 {
+		t.Fatalf("BlobsRemoved = %d, want 0 when FreeSpaceFn is nil", report.BlobsRemoved)
+	}
+}
