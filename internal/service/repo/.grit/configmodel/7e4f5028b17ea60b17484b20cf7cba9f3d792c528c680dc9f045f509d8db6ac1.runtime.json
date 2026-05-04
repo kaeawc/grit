@@ -1,0 +1,16 @@
+{
+  "actionCacheProbes": {
+    "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main": {
+      "actionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main",
+      "state": "unknown",
+      "basis": "action-substeps",
+      "detail": "no cacheable substeps recorded"
+    },
+    "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main": {
+      "actionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main",
+      "state": "reused",
+      "basis": "action-substeps",
+      "detail": "1 reused substeps"
+    }
+  }
+}

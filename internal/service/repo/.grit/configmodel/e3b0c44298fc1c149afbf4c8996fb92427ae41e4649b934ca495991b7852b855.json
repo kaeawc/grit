@@ -1,0 +1,421 @@
+{
+  "schemaVersion": 1,
+  "repo": "repo",
+  "projectName": "",
+  "cacheKey": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "summary": {
+    "nodeCount": 14,
+    "edgeCount": 15,
+    "modules": [
+      {
+        "id": "module|9:repo::app",
+        "name": "app",
+        "path": ":app",
+        "kind": "android_application",
+        "variants": [
+          {
+            "id": "variant|18:module|9:repo::app|5:debug",
+            "name": "debug",
+            "buildType": "debug",
+            "materialization": {
+              "id": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+              "mode": "source-backed",
+              "artifactSnapshotId": "77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+              "classpathSnapshotIds": [
+                "12dcac8a6231d1f2d16eed02c475b55b1c0e5f9f88e8f3dd626ec3502273604b"
+              ],
+              "sourceRoots": [
+                "src/main",
+                "src/debug"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "snapshot": {
+    "logicalModules": [
+      {
+        "id": "module|9:repo::app",
+        "name": "app",
+        "path": ":app",
+        "kind": "android_application",
+        "attributes": {
+          "project": ""
+        }
+      }
+    ],
+    "variants": [
+      {
+        "id": "variant|18:module|9:repo::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "name": "debug",
+        "buildType": "debug",
+        "attributes": {
+          "classpathSnapshotId": "12dcac8a6231d1f2d16eed02c475b55b1c0e5f9f88e8f3dd626ec3502273604b"
+        }
+      }
+    ],
+    "materializations": [
+      {
+        "id": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug",
+        "kind": "source_backed",
+        "backingArtifactId": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug",
+        "sourceRoots": [
+          "src/main",
+          "src/debug"
+        ],
+        "artifactSnapshotId": "77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "classpathSnapshotIds": [
+          "12dcac8a6231d1f2d16eed02c475b55b1c0e5f9f88e8f3dd626ec3502273604b"
+        ],
+        "attributes": {
+          "materializationId": "77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "mode": "source-backed"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|11:test-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "producedByActionId": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|4:test|4::app|5:debug",
+        "kind": "other",
+        "attributes": {
+          "operation": "test",
+          "taskName": "testDebugUnitTest"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|14:compile-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "producedByActionId": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:compile|4::app|5:debug",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile",
+          "taskName": "compileDebug"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|14:install-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "producedByActionId": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:install|4::app|5:debug",
+        "kind": "other",
+        "attributes": {
+          "operation": "install",
+          "taskName": "installDebug"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|15:assemble-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "producedByActionId": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|8:assemble|4::app|5:debug",
+        "kind": "apk",
+        "attributes": {
+          "operation": "assemble",
+          "taskName": "assembleDebug"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|20:compile-tests-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "producedByActionId": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|13:compile-tests|4::app|5:debug",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile-tests",
+          "taskName": "compileDebugUnitTestSources"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug",
+        "materializationId": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "kind": "directory",
+        "path": "src/main",
+        "digest": "77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+        "note": "semantic source root",
+        "attributes": {
+          "artifactSnapshotId": "77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "classpathSnapshotId": "12dcac8a6231d1f2d16eed02c475b55b1c0e5f9f88e8f3dd626ec3502273604b"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|13:compile-tests|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug",
+        "name": "compileDebugUnitTestSources",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|20:compile-tests-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "modulePath": ":app",
+          "operation": "compile-tests",
+          "taskName": "compileDebugUnitTestSources",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|4:test|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug",
+        "name": "testDebugUnitTest",
+        "kind": "test",
+        "outputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|11:test-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "modulePath": ":app",
+          "operation": "test",
+          "taskName": "testDebugUnitTest",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:compile|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug",
+        "name": "compileDebug",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|14:compile-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "modulePath": ":app",
+          "operation": "compile",
+          "taskName": "compileDebug",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:install|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug",
+        "name": "installDebug",
+        "kind": "custom",
+        "outputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|14:install-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "modulePath": ":app",
+          "operation": "install",
+          "taskName": "installDebug",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|8:assemble|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug",
+        "name": "assembleDebug",
+        "kind": "package",
+        "outputs": [
+          "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|15:assemble-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b",
+          "modulePath": ":app",
+          "operation": "assemble",
+          "taskName": "assembleDebug",
+          "variantName": "debug"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-1",
+        "from": {
+          "kind": "logical_module",
+          "id": "module|9:repo::app"
+        },
+        "to": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-10",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:install|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-11",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|4:test|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|11:test-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-12",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|4:test|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-13",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|13:compile-tests|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|20:compile-tests-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-14",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|13:compile-tests|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-15",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|13:compile-tests|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-2",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "to": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b"
+        },
+        "kind": "realizes"
+      },
+      {
+        "id": "edge-3",
+        "from": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|6:source|64:77124c51e3d8560d88ef72d735e1ad2d2b7c6164fd082d0ad68a68b0011df22b"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug"
+        },
+        "kind": "backs"
+      },
+      {
+        "id": "edge-4",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:compile|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|14:compile-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-5",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:compile|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-6",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:compile|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:sources|18:src/main,src/debug"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-7",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|8:assemble|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|15:assemble-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-8",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|8:assemble|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-9",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|7:install|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|37:variant|18:module|9:repo::app|5:debug|14:install-output|4::app"
+        },
+        "kind": "produces"
+      }
+    ]
+  }
+}

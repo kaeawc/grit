@@ -1,0 +1,620 @@
+{
+  "schemaVersion": 5,
+  "repo": "repo",
+  "projectName": "",
+  "cacheKey": "7e4f5028b17ea60b17484b20cf7cba9f3d792c528c680dc9f045f509d8db6ac1",
+  "cachePolicy": {
+    "cleanupMode": "background",
+    "sharedTargetBytes": 21474836480,
+    "sharedHardBytes": 25769803776,
+    "classPolicies": {
+      "diagnostic": {
+        "class": "diagnostic",
+        "maxAge": 604800000000000,
+        "evictionOrder": 5,
+        "shareability": "machine"
+      },
+      "index": {
+        "class": "index",
+        "maxAge": 604800000000000,
+        "evictionOrder": 6,
+        "shareability": "machine"
+      },
+      "machine-shareable": {
+        "class": "machine-shareable",
+        "maxAge": 2592000000000000,
+        "evictionOrder": 50,
+        "shareability": "machine"
+      },
+      "pinned": {
+        "class": "pinned",
+        "evictionOrder": 1000,
+        "shareability": "machine",
+        "requiresReachableRoot": true
+      },
+      "remote-shareable": {
+        "class": "remote-shareable",
+        "maxAge": 2592000000000000,
+        "evictionOrder": 60,
+        "shareability": "remote"
+      },
+      "worktree-ephemeral": {
+        "class": "worktree-ephemeral",
+        "maxAge": 604800000000000,
+        "evictionOrder": 10,
+        "shareability": "worktree-only"
+      }
+    }
+  },
+  "summary": {
+    "nodeCount": 10,
+    "edgeCount": 11,
+    "modules": [
+      {
+        "id": "module|9:repo::lib",
+        "name": "lib",
+        "path": ":lib",
+        "kind": "jvm_library",
+        "tasks": [
+          "artifactTransforms",
+          "assemble",
+          "build",
+          "buildDependents",
+          "buildEnvironment",
+          "buildNeeded",
+          "check",
+          "clean",
+          "compile",
+          "dependencies",
+          "dependencyInsight",
+          "javaToolchains",
+          "kotlinDslAccessorsReport",
+          "outgoingVariants",
+          "projects",
+          "properties",
+          "resolvableConfigurations",
+          "tasks",
+          "test"
+        ],
+        "variants": [
+          {
+            "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+            "name": "main",
+            "buildType": "main",
+            "coordinate": {
+              "modulePath": ":lib",
+              "name": "main",
+              "buildType": "main"
+            },
+            "optimization": {
+              "minifyEnabled": false,
+              "shrinkResources": false
+            },
+            "testable": true,
+            "taskProjections": [
+              "build",
+              "check",
+              "test"
+            ],
+            "actions": [
+              {
+                "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+                "name": "compileTest",
+                "operation": "compile-tests",
+                "workerClass": "test-compile",
+                "resourceClass": "jvm-process",
+                "cacheKey": "d5e6b5c1769a9d34741a1c3d72cc6f358baafd5e844dd5a012f5edf0196e37ba",
+                "inputs": [
+                  "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+                ],
+                "outputs": [
+                  "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main",
+                "name": "test",
+                "operation": "test",
+                "workerClass": "junit",
+                "resourceClass": "jvm-process",
+                "cacheKey": "012a171917c66b7b5dac6eeca672da85f07b03e3e6ccdf8ba2ace54b53f8467c",
+                "outputs": [
+                  "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main",
+                "name": "compile",
+                "operation": "compile",
+                "workerClass": "kotlin-compile",
+                "resourceClass": "jvm-process",
+                "cacheKey": "f44ae8cc30b5228674d4f05577ffc2b2b9737abce0cac7fb3fb9963fd69e9e50",
+                "inputs": [
+                  "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+                ],
+                "outputs": [
+                  "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib"
+                ]
+              }
+            ],
+            "materialization": {
+              "id": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+              "mode": "source-backed",
+              "artifactSnapshotId": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+              "classpathSnapshotIds": [
+                "31b3808d34e61c5cb711c8c7f325daea66665f36b3cecb8be3e4977cdf596539"
+              ],
+              "sourceRoots": [
+                "src/main"
+              ],
+              "backingArtifactId": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main",
+              "producedArtifactIds": [
+                "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib",
+                "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib",
+                "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib",
+                "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+              ],
+              "consumingActionIds": [
+                "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+                "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main"
+              ],
+              "artifacts": [
+                {
+                  "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib",
+                  "kind": "other",
+                  "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib",
+                  "kind": "jar",
+                  "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib",
+                  "kind": "jar",
+                  "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main",
+                  "kind": "directory",
+                  "path": "src/main"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "actionSummaries": [
+    {
+      "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "name": "compileTest",
+      "kind": "compile",
+      "operation": "compile-tests",
+      "inputs": [
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+      ],
+      "outputs": [
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib"
+      ],
+      "cacheKey": "d5e6b5c1769a9d34741a1c3d72cc6f358baafd5e844dd5a012f5edf0196e37ba",
+      "workerClass": "test-compile",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 2,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "name": "test",
+      "kind": "test",
+      "operation": "test",
+      "outputs": [
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib"
+      ],
+      "cacheKey": "012a171917c66b7b5dac6eeca672da85f07b03e3e6ccdf8ba2ace54b53f8467c",
+      "workerClass": "junit",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "retentionClass": "diagnostic",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "name": "compile",
+      "kind": "compile",
+      "operation": "compile",
+      "inputs": [
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+      ],
+      "outputs": [
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib"
+      ],
+      "cacheKey": "f44ae8cc30b5228674d4f05577ffc2b2b9737abce0cac7fb3fb9963fd69e9e50",
+      "workerClass": "kotlin-compile",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 2,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    }
+  ],
+  "artifactSummaries": [
+    {
+      "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main",
+      "kind": "other",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main",
+      "kind": "jar",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+      "kind": "jar",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "kind": "directory",
+      "path": "src/main",
+      "digest": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "note": "semantic source root",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    }
+  ],
+  "provenanceSummaries": [
+    {
+      "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "moduleId": "module|9:repo::lib",
+      "modulePath": ":lib",
+      "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+      "variantName": "main",
+      "mode": "source_backed",
+      "artifactSnapshotId": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+      "classpathSnapshotIds": [
+        "31b3808d34e61c5cb711c8c7f325daea66665f36b3cecb8be3e4977cdf596539"
+      ],
+      "sourceRoots": [
+        "src/main"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib",
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib",
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib",
+        "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+      ],
+      "consumingActionIds": [
+        "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+        "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main"
+      ],
+      "retentionClass": "worktree-ephemeral",
+      "shareability": "worktree-only"
+    }
+  ],
+  "snapshot": {
+    "logicalModules": [
+      {
+        "id": "module|9:repo::lib",
+        "name": "lib",
+        "path": ":lib",
+        "kind": "jvm_library",
+        "attributes": {
+          "project": ""
+        }
+      }
+    ],
+    "variants": [
+      {
+        "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+        "moduleId": "module|9:repo::lib",
+        "name": "main",
+        "buildType": "main",
+        "attributes": {
+          "classpathSnapshotId": "31b3808d34e61c5cb711c8c7f325daea66665f36b3cecb8be3e4977cdf596539"
+        }
+      }
+    ],
+    "materializations": [
+      {
+        "id": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "moduleId": "module|9:repo::lib",
+        "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+        "kind": "source_backed",
+        "backingArtifactId": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main",
+        "sourceRoots": [
+          "src/main"
+        ],
+        "artifactSnapshotId": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "classpathSnapshotIds": [
+          "31b3808d34e61c5cb711c8c7f325daea66665f36b3cecb8be3e4977cdf596539"
+        ],
+        "attributes": {
+          "materializationId": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+          "mode": "source-backed"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib",
+        "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main",
+        "kind": "other",
+        "attributes": {
+          "operation": "test",
+          "taskName": "test"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib",
+        "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile",
+          "taskName": "compile"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib",
+        "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "producedByActionId": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile-tests",
+          "taskName": "compileTest"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main",
+        "materializationId": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "kind": "directory",
+        "path": "src/main",
+        "digest": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+        "note": "semantic source root",
+        "attributes": {
+          "artifactSnapshotId": "4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+          "classpathSnapshotId": "31b3808d34e61c5cb711c8c7f325daea66665f36b3cecb8be3e4977cdf596539"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main",
+        "moduleId": "module|9:repo::lib",
+        "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+        "name": "compileTest",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+          "modulePath": ":lib",
+          "operation": "compile-tests",
+          "taskName": "compileTest",
+          "variantName": "main"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main",
+        "moduleId": "module|9:repo::lib",
+        "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+        "name": "test",
+        "kind": "test",
+        "outputs": [
+          "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+          "modulePath": ":lib",
+          "operation": "test",
+          "taskName": "test",
+          "variantName": "main"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main",
+        "moduleId": "module|9:repo::lib",
+        "variantId": "variant|18:module|9:repo::lib|4:main|14:buildType:main",
+        "name": "compile",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717",
+          "modulePath": ":lib",
+          "operation": "compile",
+          "taskName": "compile",
+          "variantName": "main"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-1",
+        "from": {
+          "kind": "logical_module",
+          "id": "module|9:repo::lib"
+        },
+        "to": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-10",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-11",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-2",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main"
+        },
+        "to": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717"
+        },
+        "kind": "realizes"
+      },
+      {
+        "id": "edge-3",
+        "from": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|6:source|64:4fdf1fce941e928e62cc0ecf481ee83c7ba9ad93073fed936384a835777a9717"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+        },
+        "kind": "backs"
+      },
+      {
+        "id": "edge-4",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|14:compile-output|4::lib"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-5",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-6",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:compile|4::lib|4:main"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|7:sources|8:src/main"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-7",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|11:test-output|4::lib"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-8",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::lib|4:main|14:buildType:main"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|4:test|4::lib|4:main"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-9",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|13:compile-tests|4::lib|4:main"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::lib|54:variant|18:module|9:repo::lib|4:main|14:buildType:main|20:compile-tests-output|4::lib"
+        },
+        "kind": "produces"
+      }
+    ]
+  }
+}

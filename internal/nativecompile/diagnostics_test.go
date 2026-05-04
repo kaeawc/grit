@@ -1,0 +1,427 @@
+package nativecompile
+
+import (
+	"context"
+	"testing"
+
+	"github.com/kaeawc/grit/internal/tooldiag"
+)
+
+func TestParseToolDiagnosticsStructuredLocations(t *testing.T) {
+	records := parseToolDiagnostics("kotlinc", "stderr", `
+/repo/app/src/main/java/App.kt:7:3: warning: variable is never used
+/repo/app/src/main/java/App.kt:9:11: error: unresolved reference: missingSymbol
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "warning" || records[0].File != "/repo/app/src/main/java/App.kt" || records[0].Line != 7 || records[0].Column != 3 {
+		t.Fatalf("unexpected first diagnostic: %#v", records[0])
+	}
+	if records[0].Code != "kotlinc_unused_symbol" || records[0].Category != "unused-code" || records[0].SourceKind != "tool-emitted" || records[0].Stream != "stderr" {
+		t.Fatalf("unexpected classified first diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "kotlinc_unresolved_reference" || records[1].Category != "symbol-resolution" || records[1].Line != 9 || records[1].Column != 11 {
+		t.Fatalf("unexpected second diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsFallsBackToSeverityInference(t *testing.T) {
+	records := parseToolDiagnostics("aapt2", "stdout", `
+error: failed linking references
+warning: duplicate resource detected
+TRACE aapt2 link args:
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected inferred diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "error" || records[1].Severity != "warning" {
+		t.Fatalf("unexpected inferred severities: %#v", records)
+	}
+	if records[0].Code != "aapt2_link_failed" || records[0].Category != "resource-linking" || records[0].Stream != "stdout" {
+		t.Fatalf("unexpected first inferred diagnostic: %#v", records[0])
+	}
+	if records[1].Code != "aapt2_duplicate_resource" || records[1].Category != "resources" {
+		t.Fatalf("unexpected second inferred diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesAAPT2CompileAndXMLFailures(t *testing.T) {
+	records := parseToolDiagnostics("aapt2", "stderr", `
+error: failed to compile file /repo/app/src/main/res/drawable/icon.xml
+error: resource entry bad$name has invalid character '$'
+error: failed parsing XML in /repo/app/src/main/res/values/strings.xml
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %#v", records)
+	}
+	if records[0].Code != "aapt2_compile_failed" || records[0].Category != "resource-compilation" {
+		t.Fatalf("unexpected aapt2 compile diagnostic: %#v", records[0])
+	}
+	if records[1].Code != "aapt2_invalid_resource_name" || records[1].Category != "resources" {
+		t.Fatalf("unexpected aapt2 invalid-name diagnostic: %#v", records[1])
+	}
+	if records[2].Code != "aapt2_xml_parse_failed" || records[2].Category != "resources" {
+		t.Fatalf("unexpected aapt2 xml diagnostic: %#v", records[2])
+	}
+}
+
+func TestParseToolDiagnosticsExtractsRelatedDependency(t *testing.T) {
+	records := parseToolDiagnostics("r8", "stderr", `
+error: Missing class com.example.Foo referenced from com.squareup.okhttp3:okhttp:4.12.0
+`)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %#v", records)
+	}
+	if records[0].Code != "r8_missing_class" || records[0].Category != "shrinking" || records[0].RelatedDependency != "com.squareup.okhttp3:okhttp:4.12.0" {
+		t.Fatalf("unexpected dependency-attributed diagnostic: %#v", records[0])
+	}
+}
+
+func TestParseToolDiagnosticsParsesKotlinPrefixFormat(t *testing.T) {
+	records := parseToolDiagnostics("kotlinc", "stderr", `
+e: file:///repo/app/src/main/java/App.kt: (9, 11): unresolved reference: missingSymbol
+w: /repo/app/src/main/java/App.kt: (7, 3): variable is never used
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %#v", records)
+	}
+	if records[0].Code != "kotlinc_unresolved_reference" || records[0].File != "/repo/app/src/main/java/App.kt" {
+		t.Fatalf("unexpected kotlin prefix diagnostic: %#v", records[0])
+	}
+	if records[1].Code != "kotlinc_unused_symbol" || records[1].Severity != "warning" {
+		t.Fatalf("unexpected kotlin prefix warning: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsExtractsBracketCode(t *testing.T) {
+	records := parseToolDiagnostics("javac", "stderr", `
+/repo/app/src/main/java/App.java:12: warning: [deprecation] oldApi() in Legacy has been deprecated
+`)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %#v", records)
+	}
+	if records[0].Code != "javac_deprecation" || records[0].Category != "deprecation" {
+		t.Fatalf("unexpected bracket-code diagnostic: %#v", records[0])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesADBInstallAndUninstallFailures(t *testing.T) {
+	records := parseToolDiagnostics("adb", "stderr", `
+adb: failed to install /tmp/app.apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Package signatures do not match]
+Failure [DELETE_FAILED_INTERNAL_ERROR]
+Unknown package: com.example.missing
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "adb_install_failed" || records[0].Category != "device-install" {
+		t.Fatalf("unexpected adb install failure diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "adb_uninstall_failed" || records[1].Category != "device-install" {
+		t.Fatalf("unexpected adb delete failure diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "error" || records[2].Code != "adb_uninstall_failed" || records[2].Category != "device-install" {
+		t.Fatalf("unexpected adb unknown-package diagnostic: %#v", records[2])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesJavaRuntimeExceptionLines(t *testing.T) {
+	records := parseToolDiagnostics("java", "stderr", `
+Exception in thread "main" java.lang.IllegalStateException: boom
+Caused by: java.lang.RuntimeException: wrapped
+java.lang.AssertionError: broken
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "java_exception" || records[0].Category != "runtime" {
+		t.Fatalf("unexpected java exception diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "java_exception" || records[1].Category != "runtime" {
+		t.Fatalf("unexpected caused-by diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "error" || records[2].Code != "java_error" || records[2].Category != "runtime" {
+		t.Fatalf("unexpected java error diagnostic: %#v", records[2])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesJavacSummaryWarningsAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "javac", `
+Note: /repo/app/src/main/java/App.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+`, `
+warning: [options] system modules path not set in conjunction with -source 21
+`)
+
+	records := collector.Records()
+	if len(records) != 3 {
+		t.Fatalf("expected 3 collected diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "info" || records[0].Code != "javac_deprecated_api" || records[0].Category != "deprecation" || records[0].Stream != "stderr" {
+		t.Fatalf("unexpected deprecated-api summary diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "info" || records[1].Code != "javac_deprecated_api" || records[1].Category != "deprecation" || records[1].Stream != "stderr" {
+		t.Fatalf("unexpected xlint summary diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "warning" || records[2].Code != "javac_warning" || records[2].Category != "javac" || records[2].Stream != "stdout" {
+		t.Fatalf("unexpected stdout warning diagnostic: %#v", records[2])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesAPKSignerFailuresAndWarnings(t *testing.T) {
+	records := parseToolDiagnostics("apksigner", "stderr", `
+Failed to load signer "signer #1": java.io.IOException: Keystore was tampered with, or password was incorrect
+WARNING: META-INF/services/example.Service not protected by this signature.
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "apksigner_sign_failed" || records[0].Category != "signing" {
+		t.Fatalf("unexpected apksigner failure diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "warning" || records[1].Code != "apksigner_unprotected_entry" || records[1].Category != "signing" {
+		t.Fatalf("unexpected apksigner warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesAPKSignerDiagnostics(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "apksigner", `
+Failed to sign using signer "signer #1": private key mismatch
+`, `
+WARNING: signer #1 entry META-INF/MANIFEST.MF not protected by this signature.
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected apksigner diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "apksigner_sign_failed" || records[0].Category != "signing" {
+		t.Fatalf("unexpected collected apksigner failure diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "apksigner_unprotected_entry" || records[1].Category != "signing" {
+		t.Fatalf("unexpected collected apksigner warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesJarsignerFailuresAndWarnings(t *testing.T) {
+	records := parseToolDiagnostics("jarsigner", "stderr", `
+jarsigner: unable to open jar file: /tmp/app-release.apk
+WARNING: The signer's certificate is self-signed.
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %#v", records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "jarsigner_sign_failed" || records[0].Category != "signing" {
+		t.Fatalf("unexpected jarsigner failure diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "warning" || records[1].Code != "jarsigner_trust_warning" || records[1].Category != "signing" {
+		t.Fatalf("unexpected jarsigner warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesZipalignDiagnostics(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "zipalign", `
+zipalign: can't open input file: /tmp/app-release-unsigned.apk
+`, `
+WARNING: unaligned entry res/layout/main.xml
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected zipalign diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "zipalign_failed" || records[0].Category != "packaging" {
+		t.Fatalf("unexpected collected zipalign failure diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "zipalign_unaligned_entry" || records[1].Category != "packaging" {
+		t.Fatalf("unexpected collected zipalign warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesLintWarningsAndErrors(t *testing.T) {
+	records := parseToolDiagnostics("lint", "stdout", `
+/repo/app/src/main/java/App.java:10: Warning: Hardcoded string "Hello", should use @string resource [HardcodedText]
+/repo/app/src/main/res/layout/main.xml:5: Warning: Missing contentDescription attribute on image [ContentDescription]
+/repo/app/src/main/java/App.java:22: Error: Missing permission required by LocationManager.requestLocationUpdates: android.permission.ACCESS_FINE_LOCATION [MissingPermission]
+/repo/app/src/main/java/App.java:30: Warning: This method requires API level 26 [NewApi]
+/repo/app/src/main/res/values/strings.xml:3: Warning: "app_name" is not translated in "fr" [MissingTranslation]
+`)
+	if len(records) != 5 {
+		t.Fatalf("expected 5 diagnostics, got %d: %#v", len(records), records)
+	}
+	// Lint lines with structured locations use message-based classification
+	// because [IssueId] brackets appear at end of message, not at start
+	if records[0].Severity != "warning" || records[0].Code != "lint_hardcoded_text" || records[0].Category != "i18n" {
+		t.Fatalf("unexpected lint hardcoded-text diagnostic: %#v", records[0])
+	}
+	if records[0].File != "/repo/app/src/main/java/App.java" || records[0].Line != 10 {
+		t.Fatalf("unexpected lint location: %#v", records[0])
+	}
+	if records[1].Code != "lint_accessibility" || records[1].Category != "accessibility" {
+		t.Fatalf("unexpected lint accessibility diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "error" || records[2].Code != "lint_missing_permission" || records[2].Category != "permissions" {
+		t.Fatalf("unexpected lint missing-permission diagnostic: %#v", records[2])
+	}
+	if records[3].Code != "lint_new_api" || records[3].Category != "api-compatibility" {
+		t.Fatalf("unexpected lint new-api diagnostic: %#v", records[3])
+	}
+	if records[4].Code != "lint_missing_translation" || records[4].Category != "i18n" {
+		t.Fatalf("unexpected lint missing-translation diagnostic: %#v", records[4])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesLintInferredSeverity(t *testing.T) {
+	records := parseToolDiagnostics("lint", "stderr", `
+Warning: unused resource res/drawable/old_icon.png
+Error: requires permission android.permission.CAMERA
+Information: deprecated API usage detected
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Severity != "warning" || records[0].Code != "lint_unused_resource" || records[0].Category != "unused-code" {
+		t.Fatalf("unexpected lint unused-resource diagnostic: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "lint_missing_permission" || records[1].Category != "permissions" {
+		t.Fatalf("unexpected lint requires-permission diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "info" || records[2].Code != "lint_deprecated_api" || records[2].Category != "deprecation" {
+		t.Fatalf("unexpected lint deprecated diagnostic: %#v", records[2])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesLintDiagnosticsAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "lint", `
+/repo/app/src/main/java/App.java:10: Error: Missing permission required by call [MissingPermission]
+`, `
+/repo/app/src/main/res/layout/main.xml:7: Warning: Useless parent layout [UselessParent]
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected lint diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Severity != "error" || records[0].Code != "lint_missing_permission" || records[0].Category != "permissions" {
+		t.Fatalf("unexpected collected lint error diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Severity != "warning" || records[1].Code != "lint_layout_performance" || records[1].Category != "performance" {
+		t.Fatalf("unexpected collected lint warning diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesManifestMergerErrors(t *testing.T) {
+	records := parseToolDiagnostics("manifest-merger", "stderr", `
+/repo/app/src/main/AndroidManifest.xml:12:5: error: Attribute application@allowBackup conflict with another library
+/repo/app/src/main/AndroidManifest.xml:3: error: Merge failed: placeholder ${applicationId} not found
+/repo/app/src/main/AndroidManifest.xml:8: warning: Suggestion: add 'tools:replace="android:allowBackup"' to override
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Severity != "error" || records[0].Code != "manifest_attribute_conflict" || records[0].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest attribute conflict diagnostic: %#v", records[0])
+	}
+	if records[0].File != "/repo/app/src/main/AndroidManifest.xml" || records[0].Line != 12 || records[0].Column != 5 {
+		t.Fatalf("unexpected manifest location: %#v", records[0])
+	}
+	if records[1].Severity != "error" || records[1].Code != "manifest_missing_placeholder" || records[1].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest merge-failed diagnostic: %#v", records[1])
+	}
+	if records[2].Severity != "warning" || records[2].Code != "manifest_merge_suggestion" || records[2].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest suggestion diagnostic: %#v", records[2])
+	}
+}
+
+func TestParseToolDiagnosticsClassifiesManifestMergerSDKConflict(t *testing.T) {
+	records := parseToolDiagnostics("manifest-merger", "stderr", `
+/repo/app/src/main/AndroidManifest.xml:4: error: uses-sdk:minSdkVersion 21 cannot be lower than version 24 declared in library
+/repo/app/src/main/AndroidManifest.xml:7: error: Duplicate element permission declared in two libraries
+`)
+	if len(records) != 2 {
+		t.Fatalf("expected 2 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Code != "manifest_sdk_conflict" || records[0].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest SDK conflict diagnostic: %#v", records[0])
+	}
+	if records[1].Code != "manifest_duplicate_element" || records[1].Category != "manifest-merging" {
+		t.Fatalf("unexpected manifest duplicate-element diagnostic: %#v", records[1])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesManifestMergerAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "manifest-merger", `
+Manifest merging failed: conflict in attribute application@label
+`, `
+Suggestion: add 'tools:node="replace"' to override
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected manifest-merger diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "manifest_attribute_conflict" || records[0].Category != "manifest-merging" {
+		t.Fatalf("unexpected collected manifest attribute-conflict diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "manifest_merge_suggestion" || records[1].Category != "manifest-merging" {
+		t.Fatalf("unexpected collected manifest suggestion diagnostic: %#v", records[1])
+	}
+}
+
+func TestParseToolDiagnosticsCaseInsensitiveSeverity(t *testing.T) {
+	records := parseToolDiagnostics("lint", "stderr", `
+/repo/app/src/main/java/App.java:10: Warning: something bad
+/repo/app/src/main/java/App.java:20: Error: something worse
+/repo/app/src/main/java/App.java:30: Information: fyi
+`)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 diagnostics, got %d: %#v", len(records), records)
+	}
+	if records[0].Severity != "warning" {
+		t.Fatalf("expected warning severity for capitalized Warning, got %#v", records[0])
+	}
+	if records[1].Severity != "error" {
+		t.Fatalf("expected error severity for capitalized Error, got %#v", records[1])
+	}
+	if records[2].Severity != "info" {
+		t.Fatalf("expected info severity for Information, got %#v", records[2])
+	}
+}
+
+func TestRecordToolDiagnosticsCapturesAAPT2DiagnosticsAcrossStreams(t *testing.T) {
+	collector := &tooldiag.Collector{}
+	ctx := tooldiag.WithCollector(context.Background(), collector)
+
+	recordToolDiagnostics(ctx, "aapt2", `
+error: failed to compile file /repo/app/src/main/res/drawable/icon.xml
+`, `
+error: resource entry bad$name has invalid character '$'
+`)
+
+	records := collector.Records()
+	if len(records) != 2 {
+		t.Fatalf("expected 2 collected aapt2 diagnostics, got %#v", records)
+	}
+	if records[0].Stream != "stderr" || records[0].Code != "aapt2_compile_failed" || records[0].Category != "resource-compilation" {
+		t.Fatalf("unexpected collected aapt2 compile diagnostic: %#v", records[0])
+	}
+	if records[1].Stream != "stdout" || records[1].Code != "aapt2_invalid_resource_name" || records[1].Category != "resources" {
+		t.Fatalf("unexpected collected aapt2 invalid-name diagnostic: %#v", records[1])
+	}
+}

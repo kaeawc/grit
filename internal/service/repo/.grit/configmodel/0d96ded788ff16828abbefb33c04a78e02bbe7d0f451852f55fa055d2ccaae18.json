@@ -1,0 +1,1340 @@
+{
+  "schemaVersion": 5,
+  "repo": "repo",
+  "projectName": "",
+  "cacheKey": "0d96ded788ff16828abbefb33c04a78e02bbe7d0f451852f55fa055d2ccaae18",
+  "cachePolicy": {
+    "cleanupMode": "background",
+    "sharedTargetBytes": 21474836480,
+    "sharedHardBytes": 25769803776,
+    "classPolicies": {
+      "diagnostic": {
+        "class": "diagnostic",
+        "maxAge": 604800000000000,
+        "evictionOrder": 5,
+        "shareability": "machine"
+      },
+      "index": {
+        "class": "index",
+        "maxAge": 604800000000000,
+        "evictionOrder": 6,
+        "shareability": "machine"
+      },
+      "machine-shareable": {
+        "class": "machine-shareable",
+        "maxAge": 2592000000000000,
+        "evictionOrder": 50,
+        "shareability": "machine"
+      },
+      "pinned": {
+        "class": "pinned",
+        "evictionOrder": 1000,
+        "shareability": "machine",
+        "requiresReachableRoot": true
+      },
+      "remote-shareable": {
+        "class": "remote-shareable",
+        "maxAge": 2592000000000000,
+        "evictionOrder": 60,
+        "shareability": "remote"
+      },
+      "worktree-ephemeral": {
+        "class": "worktree-ephemeral",
+        "maxAge": 604800000000000,
+        "evictionOrder": 10,
+        "shareability": "worktree-only"
+      }
+    }
+  },
+  "summary": {
+    "nodeCount": 23,
+    "edgeCount": 25,
+    "modules": [
+      {
+        "id": "module|9:repo::app",
+        "name": "app",
+        "path": ":app",
+        "kind": "android_application",
+        "tasks": [
+          "artifactTransforms",
+          "assemble",
+          "assembleAndroidTest",
+          "assembleDebug",
+          "assembleRelease",
+          "assembleUnitTest",
+          "build",
+          "buildDependents",
+          "buildEnvironment",
+          "buildNeeded",
+          "bundle",
+          "check",
+          "clean",
+          "compileDebugSources",
+          "compileDebugUnitTestSources",
+          "compileReleaseSources",
+          "connectedAndroidTest",
+          "connectedCheck",
+          "connectedDebugAndroidTest",
+          "dependencies",
+          "dependencyInsight",
+          "deviceAndroidTest",
+          "deviceCheck",
+          "installDebug",
+          "installDebugAndroidTest",
+          "installRelease",
+          "javaToolchains",
+          "kotlinDslAccessorsReport",
+          "lint",
+          "lintDebug",
+          "lintFix",
+          "lintRelease",
+          "lintVitalRelease",
+          "outgoingVariants",
+          "projects",
+          "properties",
+          "resolvableConfigurations",
+          "signingReport",
+          "tasks",
+          "test",
+          "testDebugUnitTest",
+          "uninstallAll",
+          "uninstallDebug",
+          "uninstallDebugAndroidTest",
+          "uninstallRelease"
+        ],
+        "variants": [
+          {
+            "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+            "name": "debug",
+            "buildType": "debug",
+            "coordinate": {
+              "modulePath": ":app",
+              "name": "debug",
+              "buildType": "debug"
+            },
+            "optimization": {
+              "minifyEnabled": false,
+              "shrinkResources": false
+            },
+            "installable": true,
+            "testable": true,
+            "debuggable": true,
+            "taskProjections": [
+              "assembleDebug",
+              "compileDebugSources",
+              "installDebug",
+              "testDebugUnitTest"
+            ],
+            "actions": [
+              {
+                "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+                "name": "compileDebugUnitTestSources",
+                "operation": "compile-tests",
+                "workerClass": "test-compile",
+                "resourceClass": "jvm-process",
+                "cacheKey": "37aa273935dbb2810b285be5d33567c89eaae1478ed255d461a4522b0507e7bc",
+                "inputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+                ],
+                "outputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug",
+                "name": "testDebugUnitTest",
+                "operation": "test",
+                "workerClass": "junit",
+                "resourceClass": "jvm-process",
+                "cacheKey": "4f52437d5729871265382a3d1e743b42151b58ac6f3a0803deefebc80ab2fdab",
+                "outputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug",
+                "name": "compileDebug",
+                "operation": "compile",
+                "workerClass": "kotlin-compile",
+                "resourceClass": "jvm-process",
+                "cacheKey": "eb31c9c100f0c3ce28144b2bb57207320c97931591008fbee79e1eb6e4588fb4",
+                "inputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+                ],
+                "outputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug",
+                "name": "installDebug",
+                "operation": "install",
+                "workerClass": "adb-install",
+                "resourceClass": "device",
+                "cacheKey": "b5fd63f3b78d1f39b05807583a565bd6c8b3f7944e7f0bb0383b6daac4b189e5",
+                "outputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+                "name": "assembleDebug",
+                "operation": "assemble",
+                "workerClass": "android-package",
+                "resourceClass": "android-tools",
+                "cacheKey": "8dce7552bffd2d85bb4d9c2f31a8a20264a98bf682e5bd14d2f67dca9cad2d03",
+                "outputs": [
+                  "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app"
+                ]
+              }
+            ],
+            "materialization": {
+              "id": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+              "mode": "source-backed",
+              "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+              "classpathSnapshotIds": [
+                "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+              ],
+              "sourceRoots": [
+                "src/main",
+                "src/debug"
+              ],
+              "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+              "producedArtifactIds": [
+                "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+                "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+                "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+                "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+                "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+                "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+              ],
+              "consumingActionIds": [
+                "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+                "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+              ],
+              "artifacts": [
+                {
+                  "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+                  "kind": "other",
+                  "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+                  "kind": "jar",
+                  "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+                  "kind": "other",
+                  "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+                  "kind": "apk",
+                  "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+                  "kind": "jar",
+                  "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+                  "kind": "directory",
+                  "path": "src/main"
+                }
+              ]
+            }
+          },
+          {
+            "id": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+            "name": "release",
+            "buildType": "release",
+            "coordinate": {
+              "modulePath": ":app",
+              "name": "release",
+              "buildType": "release"
+            },
+            "optimization": {
+              "minifyEnabled": false,
+              "shrinkResources": false
+            },
+            "installable": true,
+            "taskProjections": [
+              "assembleRelease",
+              "compileReleaseSources"
+            ],
+            "actions": [
+              {
+                "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release",
+                "name": "compileRelease",
+                "operation": "compile",
+                "workerClass": "kotlin-compile",
+                "resourceClass": "jvm-process",
+                "cacheKey": "6369099a6e288519c9a66caa301586b8355ab8226f6833fd30e249c067ae2446",
+                "inputs": [
+                  "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+                ],
+                "outputs": [
+                  "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release",
+                "name": "installRelease",
+                "operation": "install",
+                "workerClass": "adb-install",
+                "resourceClass": "device",
+                "cacheKey": "da019897508c322cc4ec6c5df3e2af17eca8866970a6dd22587bed47e80a0443",
+                "outputs": [
+                  "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app"
+                ]
+              },
+              {
+                "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+                "name": "assembleRelease",
+                "operation": "assemble",
+                "workerClass": "android-package",
+                "resourceClass": "android-tools",
+                "cacheKey": "75d6dab82639f4b929581a13743467de658988dd2679753f1059583efd87d009",
+                "outputs": [
+                  "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app"
+                ]
+              }
+            ],
+            "materialization": {
+              "id": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+              "mode": "source-backed",
+              "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+              "classpathSnapshotIds": [
+                "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+              ],
+              "sourceRoots": [
+                "src/main",
+                "src/release"
+              ],
+              "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+              "producedArtifactIds": [
+                "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+                "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+                "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+                "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+              ],
+              "consumingActionIds": [
+                "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+              ],
+              "artifacts": [
+                {
+                  "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+                  "kind": "jar",
+                  "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+                  "kind": "other",
+                  "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+                  "kind": "apk",
+                  "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+                },
+                {
+                  "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+                  "kind": "directory",
+                  "path": "src/main"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "actionSummaries": [
+    {
+      "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "name": "compileDebugUnitTestSources",
+      "kind": "compile",
+      "operation": "compile-tests",
+      "inputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+      ],
+      "outputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app"
+      ],
+      "cacheKey": "37aa273935dbb2810b285be5d33567c89eaae1478ed255d461a4522b0507e7bc",
+      "workerClass": "test-compile",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 2,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "name": "testDebugUnitTest",
+      "kind": "test",
+      "operation": "test",
+      "outputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app"
+      ],
+      "cacheKey": "4f52437d5729871265382a3d1e743b42151b58ac6f3a0803deefebc80ab2fdab",
+      "workerClass": "junit",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "retentionClass": "diagnostic",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "name": "compileDebug",
+      "kind": "compile",
+      "operation": "compile",
+      "inputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+      ],
+      "outputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app"
+      ],
+      "cacheKey": "eb31c9c100f0c3ce28144b2bb57207320c97931591008fbee79e1eb6e4588fb4",
+      "workerClass": "kotlin-compile",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 2,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "name": "installDebug",
+      "kind": "custom",
+      "operation": "install",
+      "outputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app"
+      ],
+      "cacheKey": "b5fd63f3b78d1f39b05807583a565bd6c8b3f7944e7f0bb0383b6daac4b189e5",
+      "workerClass": "adb-install",
+      "resourceClass": "device",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "retentionClass": "machine-shareable",
+      "shareability": "worktree-only"
+    },
+    {
+      "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "name": "assembleDebug",
+      "kind": "package",
+      "operation": "assemble",
+      "outputs": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app"
+      ],
+      "cacheKey": "8dce7552bffd2d85bb4d9c2f31a8a20264a98bf682e5bd14d2f67dca9cad2d03",
+      "workerClass": "android-package",
+      "resourceClass": "android-tools",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "name": "compileRelease",
+      "kind": "compile",
+      "operation": "compile",
+      "inputs": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+      ],
+      "outputs": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app"
+      ],
+      "cacheKey": "6369099a6e288519c9a66caa301586b8355ab8226f6833fd30e249c067ae2446",
+      "workerClass": "kotlin-compile",
+      "resourceClass": "jvm-process",
+      "resourceCost": 1,
+      "maxParallelism": 2,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "name": "installRelease",
+      "kind": "custom",
+      "operation": "install",
+      "outputs": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app"
+      ],
+      "cacheKey": "da019897508c322cc4ec6c5df3e2af17eca8866970a6dd22587bed47e80a0443",
+      "workerClass": "adb-install",
+      "resourceClass": "device",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "retentionClass": "machine-shareable",
+      "shareability": "worktree-only"
+    },
+    {
+      "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "name": "assembleRelease",
+      "kind": "package",
+      "operation": "assemble",
+      "outputs": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app"
+      ],
+      "cacheKey": "75d6dab82639f4b929581a13743467de658988dd2679753f1059583efd87d009",
+      "workerClass": "android-package",
+      "resourceClass": "android-tools",
+      "resourceCost": 1,
+      "maxParallelism": 1,
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    }
+  ],
+  "artifactSummaries": [
+    {
+      "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug",
+      "kind": "other",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug",
+      "kind": "jar",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug",
+      "kind": "other",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+      "kind": "apk",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+      "kind": "jar",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "kind": "directory",
+      "path": "src/main",
+      "digest": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "note": "semantic source root",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release",
+      "kind": "jar",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release",
+      "kind": "other",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+      "kind": "apk",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    },
+    {
+      "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "kind": "directory",
+      "path": "src/main",
+      "digest": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "note": "semantic source root",
+      "retentionClass": "machine-shareable",
+      "shareability": "machine"
+    }
+  ],
+  "provenanceSummaries": [
+    {
+      "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+      "variantName": "debug",
+      "mode": "source_backed",
+      "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+      "classpathSnapshotIds": [
+        "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+      ],
+      "sourceRoots": [
+        "src/main",
+        "src/debug"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+      ],
+      "consumingActionIds": [
+        "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+        "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+      ],
+      "retentionClass": "worktree-ephemeral",
+      "shareability": "worktree-only"
+    },
+    {
+      "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "moduleId": "module|9:repo::app",
+      "modulePath": ":app",
+      "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+      "variantName": "release",
+      "mode": "source_backed",
+      "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+      "classpathSnapshotIds": [
+        "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+      ],
+      "sourceRoots": [
+        "src/main",
+        "src/release"
+      ],
+      "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+      "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+      ],
+      "consumingActionIds": [
+        "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+      ],
+      "retentionClass": "worktree-ephemeral",
+      "shareability": "worktree-only"
+    }
+  ],
+  "snapshot": {
+    "logicalModules": [
+      {
+        "id": "module|9:repo::app",
+        "name": "app",
+        "path": ":app",
+        "kind": "android_application",
+        "attributes": {
+          "project": ""
+        }
+      }
+    ],
+    "variants": [
+      {
+        "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "moduleId": "module|9:repo::app",
+        "name": "debug",
+        "buildType": "debug",
+        "attributes": {
+          "classpathSnapshotId": "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+        }
+      },
+      {
+        "id": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+        "moduleId": "module|9:repo::app",
+        "name": "release",
+        "buildType": "release",
+        "attributes": {
+          "classpathSnapshotId": "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+        }
+      }
+    ],
+    "materializations": [
+      {
+        "id": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "kind": "source_backed",
+        "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+        "sourceRoots": [
+          "src/main",
+          "src/debug"
+        ],
+        "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "classpathSnapshotIds": [
+          "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+        ],
+        "attributes": {
+          "materializationId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "mode": "source-backed"
+        }
+      },
+      {
+        "id": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+        "kind": "source_backed",
+        "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+        "sourceRoots": [
+          "src/main",
+          "src/release"
+        ],
+        "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "classpathSnapshotIds": [
+          "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+        ],
+        "attributes": {
+          "materializationId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+          "mode": "source-backed"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug",
+        "kind": "other",
+        "attributes": {
+          "operation": "test",
+          "taskName": "testDebugUnitTest"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile",
+          "taskName": "compileDebug"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug",
+        "kind": "other",
+        "attributes": {
+          "operation": "install",
+          "taskName": "installDebug"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+        "kind": "apk",
+        "attributes": {
+          "operation": "assemble",
+          "taskName": "assembleDebug"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile-tests",
+          "taskName": "compileDebugUnitTestSources"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+        "materializationId": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "kind": "directory",
+        "path": "src/main",
+        "digest": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+        "note": "semantic source root",
+        "attributes": {
+          "artifactSnapshotId": "0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "classpathSnapshotId": "1756f933a60a2a54987ff37a35ceed1daea889d8c39f09cafbd1e8411ca6a1fb"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release",
+        "kind": "jar",
+        "attributes": {
+          "operation": "compile",
+          "taskName": "compileRelease"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release",
+        "kind": "other",
+        "attributes": {
+          "operation": "install",
+          "taskName": "installRelease"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+        "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+        "kind": "apk",
+        "attributes": {
+          "operation": "assemble",
+          "taskName": "assembleRelease"
+        }
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+        "materializationId": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "kind": "directory",
+        "path": "src/main",
+        "digest": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+        "note": "semantic source root",
+        "attributes": {
+          "artifactSnapshotId": "b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+          "classpathSnapshotId": "07896f449b230a69eb1540813cd5cc2b8dcc2160ec504a1ea0e4f3a78326de69"
+        }
+      }
+    ],
+    "actions": [
+      {
+        "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "name": "compileDebugUnitTestSources",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "modulePath": ":app",
+          "operation": "compile-tests",
+          "taskName": "compileDebugUnitTestSources",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "name": "testDebugUnitTest",
+        "kind": "test",
+        "outputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "modulePath": ":app",
+          "operation": "test",
+          "taskName": "testDebugUnitTest",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "name": "compileDebug",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "modulePath": ":app",
+          "operation": "compile",
+          "taskName": "compileDebug",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "name": "installDebug",
+        "kind": "custom",
+        "outputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "modulePath": ":app",
+          "operation": "install",
+          "taskName": "installDebug",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|5:debug|15:buildType:debug",
+        "name": "assembleDebug",
+        "kind": "package",
+        "outputs": [
+          "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11",
+          "modulePath": ":app",
+          "operation": "assemble",
+          "taskName": "assembleDebug",
+          "variantName": "debug"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+        "name": "compileRelease",
+        "kind": "compile",
+        "inputs": [
+          "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+        ],
+        "outputs": [
+          "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+          "modulePath": ":app",
+          "operation": "compile",
+          "taskName": "compileRelease",
+          "variantName": "release"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+        "name": "installRelease",
+        "kind": "custom",
+        "outputs": [
+          "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+          "modulePath": ":app",
+          "operation": "install",
+          "taskName": "installRelease",
+          "variantName": "release"
+        }
+      },
+      {
+        "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release",
+        "moduleId": "module|9:repo::app",
+        "variantId": "variant|18:module|9:repo::app|7:release|17:buildType:release",
+        "name": "assembleRelease",
+        "kind": "package",
+        "outputs": [
+          "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app"
+        ],
+        "attributes": {
+          "materialization": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6",
+          "modulePath": ":app",
+          "operation": "assemble",
+          "taskName": "assembleRelease",
+          "variantName": "release"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-1",
+        "from": {
+          "kind": "logical_module",
+          "id": "module|9:repo::app"
+        },
+        "to": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-10",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-11",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-12",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-13",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-14",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-15",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-16",
+        "from": {
+          "kind": "logical_module",
+          "id": "module|9:repo::app"
+        },
+        "to": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|7:release|17:buildType:release"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-17",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|7:release|17:buildType:release"
+        },
+        "to": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6"
+        },
+        "kind": "realizes"
+      },
+      {
+        "id": "edge-18",
+        "from": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|6:source|64:b15fe921125a232f4cb91de93d3e61dd7c6ad32858003cf36ed9c30b87ddc5c6"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+        },
+        "kind": "backs"
+      },
+      {
+        "id": "edge-19",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-2",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "to": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11"
+        },
+        "kind": "realizes"
+      },
+      {
+        "id": "edge-20",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|7:release|17:buildType:release"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-21",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-22",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-23",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|7:release|17:buildType:release"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|8:assemble|4::app|7:release"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-24",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-25",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|7:release|17:buildType:release"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:install|4::app|7:release"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-3",
+        "from": {
+          "kind": "materialization",
+          "id": "materialization|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|6:source|64:0c28f20cb0d86a31d7d347cc6b291ee83c818e16b4482b01ab43d73cea5b5c11"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+        },
+        "kind": "backs"
+      },
+      {
+        "id": "edge-4",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-5",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-6",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
+        },
+        "kind": "consumes"
+      },
+      {
+        "id": "edge-7",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app"
+        },
+        "kind": "produces"
+      },
+      {
+        "id": "edge-8",
+        "from": {
+          "kind": "variant",
+          "id": "variant|18:module|9:repo::app|5:debug|15:buildType:debug"
+        },
+        "to": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|8:assemble|4::app|5:debug"
+        },
+        "kind": "contains"
+      },
+      {
+        "id": "edge-9",
+        "from": {
+          "kind": "action",
+          "id": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:install|4::app|5:debug"
+        },
+        "to": {
+          "kind": "artifact",
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app"
+        },
+        "kind": "produces"
+      }
+    ]
+  }
+}
