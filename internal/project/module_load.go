@@ -58,6 +58,8 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 		UsesKotlinSerialization:   strings.Contains(body, "libs.plugins.kotlin.serialization"),
 		UsesMetro:                 strings.Contains(body, "libs.plugins.metro"),
 		UsesWire:                  detectWirePlugin(body),
+		UsesKSP:                   detectKSPApplied(body),
+		KSP:                       parseKSPConfig(body),
 		BuildFeatures:             parseBuildFeatures(body),
 		TestInstrumentationRunner: parseAssignment(body, `testInstrumentationRunner\s*=\s*"([^"]+)"`),
 		KotlinFreeCompilerArgs:    parseFreeCompilerArgs(body),

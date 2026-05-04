@@ -336,13 +336,14 @@ func cacheTopology(prj *project.Project) m2local.CacheTopology {
 }
 
 type stackMaterializer struct {
-	workRoot         string
-	cacheRoot        string
-	repositories     []project.Repository
-	store            cas.Store
-	downloader       downloader.Downloader
-	repositoryRoot   string
-	androidAARRoot   string
+	workRoot       string
+	cacheRoot      string
+	repositories   []project.Repository
+	store          cas.Store
+	tieredStore    *tieredcas.Store
+	downloader     downloader.Downloader
+	repositoryRoot string
+	androidAARRoot string
 }
 
 func newStackMaterializer(prj *project.Project) *stackMaterializer {
@@ -351,9 +352,13 @@ func newStackMaterializer(prj *project.Project) *stackMaterializer {
 	if sharedRoot := sharedCASRoot(); sharedRoot != "" {
 		tiers = append(tiers, cas.NewFilesystemStore(sharedRoot))
 	}
-	store, err := tieredcas.New(tiers...)
+	tieredStore, err := tieredcas.New(tiers...)
 	if err != nil {
-		store = nil
+		tieredStore = nil
+	}
+	var store cas.Store
+	if tieredStore != nil {
+		store = tieredStore
 	}
 	chainDownloader, err := chain.New(sourceDownloaders(prj.Repositories))
 	if err != nil {
@@ -364,6 +369,7 @@ func newStackMaterializer(prj *project.Project) *stackMaterializer {
 		cacheRoot:      ResolverCacheRoot(),
 		repositories:   append([]project.Repository(nil), prj.Repositories...),
 		store:          store,
+		tieredStore:    tieredStore,
 		downloader:     chainDownloader,
 		repositoryRoot: MaterializedRepositoryRoot(prj.RootDir),
 		androidAARRoot: MaterializedAARRoot(prj.RootDir),
@@ -574,6 +580,19 @@ func (m *stackMaterializer) materializeAndroidLibraries(ctx context.Context, lib
 	return out
 }
 
+// runAARExtract routes the aar-extract action through the production
+// cache wiring (CachedRunner) when a tieredcas store is available, so
+// every extract produces a CacheSummary sidecar and probes/promotes via
+// the tier chain. Falls back to the direct aarextract.Extract path when
+// only a plain cas.Store is configured.
+func (m *stackMaterializer) runAARExtract(ctx context.Context, primaryHash cas.Hash) (cas.ActionResult, error) {
+	if m.tieredStore != nil {
+		runner := &aarextract.CachedRunner{Store: m.tieredStore}
+		return runner.Run(ctx, primaryHash)
+	}
+	return aarextract.Extract(ctx, m.store, primaryHash)
+}
+
 func (m *stackMaterializer) materializeAARProjection(ctx context.Context, coord lockfile.Coordinate, pin lockfile.Pin) (m2local.AndroidLibrary, error) {
 	outDir := filepath.Join(m.androidAARRoot, coord.Group, coord.Artifact, coord.Version)
 	readyPath := filepath.Join(outDir, ".ready")
@@ -592,7 +611,7 @@ func (m *stackMaterializer) materializeAARProjection(ctx context.Context, coord 
 	if !foundPrimary {
 		return m2local.AndroidLibrary{}, os.ErrNotExist
 	}
-	result, err := aarextract.Extract(ctx, m.store, primaryHash)
+	result, err := m.runAARExtract(ctx, primaryHash)
 	if err != nil {
 		return m2local.AndroidLibrary{}, err
 	}

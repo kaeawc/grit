@@ -882,6 +882,9 @@ type InspectModule struct {
 	UsesMetro                 bool
 	UsesWire                  bool
 	WireConfig                *project.WireConfig
+	UsesKSP                   bool
+	KSPProcessors             []string
+	KSPOptions                map[string]string
 	KotlinFreeArgs            []string
 	LintDisabled              []string
 	ConsumerProguardFiles     []string
@@ -1050,6 +1053,9 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 			UsesMetro:                 mod.UsesMetro,
 			UsesWire:                  mod.UsesWire,
 			WireConfig:                wireConfigPointer(mod),
+			UsesKSP:                   mod.UsesKSP,
+			KSPProcessors:             kspProcessorCoords(mod.KSP.Processors),
+			KSPOptions:                mod.KSP.Options,
 			KotlinFreeArgs:            mod.KotlinFreeCompilerArgs,
 			LintDisabled:              mod.LintDisabledChecks,
 			ConsumerProguardFiles:     mod.ConsumerProguardFiles,
@@ -1060,6 +1066,21 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 		})
 	}
 	return result
+}
+
+// kspProcessorCoords flattens KSP processor refs into stable string
+// coords for inspect output. "library:foo.bar" indicates a catalog
+// alias the resolver will expand at compile time; "raw:group:art:ver"
+// is a literal Maven coordinate.
+func kspProcessorCoords(refs []modulebuild.Ref) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.Kind+":"+r.Value)
+	}
+	return out
 }
 
 func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *project.Module, command string, requestedVariant string, variantExplicit bool) (PlanExplanationResult, error) {

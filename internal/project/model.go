@@ -64,6 +64,8 @@ type Module struct {
 	UsesMetro                 bool
 	UsesWire                  bool
 	WireConfig                WireConfig
+	UsesKSP                   bool
+	KSP                       modulebuild.KSPConfig
 	BuildFeatures             BuildFeatures
 	CompilerPlugins           *modulebuild.PluginRegistry
 	KotlinFreeCompilerArgs    []string

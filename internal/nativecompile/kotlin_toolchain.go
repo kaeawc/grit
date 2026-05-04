@@ -84,8 +84,10 @@ func projectKotlinVersion(prj *project.Project) string {
 	if prj == nil {
 		return ""
 	}
-	if v := strings.TrimSpace(prj.VersionCatalogData["kotlin"]); v != "" {
-		return v
+	for _, key := range []string{"kotlin", "build-kotlin", "kotlin-version"} {
+		if v := strings.TrimSpace(prj.VersionCatalogData[key]); v != "" {
+			return v
+		}
 	}
 	return latestCachedKotlinVersion("kotlin-compiler-embeddable")
 }

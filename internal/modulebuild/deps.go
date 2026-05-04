@@ -119,6 +119,13 @@ func extractDependenciesBlock(body string) (string, error) {
 	return "", fmt.Errorf("unterminated dependencies block")
 }
 
+// ParseRef parses a single Gradle dependency expression into a Ref.
+// It recognizes platform(...), files/fileTree wrappers, libs.bundles.X,
+// libs.X, project("..."), projects.foo.bar, and quoted "group:artifact:ver".
+func ParseRef(expr string) Ref {
+	return parseRef(expr)
+}
+
 func parseRef(expr string) Ref {
 	expr = strings.TrimSpace(expr)
 	expr = stripTrailingClosure(expr)

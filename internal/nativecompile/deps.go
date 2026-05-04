@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"sync"
 
+	"github.com/kaeawc/grit/internal/errgroup"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
@@ -115,31 +115,31 @@ func (c *Compiler) resolveProjectDeps(ctx context.Context, prj *project.Project,
 		classesDir     string
 		runtimeInputs  []string
 		resourceInputs []androidResourceArtifact
-		err            error
 	}
 	results := make([]projectDepResult, len(modules))
-	var wg sync.WaitGroup
+	g, gctx := errgroup.WithContext(ctx)
 	for i, mod := range modules {
-		wg.Add(1)
-		go func(index int, child *project.Module) {
-			defer wg.Done()
-			classesDir, childRuntime, childResources, err := c.compileMainInternal(ctx, prj, child, variantName, state, cloneAncestry(ancestry), stdout, stderr)
+		index, child := i, mod
+		g.Go(func() error {
+			classesDir, childRuntime, childResources, err := c.compileMainInternal(gctx, prj, child, variantName, state, cloneAncestry(ancestry), stdout, stderr)
+			if err != nil {
+				return err
+			}
 			results[index] = projectDepResult{
 				classesDir:     classesDir,
 				runtimeInputs:  childRuntime,
 				resourceInputs: childResources,
-				err:            err,
 			}
-		}(i, mod)
+			return nil
+		})
 	}
-	wg.Wait()
+	if err := g.Wait(); err != nil {
+		return nil, nil, nil, err
+	}
 	var compileCP []string
 	var runtimeInputs []string
 	var androidResources []androidResourceArtifact
 	for i, result := range results {
-		if result.err != nil {
-			return nil, nil, nil, result.err
-		}
 		mod := modules[i]
 		if compileNeeded[mod.Path] {
 			compileCP = append(compileCP, result.runtimeInputs...)
