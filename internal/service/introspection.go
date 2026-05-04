@@ -880,6 +880,9 @@ type InspectModule struct {
 	AndroidTestFiles          int
 	UsesCompose               bool
 	UsesMetro                 bool
+	UsesKSP                   bool
+	KSPProcessors             []string
+	KSPOptions                map[string]string
 	Plugins                   []string
 	KotlinFreeArgs            []string
 	LintDisabled              []string
@@ -1047,6 +1050,9 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 			AndroidTestFiles:          mod.AndroidTestFileCount,
 			UsesCompose:               mod.UsesCompose,
 			UsesMetro:                 mod.UsesMetro,
+			UsesKSP:                   mod.UsesKSP,
+			KSPProcessors:             kspProcessorCoords(mod.KSP.Processors),
+			KSPOptions:                mod.KSP.Options,
 			Plugins:                   mod.Plugins,
 			KotlinFreeArgs:            mod.KotlinFreeCompilerArgs,
 			LintDisabled:              mod.LintDisabledChecks,
@@ -1059,6 +1065,22 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 	}
 	return result
 }
+
+// kspProcessorCoords flattens KSP processor refs into stable string
+// coords for inspect output. "library:foo.bar" indicates a catalog
+// alias the resolver will expand at compile time; "raw:group:art:ver"
+// is a literal Maven coordinate.
+func kspProcessorCoords(refs []modulebuild.Ref) []string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.Kind+":"+r.Value)
+	}
+	return out
+}
+
 
 func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *project.Module, command string, requestedVariant string, variantExplicit bool) (PlanExplanationResult, error) {
 	model, err := s.LoadConfigurationModel(ctx, prj)

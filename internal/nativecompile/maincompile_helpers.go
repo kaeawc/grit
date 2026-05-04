@@ -36,6 +36,8 @@ type preparedMainCompile struct {
 	effectiveCompile  []string
 	compileInputs     []string
 	androidModuleType bool
+	kspJavaGenDir     string
+	kspResourceDir    string
 }
 
 func (c *Compiler) tryCompileMainCacheHit(prj *project.Project, mod *project.Module, variantName, key string, state *compileState) (compiledModule, bool) {
@@ -166,6 +168,17 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		return out, err
 	}
 	out.pluginPaths, out.pluginOptions = compilerPluginsForModule(mod, variantName, toolchain)
+	kspResult, err := c.runKSP2ForModule(ctx, state, prj, mod, variantName, out.mainOut, out.compileCP, stdout, stderr)
+	if err != nil {
+		return out, err
+	}
+	if kspResult.Ran {
+		out.kspJavaGenDir = kspResult.JavaGenDir
+		out.kspResourceDir = kspResult.ResourceDir
+		// Generated Kotlin sources fold into the main kotlinc invocation
+		// alongside originals; generated Java handled by post-kotlinc javac.
+		out.mainSources = append(out.mainSources, kspResult.GeneratedKotlinFiles...)
+	}
 	out.effectiveCompile = out.compileCP
 	kotlinInputs := append([]string{}, out.mainSources...)
 	kotlinInputs = append(kotlinInputs, mod.BuildFile)
@@ -180,6 +193,10 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	out.compileInputs = append(out.compileInputs, toolchain.CompilerClasspath...)
 	out.compileInputs = append(out.compileInputs, out.pluginPaths...)
 	out.compileInputs = append(out.compileInputs, out.pluginOptions...)
+	out.compileInputs = append(out.compileInputs, kspHashTokens(kspResult.Version, mod.KSP.Processors, mod.KSP.Options)...)
+	if len(kspResult.ProcessorCP) > 0 {
+		out.compileInputs = append(out.compileInputs, kspResult.ProcessorCP...)
+	}
 	out.sharedCompileDir = moduleCompileCacheDir(mod.Path, variantName, mod.ResolveVariant(variantName).ConfigHash(), out.compileInputs)
 	out.moduleJarPath = filepath.Join(filepath.Dir(out.mainOut), "module-classes.jar")
 	out.compileStampPath = filepath.Join(filepath.Dir(out.mainOut), "compile.stamp")
@@ -232,6 +249,13 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 		}
 		if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
 			return err
+		}
+		if javaSrcs := collectGeneratedJavaSources(prepared.kspJavaGenDir); len(javaSrcs) > 0 {
+			javacCP := append([]string{prepared.mainOut}, prepared.effectiveCompile...)
+			javacCP = append(javacCP, toolchain.RuntimeJars...)
+			if err := runJavac(ctx, javaSrcs, prepared.mainOut, javacCP, stdout, stderr); err != nil {
+				return err
+			}
 		}
 		_ = writeStamp(prepared.compileStampPath, prepared.sharedCompileDir)
 		return nil
