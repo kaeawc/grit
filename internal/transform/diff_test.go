@@ -42,16 +42,20 @@ func TestDiffActionHash_AllFieldsDiffer(t *testing.T) {
 		Outputs:     []OutputDecl{{Role: "dex", Kind: "file"}},
 	}
 	deltas := DiffActionHash(old, new)
-	if len(deltas) != 7 {
-		t.Fatalf("expected 7 deltas, got %d: %+v", len(deltas), deltas)
-	}
 	names := make(map[string]bool)
 	for _, d := range deltas {
 		names[d.FieldName] = true
 	}
-	for _, want := range []string{"Kind", "Tool", "ToolVersion", "Args", "Env", "Inputs", "Outputs"} {
+	// Env, Inputs and Outputs are now reported per-key/per-role rather
+	// than as a single concatenated delta.
+	for _, want := range []string{
+		"Kind", "Tool", "ToolVersion", "Args",
+		"Env[HOME]", "Env[JAVA_HOME]",
+		"Inputs[archive]", "Inputs[classpath]",
+		"Outputs[classes]", "Outputs[dex]",
+	} {
 		if !names[want] {
-			t.Errorf("missing delta for field %q", want)
+			t.Errorf("missing delta for field %q (got %+v)", want, deltas)
 		}
 	}
 }
@@ -106,9 +110,49 @@ func TestDiffActionHash_EnvKeyDiffers(t *testing.T) {
 	new := Action{Env: map[string]string{"A": "1", "B": "3"}}
 	deltas := DiffActionHash(old, new)
 	if len(deltas) != 1 {
-		t.Fatalf("expected 1 delta, got %d", len(deltas))
+		t.Fatalf("expected 1 delta, got %d: %+v", len(deltas), deltas)
 	}
-	if deltas[0].FieldName != "Env" {
-		t.Errorf("expected field Env, got %s", deltas[0].FieldName)
+	if deltas[0].FieldName != "Env[B]" {
+		t.Errorf("expected field Env[B], got %s", deltas[0].FieldName)
+	}
+	if deltas[0].OldValue != "2" || deltas[0].NewValue != "3" {
+		t.Errorf("expected old=2 new=3, got old=%q new=%q", deltas[0].OldValue, deltas[0].NewValue)
+	}
+}
+
+func TestDiffActionHash_EnvKeyAddedAndRemoved(t *testing.T) {
+	old := Action{Env: map[string]string{"A": "1", "GONE": "x"}}
+	new := Action{Env: map[string]string{"A": "1", "ADDED": "y"}}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 2 {
+		t.Fatalf("expected 2 deltas, got %d: %+v", len(deltas), deltas)
+	}
+	got := map[string]FieldDelta{}
+	for _, d := range deltas {
+		got[d.FieldName] = d
+	}
+	if d, ok := got["Env[ADDED]"]; !ok || d.OldValue != "" || d.NewValue != "y" {
+		t.Errorf("expected Env[ADDED] empty→y, got %+v", d)
+	}
+	if d, ok := got["Env[GONE]"]; !ok || d.OldValue != "x" || d.NewValue != "" {
+		t.Errorf("expected Env[GONE] x→empty, got %+v", d)
+	}
+}
+
+func TestDiffActionHash_InputRoleGranularity(t *testing.T) {
+	h1 := cas.HashBytes([]byte("a"))
+	h2 := cas.HashBytes([]byte("b"))
+	h3 := cas.HashBytes([]byte("c"))
+	old := Action{Inputs: []Input{{Role: "src", Hash: h1}, {Role: "lib", Hash: h2}}}
+	new := Action{Inputs: []Input{{Role: "src", Hash: h3}, {Role: "lib", Hash: h2}}}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 1 {
+		t.Fatalf("expected 1 delta (only src changed), got %d: %+v", len(deltas), deltas)
+	}
+	if deltas[0].FieldName != "Inputs[src]" {
+		t.Errorf("expected Inputs[src], got %s", deltas[0].FieldName)
+	}
+	if deltas[0].OldValue != h1.String() || deltas[0].NewValue != h3.String() {
+		t.Errorf("hash values not surfaced: %+v", deltas[0])
 	}
 }

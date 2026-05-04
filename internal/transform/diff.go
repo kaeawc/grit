@@ -1,7 +1,6 @@
 package transform
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 )
@@ -35,24 +34,113 @@ func DiffActionHash(old, new Action) []FieldDelta {
 		deltas = append(deltas, FieldDelta{"Args", oldArgs, newArgs})
 	}
 
-	oldEnv := formatEnv(old.Env)
-	newEnv := formatEnv(new.Env)
-	if oldEnv != newEnv {
-		deltas = append(deltas, FieldDelta{"Env", oldEnv, newEnv})
-	}
+	deltas = append(deltas, diffEnv(old.Env, new.Env)...)
+	deltas = append(deltas, diffInputs(old.Inputs, new.Inputs)...)
+	deltas = append(deltas, diffOutputs(old.Outputs, new.Outputs)...)
 
-	oldInputs := formatInputs(old.Inputs)
-	newInputs := formatInputs(new.Inputs)
-	if oldInputs != newInputs {
-		deltas = append(deltas, FieldDelta{"Inputs", oldInputs, newInputs})
-	}
+	return deltas
+}
 
-	oldOutputs := formatOutputs(old.Outputs)
-	newOutputs := formatOutputs(new.Outputs)
-	if oldOutputs != newOutputs {
-		deltas = append(deltas, FieldDelta{"Outputs", oldOutputs, newOutputs})
+// diffEnv reports per-key Env deltas (Env[KEY]) so a single divergent
+// environment variable doesn't smear the whole map into one opaque delta.
+func diffEnv(oldEnv, newEnv map[string]string) []FieldDelta {
+	if len(oldEnv) == 0 && len(newEnv) == 0 {
+		return nil
 	}
+	keys := map[string]struct{}{}
+	for k := range oldEnv {
+		keys[k] = struct{}{}
+	}
+	for k := range newEnv {
+		keys[k] = struct{}{}
+	}
+	sorted := make([]string, 0, len(keys))
+	for k := range keys {
+		sorted = append(sorted, k)
+	}
+	sort.Strings(sorted)
+	var deltas []FieldDelta
+	for _, k := range sorted {
+		ov, oOK := oldEnv[k]
+		nv, nOK := newEnv[k]
+		if oOK == nOK && ov == nv {
+			continue
+		}
+		deltas = append(deltas, FieldDelta{"Env[" + k + "]", ov, nv})
+	}
+	return deltas
+}
 
+// diffInputs reports per-role Input deltas (Inputs[role]) so the field name
+// names the specific input that changed.
+func diffInputs(oldInputs, newInputs []Input) []FieldDelta {
+	if len(oldInputs) == 0 && len(newInputs) == 0 {
+		return nil
+	}
+	roles := map[string]struct{}{}
+	oldByRole := map[string]string{}
+	newByRole := map[string]string{}
+	for _, in := range oldInputs {
+		oldByRole[in.Role] = in.Hash.String()
+		roles[in.Role] = struct{}{}
+	}
+	for _, in := range newInputs {
+		newByRole[in.Role] = in.Hash.String()
+		roles[in.Role] = struct{}{}
+	}
+	sorted := make([]string, 0, len(roles))
+	for r := range roles {
+		sorted = append(sorted, r)
+	}
+	sort.Strings(sorted)
+	var deltas []FieldDelta
+	for _, r := range sorted {
+		ov := oldByRole[r]
+		nv := newByRole[r]
+		if ov == nv {
+			continue
+		}
+		deltas = append(deltas, FieldDelta{"Inputs[" + r + "]", ov, nv})
+	}
+	return deltas
+}
+
+// diffOutputs reports per-role Output deltas mirroring diffInputs.
+func diffOutputs(oldOutputs, newOutputs []OutputDecl) []FieldDelta {
+	if len(oldOutputs) == 0 && len(newOutputs) == 0 {
+		return nil
+	}
+	roles := map[string]struct{}{}
+	oldByRole := map[string]string{}
+	newByRole := map[string]string{}
+	render := func(o OutputDecl) string {
+		if o.Kind != "" {
+			return o.Kind
+		}
+		return o.Role
+	}
+	for _, o := range oldOutputs {
+		oldByRole[o.Role] = render(o)
+		roles[o.Role] = struct{}{}
+	}
+	for _, o := range newOutputs {
+		newByRole[o.Role] = render(o)
+		roles[o.Role] = struct{}{}
+	}
+	sorted := make([]string, 0, len(roles))
+	for r := range roles {
+		sorted = append(sorted, r)
+	}
+	sort.Strings(sorted)
+	var deltas []FieldDelta
+	for _, r := range sorted {
+		ov := oldByRole[r]
+		nv := newByRole[r]
+		if ov == nv {
+			continue
+		}
+		deltas = append(deltas, FieldDelta{"Outputs[" + r + "]", ov, nv})
+	}
 	return deltas
 }
 
@@ -62,66 +150,4 @@ func formatArgs(args []string) string {
 		return ""
 	}
 	return strings.Join(args, ",")
-}
-
-// formatEnv returns a deterministic string representation of the Env map,
-// with keys sorted alphabetically (matching canonical encoding).
-func formatEnv(env map[string]string) string {
-	if len(env) == 0 {
-		return ""
-	}
-	keys := make([]string, 0, len(env))
-	for k := range env {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, len(keys))
-	for i, k := range keys {
-		parts[i] = fmt.Sprintf("%s=%s", k, env[k])
-	}
-	return strings.Join(parts, ",")
-}
-
-// formatInputs returns a deterministic string representation of the Inputs
-// slice, sorted by (role, hash) to match canonical ordering.
-func formatInputs(inputs []Input) string {
-	if len(inputs) == 0 {
-		return ""
-	}
-	sorted := append([]Input(nil), inputs...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Role != sorted[j].Role {
-			return sorted[i].Role < sorted[j].Role
-		}
-		return sorted[i].Hash.String() < sorted[j].Hash.String()
-	})
-	parts := make([]string, len(sorted))
-	for i, inp := range sorted {
-		parts[i] = fmt.Sprintf("%s:%s", inp.Role, inp.Hash)
-	}
-	return strings.Join(parts, ",")
-}
-
-// formatOutputs returns a deterministic string representation of the Outputs
-// slice, sorted by (role, kind) to match canonical ordering.
-func formatOutputs(outputs []OutputDecl) string {
-	if len(outputs) == 0 {
-		return ""
-	}
-	sorted := append([]OutputDecl(nil), outputs...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Role != sorted[j].Role {
-			return sorted[i].Role < sorted[j].Role
-		}
-		return sorted[i].Kind < sorted[j].Kind
-	})
-	parts := make([]string, len(sorted))
-	for i, o := range sorted {
-		if o.Kind != "" {
-			parts[i] = fmt.Sprintf("%s(%s)", o.Role, o.Kind)
-		} else {
-			parts[i] = o.Role
-		}
-	}
-	return strings.Join(parts, ",")
 }
