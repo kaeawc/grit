@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kaeawc/grit/internal/admission"
+	"github.com/kaeawc/grit/internal/clock"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/explain"
 	"github.com/kaeawc/grit/internal/graph"
@@ -38,6 +39,7 @@ type Service struct {
 	models              *configmodel.Store
 	hooks               []integration.Hook
 	admissionController *admission.Controller
+	clock               clock.Clock
 }
 
 type BuildPlan struct {
@@ -183,6 +185,7 @@ func New() *Service {
 	return &Service{
 		compilerFactory: func() Compiler { return nativecompile.New() },
 		models:          configmodel.NewStore(nil),
+		clock:           clock.System{},
 	}
 }
 
@@ -194,7 +197,18 @@ func NewWithCompiler(compiler Compiler) *Service {
 		compiler:        compiler,
 		compilerFactory: func() Compiler { return compiler },
 		models:          configmodel.NewStore(nil),
+		clock:           clock.System{},
 	}
+}
+
+// SetClock overrides the service's wall-clock source. Tests pass
+// clock.NewFake to make WrittenAt and other persisted timestamps
+// deterministic across runs.
+func (s *Service) SetClock(c clock.Clock) {
+	if c == nil {
+		c = clock.System{}
+	}
+	s.clock = c
 }
 
 // SetAdmissionController attaches a runtime admission controller. When set,
@@ -310,13 +324,13 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		outcome.Message = "build outputs cleaned"
 		outcome.ExecutedTasks = []string{"clean"}
 		err := cleanOutputs(prj, mod)
-		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err)
+		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err, s.clock.Now())
 		return outcome, err
 	case "uninstallDebug", "uninstallRelease", "uninstallAll":
 		outcome.ExecutedTasks = []string{req.Command}
 		outcome.Message = "application uninstalled"
 		err := uninstallApplication(ctx, mod, req.DeviceSerial)
-		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err)
+		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err, s.clock.Now())
 		return outcome, err
 	}
 	restoreAdmission := s.installScheduleAdmissionController(plan.Schedule)
@@ -345,14 +359,14 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		if s.models != nil {
 			_ = s.models.RecordRuntimeObservations(prj.RootDir, model.CacheKey(), runtimeObservationsFromExecutions(outcome.ActionExecutions))
 		}
-		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), executeErr)
+		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), executeErr, s.clock.Now())
 		return outcome, executeErr
 	}
 	s.finalizeRunSummaryState(&outcome, plan)
 	if s.models != nil {
 		_ = s.models.RecordRuntimeObservations(prj.RootDir, model.CacheKey(), runtimeObservationsFromExecutions(outcome.ActionExecutions))
 	}
-	outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), nil)
+	outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), nil, s.clock.Now())
 	switch req.Command {
 	case "compile-debug", "compileDebugSources", "compileReleaseSources":
 		outcome.Compiled = true

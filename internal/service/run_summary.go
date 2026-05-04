@@ -113,7 +113,7 @@ type DiagnosticSummaryBucket struct {
 	Count int    `json:"count,omitempty"`
 }
 
-func persistRunSummary(rootDir, modulePath string, req BuildRequest, outcome BuildOutcome, timings *perf.TimingData, buildErr error) string {
+func persistRunSummary(rootDir, modulePath string, req BuildRequest, outcome BuildOutcome, timings *perf.TimingData, buildErr error, now time.Time) string {
 	if strings.TrimSpace(rootDir) == "" {
 		return ""
 	}
@@ -145,7 +145,7 @@ func persistRunSummary(rootDir, modulePath string, req BuildRequest, outcome Bui
 		CacheProbes:            append([]responsepayload.CacheProbe(nil), outcome.CacheProbes...),
 		CacheProbeRecords:      append([]responsepayload.CacheProbeRecord(nil), outcome.CacheProbeRecords...),
 		PerfTiming:             timings,
-		WrittenAt:              time.Now().UTC().Format(time.RFC3339),
+		WrittenAt:              now.UTC().Format(time.RFC3339),
 	}
 	if buildErr != nil {
 		summary.Error = buildErr.Error()
