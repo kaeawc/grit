@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/clock"
 	"github.com/kaeawc/grit/internal/tieredcas"
 )
 
@@ -86,7 +87,7 @@ func newRunnerWithFakeNow(store *tieredcas.Store, policy tieredcas.UploadPolicy,
 	return &CachedRunner{
 		Store:        store,
 		UploadPolicy: policy,
-		Now:          func() time.Time { return fixed },
+		Clock:        clock.NewFake(fixed),
 	}
 }
 

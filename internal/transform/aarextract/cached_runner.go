@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/clock"
 	"github.com/kaeawc/grit/internal/tieredcas"
 )
 
@@ -28,9 +29,9 @@ type CachedRunner struct {
 	Store        *tieredcas.Store
 	UploadPolicy tieredcas.UploadPolicy
 
-	// Now is injected for deterministic CacheSummary timestamps in tests.
-	// Defaults to time.Now when nil.
-	Now func() time.Time
+	// Clock provides timestamps for CacheSummary entries. Tests pass
+	// clock.NewFake; nil falls back to clock.System.
+	Clock clock.Clock
 }
 
 // Run extracts aarHash through the cache chain.
@@ -42,23 +43,23 @@ func (r *CachedRunner) Run(ctx context.Context, aarHash cas.Hash) (cas.ActionRes
 		return cas.ActionResult{}, err
 	}
 
-	now := r.Now
-	if now == nil {
-		now = time.Now
+	c := r.Clock
+	if c == nil {
+		c = clock.System{}
 	}
-	start := now()
+	start := c.Now()
 
 	action := Action(aarHash)
 	actionHash := action.Hash()
 
 	cached, records, err := r.Store.GetActionResultWithProbeRecords(ctx, actionHash)
 	if err == nil {
-		summary := buildSummary(actionHash, records, "hit", start, now())
+		summary := buildSummary(actionHash, records, "hit", start, c.Now())
 		_ = writePrimarySummary(ctx, r.Store, summary)
 		return cached, nil
 	}
 	if !errors.Is(err, cas.ErrNotFound) {
-		summary := buildSummary(actionHash, records, "error", start, now())
+		summary := buildSummary(actionHash, records, "error", start, c.Now())
 		_ = writePrimarySummary(ctx, r.Store, summary)
 		return cas.ActionResult{}, err
 	}
@@ -72,7 +73,7 @@ func (r *CachedRunner) Run(ctx context.Context, aarHash cas.Hash) (cas.ActionRes
 	if runErr != nil {
 		outcome = "error"
 	}
-	summary := buildSummary(actionHash, records, outcome, start, now())
+	summary := buildSummary(actionHash, records, outcome, start, c.Now())
 	_ = writePrimarySummary(ctx, r.Store, summary)
 	if runErr != nil {
 		return cas.ActionResult{}, runErr
