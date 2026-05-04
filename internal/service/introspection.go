@@ -880,6 +880,7 @@ type InspectModule struct {
 	AndroidTestFiles          int
 	UsesCompose               bool
 	UsesMetro                 bool
+	Plugins                   []string
 	KotlinFreeArgs            []string
 	LintDisabled              []string
 	ConsumerProguardFiles     []string
@@ -1046,6 +1047,7 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 			AndroidTestFiles:          mod.AndroidTestFileCount,
 			UsesCompose:               mod.UsesCompose,
 			UsesMetro:                 mod.UsesMetro,
+			Plugins:                   mod.Plugins,
 			KotlinFreeArgs:            mod.KotlinFreeCompilerArgs,
 			LintDisabled:              mod.LintDisabledChecks,
 			ConsumerProguardFiles:     mod.ConsumerProguardFiles,

@@ -169,6 +169,47 @@ func collectPluginAliases(body string) []string {
 	return out
 }
 
+// collectPluginIDs returns all plugin identifiers applied within the
+// top-level plugins { } block of a build.gradle(.kts) body. It captures
+// both alias(libs.plugins.X) — yielding the dotted alias key — and the
+// id("...") / id '...' DSL forms, yielding the literal plugin id.
+func collectPluginIDs(body string) []string {
+	block, ok := extractNamedBlock(body, "plugins")
+	if !ok {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			return
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	for _, m := range regexp.MustCompile(`alias\(libs\.plugins\.([A-Za-z0-9\.\-_]+)\)`).FindAllStringSubmatch(block, -1) {
+		add(m[1])
+	}
+	for _, m := range regexp.MustCompile(`(?m)\bid\s*\(\s*"([^"]+)"\s*\)`).FindAllStringSubmatch(block, -1) {
+		add(m[1])
+	}
+	for _, m := range regexp.MustCompile(`(?m)\bid\s*\(\s*'([^']+)'\s*\)`).FindAllStringSubmatch(block, -1) {
+		add(m[1])
+	}
+	for _, m := range regexp.MustCompile(`(?m)\bid\s+"([^"]+)"`).FindAllStringSubmatch(block, -1) {
+		add(m[1])
+	}
+	for _, m := range regexp.MustCompile(`(?m)\bid\s+'([^']+)'`).FindAllStringSubmatch(block, -1) {
+		add(m[1])
+	}
+	for _, m := range regexp.MustCompile(`kotlin\(\s*"([^"]+)"\s*\)`).FindAllStringSubmatch(block, -1) {
+		add("org.jetbrains.kotlin." + m[1])
+	}
+	sortStrings(out)
+	return out
+}
+
 func sortStrings(values []string) {
 	if len(values) < 2 {
 		return

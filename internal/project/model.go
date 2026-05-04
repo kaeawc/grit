@@ -62,6 +62,7 @@ type Module struct {
 	UsesCompose               bool
 	UsesKotlinSerialization   bool
 	UsesMetro                 bool
+	Plugins                   []string
 	BuildFeatures             BuildFeatures
 	CompilerPlugins           *modulebuild.PluginRegistry
 	KotlinFreeCompilerArgs    []string

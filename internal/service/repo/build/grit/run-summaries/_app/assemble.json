@@ -9,9 +9,47 @@
   ],
   "targetResolvedVariant": {
     "name": "debug",
+    "coordinateName": "debug",
     "modulePath": ":app",
     "moduleType": "android_application",
-    "compatibility": {},
+    "displayName": "Debug",
+    "compatibility": {
+      "variantName": "debug",
+      "coordinateName": "debug",
+      "displayName": "Debug",
+      "sourceSetOrder": [
+        "main",
+        "debug"
+      ],
+      "sourceSetNames": [
+        "main",
+        "debug"
+      ],
+      "taskAliases": [
+        "assembleDebug",
+        "compileDebugSources",
+        "installDebug",
+        "assembleDebugAndroidTest",
+        "compileDebugAndroidTestSources",
+        "installDebugAndroidTest",
+        "uninstallDebugAndroidTest",
+        "compileDebugUnitTestSources",
+        "testDebugUnitTest"
+      ],
+      "modelSelectors": [
+        ":app",
+        "debug",
+        ":app#debug",
+        "buildType:debug"
+      ],
+      "syncFragments": [
+        "module::app",
+        "variant:debug",
+        "buildType:debug",
+        "sourceSet:main",
+        "sourceSet:debug"
+      ]
+    },
     "coordinate": {
       "modulePath": ":app",
       "name": "debug",
@@ -42,16 +80,33 @@
       "src/main",
       "src/debug"
     ],
+    "manifestPaths": [
+      "src/debug/AndroidManifest.xml",
+      "src/main/AndroidManifest.xml"
+    ],
     "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+    "backingArtifactPath": "src/main",
     "producedArtifactIds": [
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:lint-output|4::app",
       "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
       "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
       "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
       "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
       "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:compile-android-tests-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:install-android-tests-output|4::app",
+      "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|30:uninstall-android-tests-output|4::app",
       "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
     ],
+    "producedArtifactPaths": [
+      "src/main"
+    ],
     "producedArtifacts": [
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:lint-output|4::app",
+        "kind": "other",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:lint|4::app|5:debug"
+      },
       {
         "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
         "kind": "other",
@@ -78,18 +133,112 @@
         "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
       },
       {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:compile-android-tests-output|4::app",
+        "kind": "jar",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|21:compile-android-tests|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:install-android-tests-output|4::app",
+        "kind": "other",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|21:install-android-tests|4::app|5:debug"
+      },
+      {
+        "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|30:uninstall-android-tests-output|4::app",
+        "kind": "other",
+        "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|23:uninstall-android-tests|4::app|5:debug"
+      },
+      {
         "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
         "kind": "directory",
         "path": "src/main"
       }
-    ]
+    ],
+    "producedArtifactKinds": [
+      "apk",
+      "directory",
+      "jar",
+      "other"
+    ],
+    "installArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+    "sourceSetOrder": [
+      "main",
+      "debug"
+    ],
+    "sourceSetNames": [
+      "main",
+      "debug"
+    ],
+    "taskAliases": [
+      "assembleDebug",
+      "compileDebugSources",
+      "installDebug",
+      "assembleDebugAndroidTest",
+      "compileDebugAndroidTestSources",
+      "installDebugAndroidTest",
+      "uninstallDebugAndroidTest",
+      "compileDebugUnitTestSources",
+      "testDebugUnitTest"
+    ],
+    "modelSelectors": [
+      ":app",
+      "debug",
+      ":app#debug",
+      "buildType:debug"
+    ],
+    "syncFragments": [
+      "module::app",
+      "variant:debug",
+      "buildType:debug",
+      "sourceSet:main",
+      "sourceSet:debug"
+    ],
+    "installTask": "installDebug",
+    "uninstallTask": "uninstallDebug"
   },
   "targetResolvedVariants": [
     {
       "name": "debug",
+      "coordinateName": "debug",
       "modulePath": ":app",
       "moduleType": "android_application",
-      "compatibility": {},
+      "displayName": "Debug",
+      "compatibility": {
+        "variantName": "debug",
+        "coordinateName": "debug",
+        "displayName": "Debug",
+        "sourceSetOrder": [
+          "main",
+          "debug"
+        ],
+        "sourceSetNames": [
+          "main",
+          "debug"
+        ],
+        "taskAliases": [
+          "assembleDebug",
+          "compileDebugSources",
+          "installDebug",
+          "assembleDebugAndroidTest",
+          "compileDebugAndroidTestSources",
+          "installDebugAndroidTest",
+          "uninstallDebugAndroidTest",
+          "compileDebugUnitTestSources",
+          "testDebugUnitTest"
+        ],
+        "modelSelectors": [
+          ":app",
+          "debug",
+          ":app#debug",
+          "buildType:debug"
+        ],
+        "syncFragments": [
+          "module::app",
+          "variant:debug",
+          "buildType:debug",
+          "sourceSet:main",
+          "sourceSet:debug"
+        ]
+      },
       "coordinate": {
         "modulePath": ":app",
         "name": "debug",
@@ -120,16 +269,33 @@
         "src/main",
         "src/debug"
       ],
+      "manifestPaths": [
+        "src/debug/AndroidManifest.xml",
+        "src/main/AndroidManifest.xml"
+      ],
       "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+      "backingArtifactPath": "src/main",
       "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:lint-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:compile-android-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:install-android-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|30:uninstall-android-tests-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
       ],
+      "producedArtifactPaths": [
+        "src/main"
+      ],
       "producedArtifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:lint-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:lint|4::app|5:debug"
+        },
         {
           "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
           "kind": "other",
@@ -156,17 +322,105 @@
           "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
         },
         {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:compile-android-tests-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|21:compile-android-tests|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:install-android-tests-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|21:install-android-tests|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|30:uninstall-android-tests-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|23:uninstall-android-tests|4::app|5:debug"
+        },
+        {
           "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
           "kind": "directory",
           "path": "src/main"
         }
-      ]
+      ],
+      "producedArtifactKinds": [
+        "apk",
+        "directory",
+        "jar",
+        "other"
+      ],
+      "installArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
+      "sourceSetOrder": [
+        "main",
+        "debug"
+      ],
+      "sourceSetNames": [
+        "main",
+        "debug"
+      ],
+      "taskAliases": [
+        "assembleDebug",
+        "compileDebugSources",
+        "installDebug",
+        "assembleDebugAndroidTest",
+        "compileDebugAndroidTestSources",
+        "installDebugAndroidTest",
+        "uninstallDebugAndroidTest",
+        "compileDebugUnitTestSources",
+        "testDebugUnitTest"
+      ],
+      "modelSelectors": [
+        ":app",
+        "debug",
+        ":app#debug",
+        "buildType:debug"
+      ],
+      "syncFragments": [
+        "module::app",
+        "variant:debug",
+        "buildType:debug",
+        "sourceSet:main",
+        "sourceSet:debug"
+      ],
+      "installTask": "installDebug",
+      "uninstallTask": "uninstallDebug"
     },
     {
       "name": "release",
+      "coordinateName": "release",
       "modulePath": ":app",
       "moduleType": "android_application",
-      "compatibility": {},
+      "displayName": "Release",
+      "compatibility": {
+        "variantName": "release",
+        "coordinateName": "release",
+        "displayName": "Release",
+        "sourceSetOrder": [
+          "main",
+          "release"
+        ],
+        "sourceSetNames": [
+          "main",
+          "release"
+        ],
+        "taskAliases": [
+          "assembleRelease",
+          "compileReleaseSources",
+          "installRelease"
+        ],
+        "modelSelectors": [
+          ":app",
+          "release",
+          ":app#release",
+          "buildType:release"
+        ],
+        "syncFragments": [
+          "module::app",
+          "variant:release",
+          "buildType:release",
+          "sourceSet:main",
+          "sourceSet:release"
+        ]
+      },
       "coordinate": {
         "modulePath": ":app",
         "name": "release",
@@ -195,14 +449,28 @@
         "src/main",
         "src/release"
       ],
+      "manifestPaths": [
+        "src/main/AndroidManifest.xml",
+        "src/release/AndroidManifest.xml"
+      ],
       "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+      "backingArtifactPath": "src/main",
       "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|11:lint-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
       ],
+      "producedArtifactPaths": [
+        "src/main"
+      ],
       "producedArtifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|11:lint-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|4:lint|4::app|7:release"
+        },
         {
           "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
           "kind": "jar",
@@ -223,7 +491,42 @@
           "kind": "directory",
           "path": "src/main"
         }
-      ]
+      ],
+      "producedArtifactKinds": [
+        "apk",
+        "directory",
+        "jar",
+        "other"
+      ],
+      "installArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
+      "sourceSetOrder": [
+        "main",
+        "release"
+      ],
+      "sourceSetNames": [
+        "main",
+        "release"
+      ],
+      "taskAliases": [
+        "assembleRelease",
+        "compileReleaseSources",
+        "installRelease"
+      ],
+      "modelSelectors": [
+        ":app",
+        "release",
+        ":app#release",
+        "buildType:release"
+      ],
+      "syncFragments": [
+        "module::app",
+        "variant:release",
+        "buildType:release",
+        "sourceSet:main",
+        "sourceSet:release"
+      ],
+      "installTask": "installRelease",
+      "uninstallTask": "uninstallRelease"
     }
   ],
   "runGraphSummary": {
@@ -603,19 +906,41 @@
         "src/debug"
       ],
       "backingArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
+      "backingArtifactPath": "src/main",
       "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:lint-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:compile-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|14:install-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|20:compile-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:compile-android-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:install-android-tests-output|4::app",
+        "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|30:uninstall-android-tests-output|4::app",
         "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug"
       ],
+      "producedArtifactPaths": [
+        "src/main"
+      ],
+      "producedArtifactKinds": [
+        "apk",
+        "directory",
+        "jar",
+        "other"
+      ],
+      "installArtifactId": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|15:assemble-output|4::app",
       "consumingActionIds": [
         "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug",
+        "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:lint|4::app|5:debug",
+        "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:test|4::app|5:debug",
         "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:compile|4::app|5:debug"
       ],
       "artifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:lint-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|4:lint|4::app|5:debug"
+        },
         {
           "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|11:test-output|4::app",
           "kind": "other",
@@ -642,6 +967,21 @@
           "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|13:compile-tests|4::app|5:debug"
         },
         {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:compile-android-tests-output|4::app",
+          "kind": "jar",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|21:compile-android-tests|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|28:install-android-tests-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|21:install-android-tests|4::app|5:debug"
+        },
+        {
+          "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|30:uninstall-android-tests-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|23:uninstall-android-tests|4::app|5:debug"
+        },
+        {
           "id": "artifact|18:module|9:repo::app|56:variant|18:module|9:repo::app|5:debug|15:buildType:debug|7:sources|18:src/main,src/debug",
           "kind": "directory",
           "path": "src/main"
@@ -660,16 +1000,34 @@
         "src/release"
       ],
       "backingArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release",
+      "backingArtifactPath": "src/main",
       "producedArtifactIds": [
+        "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|11:lint-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:install-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
         "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:sources|20:src/main,src/release"
       ],
+      "producedArtifactPaths": [
+        "src/main"
+      ],
+      "producedArtifactKinds": [
+        "apk",
+        "directory",
+        "jar",
+        "other"
+      ],
+      "installArtifactId": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|15:assemble-output|4::app",
       "consumingActionIds": [
+        "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|4:lint|4::app|7:release",
         "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|7:compile|4::app|7:release"
       ],
       "artifacts": [
+        {
+          "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|11:lint-output|4::app",
+          "kind": "other",
+          "producedByActionId": "action|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|4:lint|4::app|7:release"
+        },
         {
           "id": "artifact|18:module|9:repo::app|60:variant|18:module|9:repo::app|7:release|17:buildType:release|14:compile-output|4::app",
           "kind": "jar",
@@ -723,5 +1081,5 @@
       "detail": "1 reused substeps"
     }
   ],
-  "writtenAt": "2026-04-12T17:14:21Z"
+  "writtenAt": "2026-05-04T09:10:58Z"
 }

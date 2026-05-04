@@ -41,9 +41,11 @@ func Load(root string) (*Project, error) {
 		GradleProperties:   gradleProperties,
 		VersionCatalogs:    collectVersionCatalogs(filepath.Join(abs, "gradle")),
 		Repositories:       repositories,
-		RootPlugins:        collectPluginAliases(string(rootBuildData)),
+		RootPlugins:        collectPluginIDs(string(rootBuildData)),
 		RecommendedBackend: "native",
 	}
+	conventions := conventionPluginMap(abs)
+	prj.RootPlugins = expandPlugins(prj.RootPlugins, conventions)
 	if len(prj.VersionCatalogs) > 0 {
 		prj.VersionCatalog = pickPrimaryCatalog(prj.VersionCatalogs)
 		prj.VersionCatalogData, err = loadVersionCatalogs(prj.VersionCatalogs)
@@ -56,6 +58,9 @@ func Load(root string) (*Project, error) {
 		mod, err := loadModule(prj, modulePath)
 		if err != nil {
 			return nil, err
+		}
+		if len(mod.Plugins) > 0 {
+			mod.Plugins = expandPlugins(mod.Plugins, conventions)
 		}
 		if fileExists(mod.BuildFile) {
 			data, err := os.ReadFile(mod.BuildFile)

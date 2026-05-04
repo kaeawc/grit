@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/kaeawc/grit/internal/env"
@@ -58,14 +59,15 @@ func runJavaToolchains(_ context.Context, args []string, stdout, stderr io.Write
 	if err != nil {
 		return cmd.fail(1, err)
 	}
+	kotlinc, _ := exec.LookPath("kotlinc")
 	return cmd.success(resultJSON(javaToolchainsResult{
 		Repo: prj.RootDir,
 		Java: responsepayload.JavaToolchainInfo{JavaHome: os.Getenv("JAVA_HOME")},
 		Kotlin: responsepayload.KotlinToolchainInfo{
-			Kotlinc: "/opt/homebrew/bin/kotlinc",
+			Kotlinc: kotlinc,
 			Plugins: responsepayload.KotlinToolchainPlugins{
-				Compose:       "/opt/homebrew/Cellar/kotlin/2.3.20/libexec/lib/compose-compiler-plugin.jar",
-				Serialization: "/opt/homebrew/Cellar/kotlin/2.3.20/libexec/lib/kotlin-serialization-compiler-plugin.jar",
+				Compose:       env.LocateComposeCompilerPlugin(),
+				Serialization: env.LocateSerializationCompilerPlugin(),
 			},
 		},
 	}))

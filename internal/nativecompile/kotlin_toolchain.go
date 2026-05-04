@@ -2,11 +2,11 @@ package nativecompile
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -91,18 +91,7 @@ func projectKotlinVersion(prj *project.Project) string {
 }
 
 func findGradleArtifactJars(group, module, version string) []string {
-	base := filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", group, module, version)
-	matches, _ := filepath.Glob(filepath.Join(base, "*", module+"-"+version+"*.jar"))
-	var out []string
-	for _, match := range matches {
-		name := filepath.Base(match)
-		if strings.Contains(name, "-sources.jar") || strings.Contains(name, "-javadoc.jar") {
-			continue
-		}
-		out = append(out, match)
-	}
-	sort.Strings(out)
-	return out
+	return gradlecache.FindArtifactJars(group, module, version)
 }
 
 func latestCachedKotlinVersion(module string) string {
@@ -110,22 +99,7 @@ func latestCachedKotlinVersion(module string) string {
 }
 
 func latestCachedVersionFor(group, module string) string {
-	root := filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", group, module)
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return ""
-	}
-	var versions []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			versions = append(versions, entry.Name())
-		}
-	}
-	sort.Strings(versions)
-	if len(versions) == 0 {
-		return ""
-	}
-	return versions[len(versions)-1]
+	return gradlecache.LatestVersion(group, module)
 }
 
 func fallbackKotlinToolchain() *kotlinToolchain {
@@ -173,7 +147,7 @@ func compilerPluginsForModule(mod *project.Module, variantName string, toolchain
 					plugins = append(plugins, toolchain.SerializationPlugin)
 				}
 			case modulebuild.MetroCompilerPluginID:
-				plugins = append(plugins, filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
+				plugins = append(plugins, filepath.Join(gradlecache.Root(), "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
 			}
 		}
 		if len(plugin.Options) == 0 {
