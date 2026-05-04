@@ -19,12 +19,12 @@ import (
 // kotlinc input set, and the proto-related cache inputs are folded into
 // the compile cache key so changes invalidate stale outputs.
 type wireCodegenResult struct {
-	GeneratedDir   string
-	ProtoFiles     []string
-	CacheInputs    []string
-	WireVersion    string
-	CompilerJar    string
-	CompilerCP     []string
+	GeneratedDir     string
+	ProtoFiles       []string
+	CacheInputs      []string
+	WireVersion      string
+	CompilerJar      string
+	CompilerCP       []string
 	RuntimeClasspath []string
 }
 

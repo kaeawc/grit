@@ -331,38 +331,36 @@ func ParseDependencies(buildFile string) (*Dependencies, error) {
 			deps.Scoped = map[string][]Ref{}
 		}
 		deps.Scoped[scope] = append(deps.Scoped[scope], ref)
-		switch scope {
-		case "api", "implementation":
-			deps.Main = append(deps.Main, ref)
-		case "debugImplementation":
-			deps.Debug = append(deps.Debug, ref)
-		case "testImplementation":
-			deps.Test = append(deps.Test, ref)
-		case "unitTestImplementation":
-			deps.Test = append(deps.Test, ref)
-		case "androidTestImplementation":
-			deps.AndroidTest = append(deps.AndroidTest, ref)
-		case "compileOnly":
-			deps.CompileOnly = append(deps.CompileOnly, ref)
-		case "runtimeOnly":
-			deps.RuntimeOnly = append(deps.RuntimeOnly, ref)
-		case "testCompileOnly":
-			deps.TestCompileOnly = append(deps.TestCompileOnly, ref)
-		case "unitTestCompileOnly":
-			deps.TestCompileOnly = append(deps.TestCompileOnly, ref)
-		case "androidTestCompileOnly":
-			deps.AndroidTestCompileOnly = append(deps.AndroidTestCompileOnly, ref)
-		case "testRuntimeOnly":
-			deps.TestRuntimeOnly = append(deps.TestRuntimeOnly, ref)
-		case "unitTestRuntimeOnly":
-			deps.TestRuntimeOnly = append(deps.TestRuntimeOnly, ref)
-		case "androidTestRuntimeOnly":
-			deps.AndroidTestRuntimeOnly = append(deps.AndroidTestRuntimeOnly, ref)
-		case "coreLibraryDesugaring":
-			deps.CoreLibraryDesugaring = append(deps.CoreLibraryDesugaring, ref)
-		}
+		addRefByScope(deps, scope, ref)
 	}
 	return deps, nil
+}
+
+func addRefByScope(deps *Dependencies, scope string, ref Ref) {
+	switch scope {
+	case "api", "implementation":
+		deps.Main = append(deps.Main, ref)
+	case "debugImplementation":
+		deps.Debug = append(deps.Debug, ref)
+	case "testImplementation", "unitTestImplementation":
+		deps.Test = append(deps.Test, ref)
+	case "androidTestImplementation":
+		deps.AndroidTest = append(deps.AndroidTest, ref)
+	case "compileOnly":
+		deps.CompileOnly = append(deps.CompileOnly, ref)
+	case "runtimeOnly":
+		deps.RuntimeOnly = append(deps.RuntimeOnly, ref)
+	case "testCompileOnly", "unitTestCompileOnly":
+		deps.TestCompileOnly = append(deps.TestCompileOnly, ref)
+	case "androidTestCompileOnly":
+		deps.AndroidTestCompileOnly = append(deps.AndroidTestCompileOnly, ref)
+	case "testRuntimeOnly", "unitTestRuntimeOnly":
+		deps.TestRuntimeOnly = append(deps.TestRuntimeOnly, ref)
+	case "androidTestRuntimeOnly":
+		deps.AndroidTestRuntimeOnly = append(deps.AndroidTestRuntimeOnly, ref)
+	case "coreLibraryDesugaring":
+		deps.CoreLibraryDesugaring = append(deps.CoreLibraryDesugaring, ref)
+	}
 }
 
 func stripDependencyComments(block string) string {

@@ -1085,7 +1085,6 @@ func kspProcessorCoords(refs []modulebuild.Ref) []string {
 	return out
 }
 
-
 func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *project.Module, command string, requestedVariant string, variantExplicit bool) (PlanExplanationResult, error) {
 	model, err := s.LoadConfigurationModel(ctx, prj)
 	if err != nil {

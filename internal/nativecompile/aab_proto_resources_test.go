@@ -16,8 +16,8 @@ func TestExtractProtoAPK(t *testing.T) {
 	// Create a fake proto-format APK (zip) with the expected structure.
 	protoAPK := filepath.Join(tmp, "proto-resources.apk")
 	createTestZip(t, protoAPK, map[string]string{
-		"AndroidManifest.xml": "<manifest proto/>",
-		"resources.pb":        "proto-resource-table",
+		"AndroidManifest.xml":    "<manifest proto/>",
+		"resources.pb":           "proto-resource-table",
 		"res/values/strings.xml": "string-resources",
 		"res/drawable/icon.png":  "png-data",
 	})
