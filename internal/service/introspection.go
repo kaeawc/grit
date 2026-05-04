@@ -885,6 +885,7 @@ type InspectModule struct {
 	UsesKSP                   bool
 	KSPProcessors             []string
 	KSPOptions                map[string]string
+	Plugins                   []string
 	KotlinFreeArgs            []string
 	LintDisabled              []string
 	ConsumerProguardFiles     []string
@@ -1056,6 +1057,7 @@ func (s *Service) Inspect(prj *project.Project) InspectResult {
 			UsesKSP:                   mod.UsesKSP,
 			KSPProcessors:             kspProcessorCoords(mod.KSP.Processors),
 			KSPOptions:                mod.KSP.Options,
+			Plugins:                   mod.Plugins,
 			KotlinFreeArgs:            mod.KotlinFreeCompilerArgs,
 			LintDisabled:              mod.LintDisabledChecks,
 			ConsumerProguardFiles:     mod.ConsumerProguardFiles,
@@ -1082,6 +1084,7 @@ func kspProcessorCoords(refs []modulebuild.Ref) []string {
 	}
 	return out
 }
+
 
 func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *project.Module, command string, requestedVariant string, variantExplicit bool) (PlanExplanationResult, error) {
 	model, err := s.LoadConfigurationModel(ctx, prj)

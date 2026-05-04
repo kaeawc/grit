@@ -68,6 +68,7 @@ type inspectModule struct {
 	UsesMetro                 bool                      `json:"usesMetro"`
 	UsesWire                  bool                      `json:"usesWire,omitempty"`
 	WireConfig                *project.WireConfig       `json:"wireConfig,omitempty"`
+	Plugins                   []string                  `json:"plugins,omitempty"`
 	KotlinFreeArgs            []string                  `json:"kotlinFreeCompilerArgs,omitempty"`
 	LintDisabled              []string                  `json:"lintDisabledChecks,omitempty"`
 	ConsumerProguardFiles     []string                  `json:"consumerProguardFiles,omitempty"`

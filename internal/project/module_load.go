@@ -75,6 +75,7 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 	if mod.UsesWire {
 		mod.WireConfig = parseWireConfig(body, modDir)
 	}
+	mod.Plugins = collectPluginIDs(body)
 
 	mod.SourceFileCount = countFiles(filepath.Join(modDir, "src", "main"), func(path string) bool {
 		return strings.HasSuffix(path, ".kt") || strings.HasSuffix(path, ".java")

@@ -66,6 +66,7 @@ type Module struct {
 	WireConfig                WireConfig
 	UsesKSP                   bool
 	KSP                       modulebuild.KSPConfig
+	Plugins                   []string
 	BuildFeatures             BuildFeatures
 	CompilerPlugins           *modulebuild.PluginRegistry
 	KotlinFreeCompilerArgs    []string

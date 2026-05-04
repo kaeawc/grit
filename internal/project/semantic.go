@@ -32,6 +32,7 @@ type SemanticModuleSummary struct {
 	ApplicationID             string                   `json:"applicationId,omitempty"`
 	TestInstrumentationRunner string                   `json:"testInstrumentationRunner,omitempty"`
 	ConsumerProguardFiles     []string                 `json:"consumerProguardFiles,omitempty"`
+	Plugins                   []string                 `json:"plugins,omitempty"`
 	Tasks                     []string                 `json:"tasks,omitempty"`
 	DependsOn                 []string                 `json:"dependsOn,omitempty"`
 	DependencyClosure         []string                 `json:"dependencyClosure,omitempty"`
@@ -331,6 +332,7 @@ func (prj *Project) SemanticGraphSummary() SemanticGraphSummary {
 			moduleSummary.ApplicationID = mod.ApplicationID
 			moduleSummary.TestInstrumentationRunner = mod.TestInstrumentationRunner
 			moduleSummary.ConsumerProguardFiles = append([]string(nil), mod.ConsumerProguardFiles...)
+			moduleSummary.Plugins = append([]string(nil), mod.Plugins...)
 			moduleSummary.Tasks = taskNames(mod.Tasks())
 		}
 		moduleSummary.DependsOn = moduleDependencyPaths(g, module.ID)
