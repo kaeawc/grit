@@ -37,7 +37,14 @@ type Action struct {
 	// environment. Keys are sorted during canonicalization.
 	Env map[string]string
 	// Inputs are the labelled input blobs. Order is not part of identity:
-	// inputs are sorted by (role, hash) during canonicalization.
+	// inputs are sorted by (role, hash) during canonicalization. KNOWN GAP:
+	// when multiple inputs share the same Role (e.g. a kotlinc classpath
+	// of fifty "classpath" entries), this sort is order-invariant — which
+	// is wrong for tools whose semantics depend on order (classpath
+	// shadowing). Callers needing ordered inputs must use distinct roles
+	// per slot ("classpath-0", "classpath-1", ...) until canonical
+	// encoding gains a first-class ordered-input mode. See
+	// TestActionHashSameRoleClasspathOrderingGap.
 	Inputs []Input
 	// Outputs declares the expected output roles. Output blob hashes are
 	// discovered by executing the action and are therefore not hashed into
