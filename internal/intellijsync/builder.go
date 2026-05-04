@@ -1151,7 +1151,6 @@ func compactStrings(in []string) []string {
 	return out
 }
 
-
 func ideModuleID(modulePath string) string {
 	modulePath = strings.TrimSpace(modulePath)
 	if modulePath == "" {

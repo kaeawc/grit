@@ -204,7 +204,7 @@ func (c *Compiler) InstallAndroidTestVariant(ctx context.Context, prj *project.P
 	}); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "installed %s androidTest APK: %s\n", variantName, apkPath)
+	_, _ = fmt.Fprintf(stdout, "installed %s androidTest APK: %s\n", variantName, apkPath)
 	return nil
 }
 
@@ -241,7 +241,7 @@ func (c *Compiler) assembleAndroidTestAPK(ctx context.Context, prj *project.Proj
 	if err != nil {
 		return "", err
 	}
-	fmt.Fprintf(stdout, "assembled %s androidTest APK: %s\n", outputs.variantName, apkPath)
+	_, _ = fmt.Fprintf(stdout, "assembled %s androidTest APK: %s\n", outputs.variantName, apkPath)
 	return apkPath, nil
 }
 

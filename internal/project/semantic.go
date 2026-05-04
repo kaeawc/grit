@@ -739,7 +739,7 @@ func (prj *Project) SemanticDependentModules(target string) ([]string, error) {
 	}
 	g := prj.SemanticGraphDetailed()
 	targetRef := graph.LogicalModuleID(targetID.String()).Ref()
-	seen := map[graph.NodeRef]struct{}{targetRef: struct{}{}}
+	seen := map[graph.NodeRef]struct{}{targetRef: {}}
 	queue := []graph.NodeRef{targetRef}
 	out := []string{target}
 	for len(queue) > 0 {
@@ -1452,7 +1452,6 @@ func variantsForModule(mod *Module) []string {
 	}
 	return out
 }
-
 
 func semanticTaskName(prefix, variantName string) string {
 	if variantName == "" {

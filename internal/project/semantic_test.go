@@ -748,7 +748,7 @@ func TestResolveDependencyVariantUsesFlavorFallbacksAndMissingDimensions(t *test
 		Path: ":app",
 		Type: "android-application",
 		DefaultConfig: DefaultConfig{
-			MissingDimensions: map[string][]string{"minApi": []string{"minApi21"}},
+			MissingDimensions: map[string][]string{"minApi": {"minApi21"}},
 		},
 		FlavorDimensions: []string{"tier"},
 		ProductFlavors: map[string]ProductFlavor{

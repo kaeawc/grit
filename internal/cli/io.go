@@ -23,7 +23,7 @@ func newLogCapture() (*logCapture, error) {
 	stderrFile, err := os.CreateTemp("", "grit-stderr-*.log")
 	if err != nil {
 		_ = stdoutFile.Close()
-		os.Remove(stdoutFile.Name())
+		_ = os.Remove(stdoutFile.Name())
 		return nil, err
 	}
 	return &logCapture{
@@ -48,11 +48,11 @@ func (c *logCapture) Logs() responseLogs {
 func (c *logCapture) Close() {
 	if c.Stdout != nil {
 		_ = c.Stdout.Close()
-		os.Remove(c.stdoutPath)
+		_ = os.Remove(c.stdoutPath)
 	}
 	if c.Stderr != nil {
 		_ = c.Stderr.Close()
-		os.Remove(c.stderrPath)
+		_ = os.Remove(c.stderrPath)
 	}
 }
 
@@ -63,7 +63,7 @@ func writeResponse(stdout io.Writer, resp response, exitCode int, stderr io.Writ
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(resp); err != nil {
-		fmt.Fprintf(stderr, "{\"success\":false,\"command\":\"internal-error\",\"error\":{\"message\":%q}}\n", err.Error())
+		_, _ = fmt.Fprintf(stderr, "{\"success\":false,\"command\":\"internal-error\",\"error\":{\"message\":%q}}\n", err.Error())
 		return 1
 	}
 	return exitCode

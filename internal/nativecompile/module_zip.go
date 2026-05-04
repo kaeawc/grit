@@ -68,8 +68,8 @@ func assembleModuleZip(inputs moduleZipInputs, outputPath string) error {
 	succeeded := false
 	defer func() {
 		if !succeeded {
-			f.Close()
-			os.Remove(outputPath)
+			_ = f.Close()
+			_ = os.Remove(outputPath)
 		}
 	}()
 

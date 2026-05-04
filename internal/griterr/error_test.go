@@ -84,8 +84,8 @@ func TestKindOf(t *testing.T) {
 }
 
 func TestErrorSatisfiesInterface(t *testing.T) {
-	var err error = New(ErrUnsupported, "test") //nolint:staticcheck
-	if err == nil {
+	err := New(ErrUnsupported, "test")
+	if err == nil { //nolint:staticcheck
 		t.Fatal("should satisfy error interface")
 	}
 }

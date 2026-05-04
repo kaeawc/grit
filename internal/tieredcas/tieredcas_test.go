@@ -77,7 +77,6 @@ func (s *metadataActionResultStore) GetActionResult(context.Context, cas.Hash) (
 	return s.actionResult, nil
 }
 
-
 func TestNewRejectsEmpty(t *testing.T) {
 	if _, err := New(); err == nil {
 		t.Fatalf("expected error for zero tiers")

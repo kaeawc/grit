@@ -142,7 +142,7 @@ func TestPreferJVMSiblingKeepsRequestedVersionWhenPresent(t *testing.T) {
 	}
 	zw := zip.NewWriter(f)
 	if err := zw.Close(); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatal(err)
 	}
 	if err := f.Close(); err != nil {

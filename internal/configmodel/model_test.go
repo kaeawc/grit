@@ -404,7 +404,7 @@ func TestModelResolvedVariantsExposeFlavorCoordinates(t *testing.T) {
 				Dir:              filepath.Join(root, "app"),
 				BuildFile:        filepath.Join(root, "app", "build.gradle.kts"),
 				Type:             "android-application",
-				DefaultConfig:    project.DefaultConfig{ApplicationID: "dev.example", MissingDimensions: map[string][]string{"abi": []string{"x86"}}},
+				DefaultConfig:    project.DefaultConfig{ApplicationID: "dev.example", MissingDimensions: map[string][]string{"abi": {"x86"}}},
 				FlavorDimensions: []string{"tier"},
 				ProductFlavors: map[string]project.ProductFlavor{
 					"free": {Name: "free", Dimension: "tier", ApplicationIDSuffix: ".free"},

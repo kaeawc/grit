@@ -820,7 +820,6 @@ func commandUsesAllModuleVariants(command string) bool {
 	}
 }
 
-
 func resolvedVariantNames(variants []project.ResolvedVariant) []string {
 	out := make([]string, 0, len(variants))
 	for _, variant := range variants {
@@ -837,7 +836,6 @@ func cleanOutputs(prj *project.Project, mod *project.Module) error {
 	}
 	return os.RemoveAll(filepath.Join(prj.RootDir, "build", "grit", strings.TrimPrefix(strings.ReplaceAll(mod.Path, ":", string(os.PathSeparator)), string(os.PathSeparator))))
 }
-
 
 func cloneVariantSummary(v *project.SemanticVariantSummary) *project.SemanticVariantSummary {
 	if v == nil {

@@ -34,7 +34,6 @@ type responseLogs struct {
 	Stderr string `json:"stderr,omitempty"`
 }
 
-
 type doctorResult struct {
 	Items []doctorItem `json:"items"`
 }
@@ -130,7 +129,6 @@ type androidCapabilityVariantResult struct {
 	AndroidTestInstallTask    string                            `json:"androidTestInstallTask,omitempty"`
 	AndroidTestUninstallTask  string                            `json:"androidTestUninstallTask,omitempty"`
 }
-
 
 type resolveIntelliJTasksResult struct {
 	Repo      string                 `json:"repo"`
@@ -365,4 +363,3 @@ type javaToolchainsResult struct {
 	Java   responsepayload.JavaToolchainInfo   `json:"java"`
 	Kotlin responsepayload.KotlinToolchainInfo `json:"kotlin"`
 }
-

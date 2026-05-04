@@ -231,7 +231,7 @@ func extractProtoAPK(protoAPK, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("open proto APK: %w", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -246,11 +246,11 @@ func extractProtoAPK(protoAPK, destDir string) error {
 		}
 		out, err := os.Create(target)
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return err
 		}
 		_, copyErr := io.Copy(out, rc)
-		rc.Close()
+		_ = rc.Close()
 		_ = out.Close()
 		if copyErr != nil {
 			return copyErr

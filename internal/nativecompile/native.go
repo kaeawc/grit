@@ -86,7 +86,7 @@ func (c *Compiler) AssembleVariant(ctx context.Context, prj *project.Project, mo
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "assembled %s APK: %s\n", variantName, apkPath)
+	_, _ = fmt.Fprintf(stdout, "assembled %s APK: %s\n", variantName, apkPath)
 	return nil
 }
 
@@ -122,7 +122,7 @@ func (c *Compiler) InstallVariant(ctx context.Context, prj *project.Project, mod
 	}); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "installed %s APK: %s\n", variantName, apkPath)
+	_, _ = fmt.Fprintf(stdout, "installed %s APK: %s\n", variantName, apkPath)
 	return nil
 }
 
@@ -131,7 +131,7 @@ func (c *Compiler) compileMain(ctx context.Context, prj *project.Project, mod *p
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "native %s compilation complete\n", variantName)
+	_, _ = fmt.Fprintf(stdout, "native %s compilation complete\n", variantName)
 	return nil
 }
 

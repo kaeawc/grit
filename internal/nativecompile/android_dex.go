@@ -48,7 +48,6 @@ func runD8(ctx context.Context, workRoot, classesJar, _ string, _ string, merged
 	return writeStamp(mergeStampPath, mergeStampValue)
 }
 
-
 func traceD8Inputs(label string, paths []string, stderr *os.File) {
 	if os.Getenv("GRIT_TRACE_D8") == "" || stderr == nil {
 		return

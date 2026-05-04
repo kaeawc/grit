@@ -337,7 +337,7 @@ func TestAssembleModuleZipFileContents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
 		if f.Name == "manifest/AndroidManifest.xml" {
@@ -347,7 +347,7 @@ func TestAssembleModuleZipFileContents(t *testing.T) {
 			}
 			buf := make([]byte, 256)
 			n, _ := rc.Read(buf)
-			rc.Close()
+			_ = rc.Close()
 			got := string(buf[:n])
 			if got != manifestContent {
 				t.Fatalf("manifest content = %q, want %q", got, manifestContent)
@@ -365,7 +365,7 @@ func zipEntries(t *testing.T, path string) []string {
 	if err != nil {
 		t.Fatalf("open zip: %v", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	var names []string
 	for _, f := range zr.File {
 		names = append(names, f.Name)
@@ -403,7 +403,7 @@ func TestAssembleModuleZipProducesValidCentralDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("zip has invalid central directory: %v", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	for _, f := range zr.File {
 		rc, err := f.Open()
@@ -412,7 +412,7 @@ func TestAssembleModuleZipProducesValidCentralDirectory(t *testing.T) {
 		}
 		buf := make([]byte, f.UncompressedSize64+1)
 		n, _ := rc.Read(buf)
-		rc.Close()
+		_ = rc.Close()
 		if uint64(n) != f.UncompressedSize64 {
 			t.Errorf("entry %s: read %d bytes, expected %d", f.Name, n, f.UncompressedSize64)
 		}

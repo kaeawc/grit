@@ -56,7 +56,6 @@ func pickPrimaryCatalog(paths []string) string {
 	return paths[0]
 }
 
-
 func collectProjectRepositoriesWithOrigin(body string, gradleProperties map[string]string, origin string) []Repository {
 	var repos []Repository
 	repositoriesRe := regexp.MustCompile(`(?ms)repositories\s*\{`)
@@ -70,7 +69,6 @@ func collectProjectRepositoriesWithOrigin(body string, gradleProperties map[stri
 	}
 	return annotateRepositories(dedupeRepositories(repos), origin, 0)
 }
-
 
 func parseRepositoriesBlock(block string, scope string, gradleProperties map[string]string) []Repository {
 	var repos []Repository
