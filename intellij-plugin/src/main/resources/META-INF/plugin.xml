@@ -1,0 +1,17 @@
+<idea-plugin>
+    <id>com.kaeawc.grit</id>
+    <name>Grit Build System</name>
+    <vendor>kaeawc</vendor>
+    <description>
+        Integrates the grit build system with IntelliJ IDEA as an External System,
+        enabling project sync, dependency resolution, and task execution.
+    </description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.externalSystem</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <externalSystemManager
+            implementation="com.kaeawc.grit.intellij.GritExternalSystemManager"/>
+    </extensions>
+</idea-plugin>
