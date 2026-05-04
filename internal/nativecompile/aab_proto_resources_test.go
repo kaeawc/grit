@@ -107,7 +107,7 @@ func TestAssembleModuleZipWithResourceTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		if f.Name == "resources.pb" {
 			rc, err := f.Open()

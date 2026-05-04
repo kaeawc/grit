@@ -410,12 +410,7 @@ func (prj *Project) SemanticGraphSummary() SemanticGraphSummary {
 				artifacts := semanticArtifactSummaries(g, m.ID)
 				resolvedArtifacts := make([]ResolvedVariantArtifact, 0, len(artifacts))
 				for _, artifact := range artifacts {
-					resolvedArtifacts = append(resolvedArtifacts, ResolvedVariantArtifact{
-						ID:                 artifact.ID,
-						Kind:               artifact.Kind,
-						Path:               artifact.Path,
-						ProducedByActionID: artifact.ProducedByActionID,
-					})
+					resolvedArtifacts = append(resolvedArtifacts, ResolvedVariantArtifact(artifact))
 				}
 				variantSummary.Materialization = SemanticMaterializationSummary{
 					ID:                    m.ID.String(),
@@ -1233,11 +1228,9 @@ func semanticJVMActionsForCommand(prj *Project, g *graph.Graph, mod *Module, com
 				continue
 			}
 			depVariants := variantsForModule(dep)
-			operation := "compile"
+			operation := "assemble"
 			if dep.IsJVM() {
 				operation = "compile"
-			} else {
-				operation = "assemble"
 			}
 			out = append(out, semanticActionsForVariants(prj, g, depPath, depVariants, operation)...)
 		}
@@ -1460,37 +1453,6 @@ func variantsForModule(mod *Module) []string {
 	return out
 }
 
-type semanticActionSpec struct {
-	op   string
-	kind graph.ActionKind
-	task string
-	out  graph.ArtifactKind
-}
-
-func semanticActionSpecs(mod Module, variantName string) []semanticActionSpec {
-	if mod.IsJVM() {
-		return []semanticActionSpec{
-			{op: "compile", kind: graph.ActionKindCompile, task: "compile", out: graph.ArtifactKindJar},
-			{op: "test", kind: graph.ActionKindTest, task: "test", out: graph.ArtifactKindOther},
-		}
-	}
-	specs := []semanticActionSpec{
-		{op: "compile", kind: graph.ActionKindCompile, task: semanticTaskName("compile", variantName), out: graph.ArtifactKindJar},
-		{op: "lint", kind: graph.ActionKindLint, task: semanticTaskName("lint", variantName), out: graph.ArtifactKindOther},
-		{op: "assemble", kind: graph.ActionKindPackage, task: semanticTaskName("assemble", variantName), out: graph.ArtifactKindApk},
-		{op: "install", kind: graph.ActionKindCustom, task: semanticTaskName("install", variantName), out: graph.ArtifactKindOther},
-	}
-	if semanticBuildTypeIs(mod.Variant(variantName).BaseBuildType, "debug") {
-		specs = append(specs,
-			semanticActionSpec{op: "test", kind: graph.ActionKindTest, task: semanticTaskName("test", variantName) + "UnitTest", out: graph.ArtifactKindOther},
-			semanticActionSpec{op: "compile-tests", kind: graph.ActionKindCompile, task: semanticTaskName("compile", variantName) + "UnitTestSources", out: graph.ArtifactKindJar},
-			semanticActionSpec{op: "compile-android-tests", kind: graph.ActionKindCompile, task: semanticTaskName("compile", variantName) + "AndroidTestSources", out: graph.ArtifactKindJar},
-			semanticActionSpec{op: "install-android-tests", kind: graph.ActionKindCustom, task: semanticTaskName("install", variantName) + "AndroidTest", out: graph.ArtifactKindOther},
-			semanticActionSpec{op: "uninstall-android-tests", kind: graph.ActionKindCustom, task: semanticTaskName("uninstall", variantName) + "AndroidTest", out: graph.ArtifactKindOther},
-		)
-	}
-	return specs
-}
 
 func semanticTaskName(prefix, variantName string) string {
 	if variantName == "" {

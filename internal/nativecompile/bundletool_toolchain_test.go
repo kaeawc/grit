@@ -214,7 +214,7 @@ func TestDownloadFileSuccess(t *testing.T) {
 	t.Parallel()
 	content := "bundletool-jar-content"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(content))
+		_, _ = w.Write([]byte(content))
 	}))
 	defer srv.Close()
 
@@ -260,7 +260,7 @@ func TestDownloadFileHTTPError(t *testing.T) {
 func TestDownloadFileCleansTmpOnWriteError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("data"))
+		_, _ = w.Write([]byte("data"))
 	}))
 	defer srv.Close()
 

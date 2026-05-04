@@ -52,7 +52,7 @@ else
 fi
 
 print_status "Scanning for hardcoded secrets..."
-SECRET_MATCHES=$(rg -n --glob '*.go' -e 'AKIA[0-9A-Z]{16}' -e 'sk_live_[0-9a-zA-Z]{24,}' -e 'ghp_[0-9a-zA-Z]{36}' -e 'gho_[0-9a-zA-Z]{36}' -e 'password\\s*[:=]\\s*\"[^\"]{8,}\"' -e 'secret\\s*[:=]\\s*\"[^\"]{8,}\"' || true)
+SECRET_MATCHES=$(grep -rn --include='*.go' -E 'AKIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|ghp_[0-9a-zA-Z]{36}|gho_[0-9a-zA-Z]{36}|password[[:space:]]*[:=][[:space:]]*"[^"]{8,}"|secret[[:space:]]*[:=][[:space:]]*"[^"]{8,}"' . || true)
 if [[ -n "$SECRET_MATCHES" ]]; then
     SECRET_COUNT=$(echo "$SECRET_MATCHES" | wc -l | tr -d ' ')
     print_error "Found $SECRET_COUNT potential hardcoded secret match(es)"

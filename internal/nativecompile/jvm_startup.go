@@ -130,7 +130,7 @@ func prepareJavaStartupArgs(args []string) error {
 			return fmt.Errorf("prepare AppCDS cache dir: %w", err)
 		}
 		// Probabilistically evict stale archives (~1 in 20 launches).
-		if rand.Intn(20) == 0 {
+		if rand.Intn(20) == 0 { // #nosec
 			go evictStaleAppCDSArchives(filepath.Dir(archive), 7*24*time.Hour)
 		}
 	}

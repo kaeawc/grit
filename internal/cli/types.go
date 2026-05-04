@@ -34,49 +34,6 @@ type responseLogs struct {
 	Stderr string `json:"stderr,omitempty"`
 }
 
-type inspectResult struct {
-	Repo            string                       `json:"repo"`
-	Name            string                       `json:"name"`
-	Backend         string                       `json:"backend"`
-	RootBuildFile   string                       `json:"rootBuildFile"`
-	SettingsFile    string                       `json:"settingsFile"`
-	VersionCatalog  string                       `json:"versionCatalog,omitempty"`
-	VersionCatalogs []string                     `json:"versionCatalogs,omitempty"`
-	Repositories    []project.Repository         `json:"repositories"`
-	Plugins         []string                     `json:"plugins"`
-	SemanticGraph   project.SemanticGraphSummary `json:"semanticGraph,omitempty"`
-	Modules         []inspectModule              `json:"modules"`
-}
-
-type inspectModule struct {
-	Path                      string                    `json:"path"`
-	Dir                       string                    `json:"dir"`
-	Type                      string                    `json:"type"`
-	Namespace                 string                    `json:"namespace,omitempty"`
-	ApplicationID             string                    `json:"applicationId,omitempty"`
-	VersionCode               string                    `json:"versionCode,omitempty"`
-	VersionName               string                    `json:"versionName,omitempty"`
-	CompileSDK                string                    `json:"compileSdk,omitempty"`
-	BuildToolsVersion         string                    `json:"buildToolsVersion,omitempty"`
-	MinSDK                    string                    `json:"minSdk,omitempty"`
-	TargetSDK                 string                    `json:"targetSdk,omitempty"`
-	TestInstrumentationRunner string                    `json:"testInstrumentationRunner,omitempty"`
-	SourceFiles               int                       `json:"sourceFiles"`
-	TestFiles                 int                       `json:"testFiles"`
-	AndroidTestFiles          int                       `json:"androidTestFiles"`
-	UsesCompose               bool                      `json:"usesCompose"`
-	UsesMetro                 bool                      `json:"usesMetro"`
-	UsesWire                  bool                      `json:"usesWire,omitempty"`
-	WireConfig                *project.WireConfig       `json:"wireConfig,omitempty"`
-	Plugins                   []string                  `json:"plugins,omitempty"`
-	KotlinFreeArgs            []string                  `json:"kotlinFreeCompilerArgs,omitempty"`
-	LintDisabled              []string                  `json:"lintDisabledChecks,omitempty"`
-	ConsumerProguardFiles     []string                  `json:"consumerProguardFiles,omitempty"`
-	Variants                  []project.BuildType       `json:"variants,omitempty"`
-	ResolvedVariants          []project.ResolvedVariant `json:"resolvedVariants,omitempty"`
-	RequestedTasks            []string                  `json:"requestedTasks"`
-	Tasks                     []project.Task            `json:"tasks,omitempty"`
-}
 
 type doctorResult struct {
 	Items []doctorItem `json:"items"`
@@ -174,55 +131,6 @@ type androidCapabilityVariantResult struct {
 	AndroidTestUninstallTask  string                            `json:"androidTestUninstallTask,omitempty"`
 }
 
-type tasksResult struct {
-	Repo   string         `json:"repo"`
-	Module string         `json:"module"`
-	Tasks  []project.Task `json:"tasks"`
-}
-
-type projectsResult struct {
-	Repo    string   `json:"repo"`
-	Name    string   `json:"name"`
-	Modules []string `json:"modules"`
-}
-
-type propertiesResult struct {
-	Repo             string                           `json:"repo"`
-	Module           string                           `json:"module"`
-	Type             string                           `json:"type"`
-	Values           responsepayload.PropertiesValues `json:"values"`
-	Variants         []project.BuildType              `json:"variants,omitempty"`
-	ResolvedVariants []project.ResolvedVariant        `json:"resolvedVariants,omitempty"`
-}
-
-type dependenciesResult struct {
-	Repo   string              `json:"repo"`
-	Module string              `json:"module"`
-	Scopes map[string][]string `json:"scopes"`
-}
-
-type buildEnvironmentResult struct {
-	Repo             string               `json:"repo"`
-	SettingsFile     string               `json:"settingsFile"`
-	RootBuildFile    string               `json:"rootBuildFile"`
-	Repositories     []project.Repository `json:"repositories"`
-	GradleProperties map[string]string    `json:"gradleProperties"`
-	VersionCatalogs  []string             `json:"versionCatalogs,omitempty"`
-}
-
-type artifactTransformsResult struct {
-	Repo       string   `json:"repo"`
-	Module     string   `json:"module"`
-	Transforms []string `json:"transforms"`
-}
-
-type dependencyInsightResult struct {
-	Repo    string              `json:"repo"`
-	Module  string              `json:"module"`
-	Query   string              `json:"query,omitempty"`
-	Scopes  map[string][]string `json:"scopes"`
-	Matches map[string][]string `json:"matches,omitempty"`
-}
 
 type resolveIntelliJTasksResult struct {
 	Repo      string                 `json:"repo"`
@@ -458,37 +366,3 @@ type javaToolchainsResult struct {
 	Kotlin responsepayload.KotlinToolchainInfo `json:"kotlin"`
 }
 
-type kotlinDslAccessorsReportResult struct {
-	Repo      string   `json:"repo"`
-	Module    string   `json:"module"`
-	Accessors []string `json:"accessors"`
-}
-
-type outgoingVariantsResult struct {
-	Repo             string                    `json:"repo"`
-	Module           string                    `json:"module"`
-	Variants         []project.BuildType       `json:"variants"`
-	ResolvedVariants []project.ResolvedVariant `json:"resolvedVariants,omitempty"`
-}
-
-type resolvableConfigurationsResult struct {
-	Repo           string              `json:"repo"`
-	Module         string              `json:"module"`
-	Configurations map[string][]string `json:"configurations"`
-}
-
-type signingReportResult struct {
-	Repo     string                 `json:"repo"`
-	Module   string                 `json:"module"`
-	Variants []signingReportVariant `json:"variants"`
-}
-
-type signingReportVariant struct {
-	Name             string `json:"name"`
-	SigningConfig    string `json:"signingConfig,omitempty"`
-	ResolvedConfig   string `json:"resolvedConfig,omitempty"`
-	StoreFile        string `json:"storeFile,omitempty"`
-	KeyAlias         string `json:"keyAlias,omitempty"`
-	HasStorePassword bool   `json:"hasStorePassword,omitempty"`
-	HasKeyPassword   bool   `json:"hasKeyPassword,omitempty"`
-}

@@ -1123,17 +1123,3 @@ func hasContentEntry(roots []ContentRoot, path, kind string) bool {
 	}
 	return false
 }
-
-func hasGeneratedContentRoot(roots []ContentRoot, path string) bool {
-	for _, root := range roots {
-		if root.Path != path {
-			continue
-		}
-		for _, entry := range root.Entries {
-			if entry.Generated && entry.Kind == "generated" {
-				return true
-			}
-		}
-	}
-	return false
-}

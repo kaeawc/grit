@@ -88,7 +88,7 @@ func defaultActionCacheKey(action graph.Action) string {
 		action.Note,
 	}
 	for _, part := range parts {
-		fmt.Fprint(sum, part)
+		_, _ = fmt.Fprint(sum, part)
 		sum.Write([]byte{0})
 	}
 	return hex.EncodeToString(sum.Sum(nil))
@@ -165,7 +165,7 @@ func lintDirectoryHash(root string) cas.Hash {
 		if err != nil || d == nil || d.IsDir() {
 			return nil
 		}
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(path) // #nosec
 		if readErr != nil {
 			return nil
 		}

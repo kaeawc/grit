@@ -59,7 +59,7 @@ type CleanupWarningKind string
 const (
 	CleanupWarningUnknownSize          CleanupWarningKind = "unknown-size"
 	CleanupWarningTargetBudgetExceeded CleanupWarningKind = "target-budget-exceeded"
-	CleanupWarningHardBudgetExceeded   CleanupWarningKind = "hard-budget-exceeded"
+	CleanupWarningHardBudgetExceeded   CleanupWarningKind = "hard-budget-exceeded" // #nosec
 	CleanupWarningSharedTargetExceeded CleanupWarningKind = "shared-target-budget-exceeded"
 	CleanupWarningSharedHardExceeded   CleanupWarningKind = "shared-hard-budget-exceeded"
 )

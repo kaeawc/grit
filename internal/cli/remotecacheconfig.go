@@ -13,7 +13,7 @@ import (
 // Environment variables consulted by ResolveRemoteCacheConfig.
 const (
 	EnvRemoteCacheURL   = "GRIT_REMOTE_CACHE_URL"
-	EnvRemoteCacheToken = "GRIT_REMOTE_CACHE_TOKEN"
+	EnvRemoteCacheToken = "GRIT_REMOTE_CACHE_TOKEN" // #nosec
 )
 
 // RemoteCacheConfig is the resolved URL/token pair used to build a

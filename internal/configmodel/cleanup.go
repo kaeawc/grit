@@ -145,7 +145,7 @@ func (m *Model) dryRunCleanupPlan(now time.Time, statter cleanupPathStatter) cac
 			classPlans[record.RetentionClass] = classPlan
 		}
 		classPlan.RecordCount++
-		if record.PathExists == nil || *record.PathExists == false || record.SizeBytes <= 0 {
+		if record.PathExists == nil || !*record.PathExists || record.SizeBytes <= 0 {
 			classPlan.UnknownSizeCount++
 		} else {
 			classPlan.TotalBytes += record.SizeBytes

@@ -151,7 +151,7 @@ func addFileToZip(w *zip.Writer, srcPath, entryName string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	info, err := src.Stat()
 	if err != nil {

@@ -26,10 +26,10 @@ func (c *Compiler) compileAndroidTest(ctx context.Context, prj *project.Project,
 		return err
 	}
 	if outputs.testClassesDir == "" {
-		fmt.Fprintln(stdout, "no androidTest sources found")
+		_, _ = fmt.Fprintln(stdout, "no androidTest sources found")
 		return nil
 	}
-	fmt.Fprintln(stdout, "androidTest sources compiled")
+	_, _ = fmt.Fprintln(stdout, "androidTest sources compiled")
 	return nil
 }
 

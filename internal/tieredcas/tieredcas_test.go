@@ -77,23 +77,6 @@ func (s *metadataActionResultStore) GetActionResult(context.Context, cas.Hash) (
 	return s.actionResult, nil
 }
 
-type getOnlyActionResultStore struct {
-	actionResultStoreBase
-	getActionResultCalls int
-	actionResult         cas.ActionResult
-	getActionResultErr   error
-}
-
-func (s *getOnlyActionResultStore) GetActionResult(context.Context, cas.Hash) (cas.ActionResult, error) {
-	s.getActionResultCalls++
-	if s.getActionResultErr != nil {
-		return cas.ActionResult{}, s.getActionResultErr
-	}
-	if s.actionResult.ActionHash.IsZero() {
-		return cas.ActionResult{}, cas.ErrNotFound
-	}
-	return s.actionResult, nil
-}
 
 func TestNewRejectsEmpty(t *testing.T) {
 	if _, err := New(); err == nil {

@@ -374,10 +374,8 @@ func cloneDiagnosticSummaryBuckets(in []DiagnosticSummaryBucket) []DiagnosticSum
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]DiagnosticSummaryBucket, 0, len(in))
-	for _, item := range in {
-		out = append(out, item)
-	}
+	out := make([]DiagnosticSummaryBucket, len(in))
+	copy(out, in)
 	return out
 }
 

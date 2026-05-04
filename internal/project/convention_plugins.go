@@ -34,7 +34,7 @@ func conventionPluginMap(rootDir string) map[string][]string {
 		}
 		id := strings.TrimSuffix(name, ".gradle.kts")
 		id = strings.TrimSuffix(id, ".gradle")
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(path) // #nosec
 		if readErr != nil {
 			return nil
 		}

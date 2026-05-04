@@ -211,10 +211,8 @@ func (t *DefaultTracker) IsEnabled() bool {
 
 func (t *DefaultTracker) entriesData(block *timingBlock) *TimingData {
 	if block.kind == parallelBlock {
-		out := make([]TimingEntry, 0, len(block.entries))
-		for _, entry := range block.entries {
-			out = append(out, entry)
-		}
+		out := make([]TimingEntry, len(block.entries))
+		copy(out, block.entries)
 		return newTimingMap(out)
 	}
 	out := make([]TimingEntry, len(block.entries))

@@ -1013,7 +1013,7 @@ type ResolverReportSummary struct {
 
 func (s *Service) Inspect(prj *project.Project) InspectResult {
 	model, err := s.LoadConfigurationModel(context.Background(), prj)
-	summary := project.SemanticGraphSummary{}
+	var summary project.SemanticGraphSummary
 	if err == nil && model != nil {
 		summary = model.GraphSummary()
 	} else {
@@ -3346,37 +3346,12 @@ func artifactIDs(ids []graph.ArtifactID) []string {
 	return out
 }
 
-func semanticVariantNames(variants []project.SemanticVariantSummary) []string {
-	out := make([]string, 0, len(variants))
-	for _, variant := range variants {
-		if name := strings.TrimSpace(variant.Name); name != "" {
-			out = append(out, name)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 func errString(message string) error {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return nil
 	}
 	return errors.New(message)
-}
-
-func sortedKeys(values map[string]struct{}) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(values))
-	for value := range values {
-		if strings.TrimSpace(value) != "" {
-			out = append(out, value)
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 func firstNonEmpty(values ...string) string {
@@ -3621,9 +3596,10 @@ func (s *Service) CacheTopology(prj *project.Project) (CacheTopologyResult, erro
 
 func (s *Service) KotlinDslAccessorsReport(mod *project.Module, prj *project.Project) KotlinDslAccessorsReportResult {
 	accessors := []string{}
-	if mod.Type == "android-application" {
+	switch mod.Type {
+	case "android-application":
 		accessors = append(accessors, "android", "defaultConfig", "buildTypes", "signingConfigs")
-	} else if mod.Type == "android-library" {
+	case "android-library":
 		accessors = append(accessors, "android", "defaultConfig", "buildTypes")
 	}
 	if mod.UsesCompose {

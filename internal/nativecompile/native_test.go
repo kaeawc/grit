@@ -111,7 +111,7 @@ func TestKotlinTestShimJarBuilds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open shim jar: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	zr, err := zip.NewReader(file, info.Size())
 	if err != nil {
 		t.Fatalf("read shim jar: %v", err)
@@ -146,7 +146,7 @@ func TestJUnitPlatformRunnerJarBuilds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open runner jar: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	zr, err := zip.NewReader(file, info.Size())
 	if err != nil {
 		t.Fatalf("read runner jar: %v", err)

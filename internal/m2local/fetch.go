@@ -53,11 +53,11 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			continue
 		}
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			return "", err
 		}

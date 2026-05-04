@@ -8,7 +8,7 @@ import (
 
 func TestActionHashStable(t *testing.T) {
 	a := sampleAction()
-	if a.Hash() != a.Hash() {
+	if a.Hash() != a.Hash() { //nolint:staticcheck
 		t.Fatalf("action hash not stable across calls")
 	}
 }

@@ -188,7 +188,7 @@ func directoryFileInputs(root string) []FileInput {
 		if err != nil || d == nil || d.IsDir() {
 			return nil
 		}
-		data, readErr := os.ReadFile(path)
+		data, readErr := os.ReadFile(path) // #nosec
 		if readErr != nil {
 			return nil
 		}

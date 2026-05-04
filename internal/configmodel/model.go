@@ -480,12 +480,7 @@ func toResolvedVariantArtifacts(artifacts []project.SemanticArtifactSummary) []p
 	}
 	out := make([]project.ResolvedVariantArtifact, 0, len(artifacts))
 	for _, artifact := range artifacts {
-		out = append(out, project.ResolvedVariantArtifact{
-			ID:                 artifact.ID,
-			Kind:               artifact.Kind,
-			Path:               artifact.Path,
-			ProducedByActionID: artifact.ProducedByActionID,
-		})
+		out = append(out, project.ResolvedVariantArtifact(artifact))
 	}
 	return out
 }

@@ -22,7 +22,7 @@ func newLogCapture() (*logCapture, error) {
 	}
 	stderrFile, err := os.CreateTemp("", "grit-stderr-*.log")
 	if err != nil {
-		stdoutFile.Close()
+		_ = stdoutFile.Close()
 		os.Remove(stdoutFile.Name())
 		return nil, err
 	}
@@ -35,8 +35,8 @@ func newLogCapture() (*logCapture, error) {
 }
 
 func (c *logCapture) Logs() responseLogs {
-	c.Stdout.Sync()
-	c.Stderr.Sync()
+	_ = c.Stdout.Sync()
+	_ = c.Stderr.Sync()
 	stdoutData, _ := os.ReadFile(c.stdoutPath)
 	stderrData, _ := os.ReadFile(c.stderrPath)
 	return responseLogs{
@@ -47,11 +47,11 @@ func (c *logCapture) Logs() responseLogs {
 
 func (c *logCapture) Close() {
 	if c.Stdout != nil {
-		c.Stdout.Close()
+		_ = c.Stdout.Close()
 		os.Remove(c.stdoutPath)
 	}
 	if c.Stderr != nil {
-		c.Stderr.Close()
+		_ = c.Stderr.Close()
 		os.Remove(c.stderrPath)
 	}
 }

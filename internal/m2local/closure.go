@@ -364,7 +364,7 @@ func artifactContainsClassFiles(path string) bool {
 	if err != nil {
 		return true
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		if strings.HasSuffix(f.Name, ".class") {
 			return true

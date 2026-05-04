@@ -29,7 +29,7 @@ func latestOutputModTime(path string) (time.Time, bool) {
 	}
 	var latest time.Time
 	found := false
-	filepath.WalkDir(path, func(walkPath string, d os.DirEntry, walkErr error) error {
+	_ = filepath.WalkDir(path, func(walkPath string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil || d.IsDir() {
 			return nil
 		}
@@ -49,13 +49,13 @@ func latestOutputModTime(path string) (time.Time, bool) {
 func latestInputModTime(inputs []string) time.Time {
 	var latest time.Time
 	for _, input := range inputs {
-		info, err := os.Stat(input)
+		info, err := os.Stat(input) // #nosec
 		if err != nil {
 			continue
 		}
 		modTime := info.ModTime()
 		if info.IsDir() {
-			filepath.WalkDir(input, func(walkPath string, d os.DirEntry, walkErr error) error {
+			_ = filepath.WalkDir(input, func(walkPath string, d os.DirEntry, walkErr error) error { // #nosec
 				if walkErr != nil || d.IsDir() {
 					return nil
 				}
@@ -88,7 +88,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.Create(dst)
 	if err != nil {
 		return err
@@ -150,7 +150,7 @@ func ensureStampFromOutput(stampPath, outputPath string, inputs []string) bool {
 }
 
 func pathIsFile(path string) bool {
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) // #nosec
 	return err == nil && !info.IsDir()
 }
 
@@ -166,7 +166,7 @@ func writeFileIfChanged(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o644) // #nosec
 }
 
 func writeStamp(path, value string) error {

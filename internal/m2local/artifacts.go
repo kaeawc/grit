@@ -193,7 +193,7 @@ func (r *Resolver) extractAAR(coord Coordinate, path string) (AndroidLibrary, er
 	if err != nil {
 		return AndroidLibrary{}, err
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -211,25 +211,25 @@ func (r *Resolver) extractAAR(coord Coordinate, path string) (AndroidLibrary, er
 		case strings.HasPrefix(f.Name, "res/"):
 			target = filepath.Join(tmpDir, f.Name)
 		default:
-			rc.Close()
+			_ = rc.Close()
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return AndroidLibrary{}, err
 		}
 		out, err := os.Create(target)
 		if err != nil {
-			rc.Close()
+			_ = rc.Close()
 			return AndroidLibrary{}, err
 		}
 		if _, err := io.Copy(out, rc); err != nil {
-			rc.Close()
-			out.Close()
+			_ = rc.Close()
+			_ = out.Close()
 			return AndroidLibrary{}, err
 		}
-		out.Close()
-		rc.Close()
+		_ = out.Close()
+		_ = rc.Close()
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, ".ready"), []byte("ok\n"), 0o644); err != nil {
 		return AndroidLibrary{}, err

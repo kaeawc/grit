@@ -820,15 +820,6 @@ func commandUsesAllModuleVariants(command string) bool {
 	}
 }
 
-func taskNameForVariant(prefix, variantName string) string {
-	if variantName == "" {
-		return prefix
-	}
-	if len(variantName) == 1 {
-		return prefix + strings.ToUpper(variantName)
-	}
-	return prefix + strings.ToUpper(variantName[:1]) + variantName[1:]
-}
 
 func resolvedVariantNames(variants []project.ResolvedVariant) []string {
 	out := make([]string, 0, len(variants))
@@ -847,9 +838,6 @@ func cleanOutputs(prj *project.Project, mod *project.Module) error {
 	return os.RemoveAll(filepath.Join(prj.RootDir, "build", "grit", strings.TrimPrefix(strings.ReplaceAll(mod.Path, ":", string(os.PathSeparator)), string(os.PathSeparator))))
 }
 
-func dependentModules(prj *project.Project, target string) ([]string, error) {
-	return prj.SemanticDependentModules(target)
-}
 
 func cloneVariantSummary(v *project.SemanticVariantSummary) *project.SemanticVariantSummary {
 	if v == nil {

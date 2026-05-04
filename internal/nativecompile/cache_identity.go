@@ -217,7 +217,7 @@ func zipFingerprint(path string) (string, error) {
 
 func dirFingerprint(root string) string {
 	sum := sha256.New()
-	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

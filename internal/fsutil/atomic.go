@@ -58,8 +58,8 @@ func writeAtomic(path string, perm os.FileMode, payload func(*os.File) error) er
 	tmpName := tmp.Name()
 
 	cleanup := func() {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 	}
 
 	if err := tmp.Chmod(perm); err != nil {
@@ -78,12 +78,12 @@ func writeAtomic(path string, perm os.FileMode, payload func(*os.File) error) er
 	}
 
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("close tempfile: %w", err)
 	}
 
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("rename tempfile: %w", err)
 	}
 

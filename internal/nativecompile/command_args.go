@@ -126,9 +126,7 @@ func r8Args(androidJar string, mod *project.Module, variant project.BuildType, c
 	if extraRules != "" {
 		args = append(args, "--pg-conf", extraRules)
 	}
-	for _, jar := range runtimeCP {
-		args = append(args, jar)
-	}
+	args = append(args, runtimeCP...)
 	return append(args, classesJar)
 }
 

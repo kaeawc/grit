@@ -341,10 +341,6 @@ func isBinaryArtifactName(name string) bool {
 	return strings.HasSuffix(lower, ".jar") || strings.HasSuffix(lower, ".aar")
 }
 
-func toCoordinates(deps []moduleDep) []Coordinate {
-	return toCoordinatesWithConstraints(deps, nil)
-}
-
 func toCoordinatesWithConstraints(deps []moduleDep, constraints map[string]string) []Coordinate {
 	var out []Coordinate
 	for _, dep := range deps {
@@ -378,7 +374,7 @@ func toExcludes(excludes []moduleExclude) []Exclude {
 	}
 	out := make([]Exclude, 0, len(excludes))
 	for _, exclude := range excludes {
-		out = append(out, Exclude{Group: exclude.Group, Module: exclude.Module})
+		out = append(out, Exclude(exclude))
 	}
 	return out
 }

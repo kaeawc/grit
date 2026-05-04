@@ -56,20 +56,6 @@ func pickPrimaryCatalog(paths []string) string {
 	return paths[0]
 }
 
-func collectRepositories(body string, gradleProperties map[string]string) []Repository {
-	var repos []Repository
-	if block, ok := extractNestedBlock(body, "dependencyResolutionManagement", "repositories"); ok {
-		repos = append(repos, parseRepositoriesBlock(block, "dependency", gradleProperties)...)
-	}
-	if block, ok := extractNestedBlock(body, "pluginManagement", "repositories"); ok {
-		repos = append(repos, parseRepositoriesBlock(block, "plugin", gradleProperties)...)
-	}
-	return annotateRepositories(dedupeRepositories(repos), "settings", 0)
-}
-
-func collectProjectRepositories(body string, gradleProperties map[string]string) []Repository {
-	return collectProjectRepositoriesWithOrigin(body, gradleProperties, "build-file")
-}
 
 func collectProjectRepositoriesWithOrigin(body string, gradleProperties map[string]string, origin string) []Repository {
 	var repos []Repository
@@ -85,17 +71,6 @@ func collectProjectRepositoriesWithOrigin(body string, gradleProperties map[stri
 	return annotateRepositories(dedupeRepositories(repos), origin, 0)
 }
 
-func extractNestedBlock(body string, names ...string) (string, bool) {
-	current := body
-	for _, name := range names {
-		block, ok := extractNamedBlock(current, name)
-		if !ok {
-			return "", false
-		}
-		current = block
-	}
-	return current, true
-}
 
 func parseRepositoriesBlock(block string, scope string, gradleProperties map[string]string) []Repository {
 	var repos []Repository

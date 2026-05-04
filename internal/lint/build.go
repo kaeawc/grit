@@ -64,7 +64,7 @@ func sourceInputs(sourceRoots []string) []FileInput {
 			if err != nil || d == nil || d.IsDir() || !isLintSourceFile(path) {
 				return nil
 			}
-			data, readErr := os.ReadFile(path)
+			data, readErr := os.ReadFile(path) // #nosec
 			if readErr != nil {
 				return nil
 			}

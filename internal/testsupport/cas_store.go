@@ -74,7 +74,7 @@ func (s *CASStoreRecorder) PutBytesExpected(ctx context.Context, data []byte, ex
 }
 
 func (s *CASStoreRecorder) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, error) {
-	s.recordCall(CASStoreCall{Op: "get", Hash: h})
+	_ = s.recordCall(CASStoreCall{Op: "get", Hash: h})
 	if s.Err != nil {
 		return nil, s.Err
 	}
@@ -88,7 +88,7 @@ func (s *CASStoreRecorder) Get(ctx context.Context, h cas.Hash) (io.ReadCloser, 
 }
 
 func (s *CASStoreRecorder) Stat(ctx context.Context, h cas.Hash) (cas.BlobInfo, error) {
-	s.recordCall(CASStoreCall{Op: "stat", Hash: h})
+	_ = s.recordCall(CASStoreCall{Op: "stat", Hash: h})
 	if s.Err != nil {
 		return cas.BlobInfo{}, s.Err
 	}
@@ -102,7 +102,7 @@ func (s *CASStoreRecorder) Stat(ctx context.Context, h cas.Hash) (cas.BlobInfo, 
 }
 
 func (s *CASStoreRecorder) Has(ctx context.Context, h cas.Hash) (bool, error) {
-	s.recordCall(CASStoreCall{Op: "has", Hash: h})
+	_ = s.recordCall(CASStoreCall{Op: "has", Hash: h})
 	if s.Err != nil {
 		return false, s.Err
 	}
@@ -113,7 +113,7 @@ func (s *CASStoreRecorder) Has(ctx context.Context, h cas.Hash) (bool, error) {
 }
 
 func (s *CASStoreRecorder) Provenance(ctx context.Context, h cas.Hash) (cas.Provenance, error) {
-	s.recordCall(CASStoreCall{Op: "provenance", Hash: h})
+	_ = s.recordCall(CASStoreCall{Op: "provenance", Hash: h})
 	if s.Err != nil {
 		return cas.Provenance{}, s.Err
 	}
@@ -140,7 +140,7 @@ func (s *CASStoreRecorder) PutActionResult(ctx context.Context, result cas.Actio
 }
 
 func (s *CASStoreRecorder) GetActionResult(ctx context.Context, actionHash cas.Hash) (cas.ActionResult, error) {
-	s.recordCall(CASStoreCall{Op: "get-action-result", ActionHash: actionHash})
+	_ = s.recordCall(CASStoreCall{Op: "get-action-result", ActionHash: actionHash})
 	if s.Err != nil {
 		return cas.ActionResult{}, s.Err
 	}

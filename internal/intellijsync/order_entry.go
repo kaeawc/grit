@@ -161,16 +161,7 @@ func VariantOrderEntries(v Variant) []OrderEntry {
 }
 
 func orderEntryFromClasspath(e ClasspathEntry) OrderEntry {
-	return OrderEntry{
-		Kind:       e.Kind,
-		Name:       e.Name,
-		Scope:      e.Scope,
-		ModulePath: e.ModulePath,
-		Classes:    e.Classes,
-		Sources:    e.Sources,
-		Javadoc:    e.Javadoc,
-		Exported:   e.Exported,
-	}
+	return OrderEntry(e)
 }
 
 func orderEntryKey(e ClasspathEntry) string {

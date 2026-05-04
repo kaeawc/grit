@@ -62,7 +62,7 @@ func resolvedInputDigest(resolved *m2local.Resolved) string {
 	}
 	slices.Sort(paths)
 	for _, p := range paths {
-		fmt.Fprintf(h, "%s\n", p)
+		_, _ = fmt.Fprintf(h, "%s\n", p)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
