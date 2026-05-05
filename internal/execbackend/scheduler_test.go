@@ -6,6 +6,7 @@ import (
 	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/graph"
+	"github.com/kaeawc/grit/internal/responsepayload"
 )
 
 func schedulerStep(id string, deps ...graph.ActionID) configmodel.ActionScheduleStep {
@@ -62,6 +63,96 @@ func TestSchedulerReadyAndCompleteUnlocksDependents(t *testing.T) {
 	ready = scheduler.Ready()
 	if len(ready) != 1 || ready[0].Action.ID != "action:third" {
 		t.Fatalf("expected third action ready after completing second, got %#v", ready)
+	}
+}
+
+func TestSchedulerCopiesScheduleStepMetadata(t *testing.T) {
+	step := schedulerStep("action:first")
+	step.Action.Inputs = []graph.ArtifactID{graph.ArtifactID("artifact:input")}
+	step.Action.Outputs = []graph.ArtifactID{graph.ArtifactID("artifact:output")}
+	step.ProbeHint = &responsepayload.CacheProbe{ActionID: "action:first", State: "reused"}
+	schedule := configmodel.ActionSchedule{
+		Steps: []configmodel.ActionScheduleStep{step},
+	}
+
+	scheduler := NewSchedulerFromSchedule(schedule)
+	schedule.Steps[0].Action.Inputs[0] = graph.ArtifactID("artifact:mutated-input")
+	schedule.Steps[0].Action.Outputs[0] = graph.ArtifactID("artifact:mutated-output")
+	schedule.Steps[0].Action.Attributes["operation"] = "mutated"
+	schedule.Steps[0].Dependencies = append(schedule.Steps[0].Dependencies, graph.ActionID("action:mutated-dependency"))
+	schedule.Steps[0].ProbeOrder[0] = "mutated-tier"
+	schedule.Steps[0].ProbeHint.State = "mutated"
+
+	ready := scheduler.Ready()
+	if len(ready) != 1 {
+		t.Fatalf("expected one ready action, got %#v", ready)
+	}
+	if got, want := ready[0].Action.Inputs[0], graph.ArtifactID("artifact:input"); got != want {
+		t.Fatalf("ready action input = %q, want %q", got, want)
+	}
+	if got, want := ready[0].Action.Outputs[0], graph.ArtifactID("artifact:output"); got != want {
+		t.Fatalf("ready action output = %q, want %q", got, want)
+	}
+	if got, want := ready[0].Action.Attributes["operation"], "compile"; got != want {
+		t.Fatalf("ready action operation = %q, want %q", got, want)
+	}
+	if len(ready[0].Dependencies) != 0 {
+		t.Fatalf("ready action dependencies = %#v, want none", ready[0].Dependencies)
+	}
+	if got, want := ready[0].ProbeOrder[0], "local-overlay"; got != want {
+		t.Fatalf("ready action probe order = %q, want %q", got, want)
+	}
+	if ready[0].ProbeHint == nil || ready[0].ProbeHint.State != "reused" {
+		t.Fatalf("ready action probe hint = %#v, want reused", ready[0].ProbeHint)
+	}
+}
+
+func TestSchedulerReadyAccessorsReturnCopies(t *testing.T) {
+	step := schedulerStep("action:first")
+	step.Action.Inputs = []graph.ArtifactID{graph.ArtifactID("artifact:input")}
+	step.Action.Outputs = []graph.ArtifactID{graph.ArtifactID("artifact:output")}
+	step.ProbeHint = &responsepayload.CacheProbe{ActionID: "action:first", State: "reused"}
+	scheduler := NewSchedulerFromSchedule(configmodel.ActionSchedule{
+		Batches: [][]configmodel.ActionScheduleStep{{step}},
+	})
+
+	ready := scheduler.Ready()
+	ready[0].Action.Inputs[0] = graph.ArtifactID("artifact:mutated-input")
+	ready[0].Action.Outputs[0] = graph.ArtifactID("artifact:mutated-output")
+	ready[0].Action.Attributes["operation"] = "mutated"
+	ready[0].Dependencies = append(ready[0].Dependencies, graph.ActionID("action:mutated-dependency"))
+	ready[0].ProbeOrder[0] = "mutated-tier"
+	ready[0].ProbeHint.State = "mutated"
+
+	readyWithDecisions := scheduler.ReadyWithRemoteProbeDecisions()
+	readyWithDecisions[0].Step.Action.Inputs[0] = graph.ArtifactID("artifact:decision-mutated-input")
+	readyWithDecisions[0].Step.Action.Outputs[0] = graph.ArtifactID("artifact:decision-mutated-output")
+	readyWithDecisions[0].Step.Action.Attributes["operation"] = "decision-mutated"
+	readyWithDecisions[0].Step.Dependencies = append(readyWithDecisions[0].Step.Dependencies, graph.ActionID("action:decision-mutated-dependency"))
+	readyWithDecisions[0].Step.ProbeOrder[0] = "decision-mutated-tier"
+	readyWithDecisions[0].Step.ProbeHint.State = "decision-mutated"
+
+	fresh := scheduler.Ready()
+	if len(fresh) != 1 {
+		t.Fatalf("expected one fresh ready action, got %#v", fresh)
+	}
+	if got, want := fresh[0].Action.Inputs[0], graph.ArtifactID("artifact:input"); got != want {
+		t.Fatalf("fresh ready action input = %q, want %q", got, want)
+	}
+	if got, want := fresh[0].Action.Outputs[0], graph.ArtifactID("artifact:output"); got != want {
+		t.Fatalf("fresh ready action output = %q, want %q", got, want)
+	}
+	if got, want := fresh[0].Action.Attributes["operation"], "compile"; got != want {
+		t.Fatalf("fresh ready action operation = %q, want %q", got, want)
+	}
+	if len(fresh[0].Dependencies) != 0 {
+		t.Fatalf("fresh ready action dependencies = %#v, want none", fresh[0].Dependencies)
+	}
+	if got, want := fresh[0].ProbeOrder[0], "local-overlay"; got != want {
+		t.Fatalf("fresh ready action probe order = %q, want %q", got, want)
+	}
+	if fresh[0].ProbeHint == nil || fresh[0].ProbeHint.State != "reused" {
+		t.Fatalf("fresh ready action probe hint = %#v, want reused", fresh[0].ProbeHint)
 	}
 }
 
