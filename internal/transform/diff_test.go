@@ -231,3 +231,36 @@ func TestDiffActionHash_InputRoleGranularity(t *testing.T) {
 		t.Errorf("hash values not surfaced: %+v", deltas[0])
 	}
 }
+
+func TestDiffActionHash_SameRoleOutputOrderIrrelevant(t *testing.T) {
+	old := Action{
+		Outputs: []OutputDecl{{Role: "classes", Kind: "jar"}, {Role: "classes", Kind: "directory"}},
+	}
+	new := Action{
+		Outputs: []OutputDecl{{Role: "classes", Kind: "directory"}, {Role: "classes", Kind: "jar"}},
+	}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 0 {
+		t.Fatalf("reordered same-role outputs should produce no deltas, got %d: %+v", len(deltas), deltas)
+	}
+}
+
+func TestDiffActionHash_SameRoleOutputMultisetDiffers(t *testing.T) {
+	old := Action{
+		Outputs: []OutputDecl{{Role: "classes", Kind: "jar"}, {Role: "classes", Kind: "directory"}},
+	}
+	new := Action{
+		Outputs: []OutputDecl{{Role: "classes", Kind: "jar"}, {Role: "classes", Kind: "metadata"}},
+	}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 1 {
+		t.Fatalf("expected 1 same-role output delta, got %d: %+v", len(deltas), deltas)
+	}
+	if deltas[0].FieldName != "Outputs[classes]" {
+		t.Fatalf("expected Outputs[classes], got %s", deltas[0].FieldName)
+	}
+	if deltas[0].OldValue != formatOutputDecls([]string{"jar", "directory"}) ||
+		deltas[0].NewValue != formatOutputDecls([]string{"jar", "metadata"}) {
+		t.Fatalf("unexpected same-role output values: %+v", deltas[0])
+	}
+}
