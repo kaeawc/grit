@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/integration"
 )
 
@@ -53,5 +54,50 @@ func TestHookRecorderDelegatesCustomFunctions(t *testing.T) {
 	}
 	if len(hook.Before) != 1 {
 		t.Fatalf("expected 1 recorded call, got %d", len(hook.Before))
+	}
+}
+
+func TestHookRecorderAfterSnapshotReturnsCopies(t *testing.T) {
+	hook := &HookRecorder{}
+	result := integration.PlanResult{
+		Command:  "assemble",
+		Variants: []string{"debug"},
+		Actions: []graph.Action{
+			{
+				ID:         "action.compile",
+				Kind:       graph.ActionKindCompile,
+				Inputs:     []graph.ArtifactID{"artifact.source"},
+				Outputs:    []graph.ArtifactID{"artifact.classes"},
+				Attributes: map[string]string{"owner": "test"},
+			},
+		},
+	}
+
+	if err := hook.AfterPlan(context.Background(), result, nil); err != nil {
+		t.Fatal(err)
+	}
+	result.Variants[0] = "mutated"
+	result.Actions[0].Inputs[0] = "artifact.mutated"
+	result.Actions[0].Outputs[0] = "artifact.mutated"
+	result.Actions[0].Attributes["owner"] = "mutated"
+
+	after := hook.AfterSnapshot()
+	after[0].Variants[0] = "mutated-again"
+	after[0].Actions[0].Inputs[0] = "artifact.mutated-again"
+	after[0].Actions[0].Outputs[0] = "artifact.mutated-again"
+	after[0].Actions[0].Attributes["owner"] = "mutated-again"
+
+	fresh := hook.AfterSnapshot()
+	if got := fresh[0].Variants[0]; got != "debug" {
+		t.Fatalf("Variants[0] = %q", got)
+	}
+	if got := fresh[0].Actions[0].Inputs[0]; got != "artifact.source" {
+		t.Fatalf("Actions[0].Inputs[0] = %q", got)
+	}
+	if got := fresh[0].Actions[0].Outputs[0]; got != "artifact.classes" {
+		t.Fatalf("Actions[0].Outputs[0] = %q", got)
+	}
+	if got := fresh[0].Actions[0].Attributes["owner"]; got != "test" {
+		t.Fatalf("Actions[0].Attributes[owner] = %q", got)
 	}
 }
