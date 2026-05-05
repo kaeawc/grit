@@ -36,16 +36,14 @@ type Action struct {
 	// the environment variables the action depends on, not the full process
 	// environment. Keys are sorted during canonicalization.
 	Env map[string]string
-	// Inputs are the labelled input blobs. Order is not part of identity:
-	// inputs are sorted by (role, hash) during canonicalization. KNOWN GAP:
-	// when multiple inputs share the same Role (e.g. a kotlinc classpath
-	// of fifty "classpath" entries), this sort is order-invariant — which
-	// is wrong for tools whose semantics depend on order (classpath
-	// shadowing). Callers needing ordered inputs must use distinct roles
-	// per slot ("classpath-0", "classpath-1", ...) until canonical
-	// encoding gains a first-class ordered-input mode. See
-	// TestActionHashSameRoleClasspathOrderingGap.
+	// Inputs are the labelled input blobs whose order is not part of identity.
+	// They are sorted by (role, hash) during canonicalization.
 	Inputs []Input
+	// OrderedInputs are labelled input blobs whose caller-provided order is
+	// semantically meaningful, such as classpath entries for tools where
+	// earlier jars shadow later jars. OrderedInputs are preserved in canonical
+	// encoding and should be used instead of per-slot role names.
+	OrderedInputs []Input
 	// Outputs declares the expected output roles. Output blob hashes are
 	// discovered by executing the action and are therefore not hashed into
 	// the action key, but the declared output shape is hashed so that two
@@ -66,9 +64,9 @@ type OutputDecl struct {
 	Kind string `json:"kind,omitempty"`
 }
 
-// Hash computes the action hash for a. The canonical encoding sorts inputs
-// by role then hash, sorts outputs by role then kind, sorts environment
-// variables by key, and preserves argument order.
+// Hash computes the action hash for a. The canonical encoding sorts unordered
+// inputs by role then hash, preserves OrderedInputs and argument order, sorts
+// outputs by role then kind, and sorts environment variables by key.
 func (a Action) Hash() cas.Hash {
 	return cas.HashBytes(a.canonicalBytes())
 }
@@ -91,14 +89,15 @@ func (a Action) canonicalBytes() []byte {
 		return outputs[i].Kind < outputs[j].Kind
 	})
 	c := canonicalAction{
-		Version:     canonicalVersion,
-		Kind:        a.Kind,
-		Tool:        a.Tool,
-		ToolVersion: a.ToolVersion,
-		Args:        append([]string(nil), a.Args...),
-		Env:         a.Env,
-		Inputs:      inputs,
-		Outputs:     outputs,
+		Version:       canonicalVersion,
+		Kind:          a.Kind,
+		Tool:          a.Tool,
+		ToolVersion:   a.ToolVersion,
+		Args:          append([]string(nil), a.Args...),
+		Env:           a.Env,
+		Inputs:        inputs,
+		OrderedInputs: append([]Input(nil), a.OrderedInputs...),
+		Outputs:       outputs,
 	}
 	// encoding/json sorts map keys alphabetically, and slice order is
 	// preserved, so c marshals deterministically.
@@ -113,15 +112,16 @@ func (a Action) canonicalBytes() []byte {
 
 // canonicalVersion namespaces the canonical encoding. Bumping it is how we
 // deliberately invalidate every cached action output across the fleet.
-const canonicalVersion = 1
+const canonicalVersion = 2
 
 type canonicalAction struct {
-	Version     int               `json:"version"`
-	Kind        string            `json:"kind"`
-	Tool        string            `json:"tool"`
-	ToolVersion string            `json:"toolVersion"`
-	Args        []string          `json:"args,omitempty"`
-	Env         map[string]string `json:"env,omitempty"`
-	Inputs      []Input           `json:"inputs,omitempty"`
-	Outputs     []OutputDecl      `json:"outputs,omitempty"`
+	Version       int               `json:"version"`
+	Kind          string            `json:"kind"`
+	Tool          string            `json:"tool"`
+	ToolVersion   string            `json:"toolVersion"`
+	Args          []string          `json:"args,omitempty"`
+	Env           map[string]string `json:"env,omitempty"`
+	Inputs        []Input           `json:"inputs,omitempty"`
+	OrderedInputs []Input           `json:"orderedInputs,omitempty"`
+	Outputs       []OutputDecl      `json:"outputs,omitempty"`
 }
