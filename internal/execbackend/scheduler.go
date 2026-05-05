@@ -65,7 +65,7 @@ func NewScheduler(schedule configmodel.ActionSchedule, controller *admission.Con
 	}
 	for i, step := range steps {
 		id := step.Action.ID
-		s.steps[id] = step
+		s.steps[id] = cloneSchedulerStep(step)
 		s.stepOrder[id] = i
 		deps := schedule.Dependencies[id]
 		if len(deps) == 0 {
@@ -101,7 +101,7 @@ func (s *Scheduler) Ready() []configmodel.ActionScheduleStep {
 	}
 	out := make([]configmodel.ActionScheduleStep, 0, len(s.ready))
 	for _, id := range s.ready {
-		out = append(out, s.steps[id])
+		out = append(out, cloneSchedulerStep(s.steps[id]))
 	}
 	return out
 }
@@ -117,7 +117,7 @@ func (s *Scheduler) ReadyWithRemoteProbeDecisions() []ReadyAction {
 	out := make([]ReadyAction, 0, len(s.ready))
 	for _, id := range s.ready {
 		out = append(out, ReadyAction{
-			Step:                s.steps[id],
+			Step:                cloneSchedulerStep(s.steps[id]),
 			RemoteProbeDecision: s.remoteProbeDecision(id),
 		})
 	}
@@ -273,16 +273,51 @@ func removeActionID(ids []graph.ActionID, target graph.ActionID) []graph.ActionI
 
 func scheduledSteps(schedule configmodel.ActionSchedule) []configmodel.ActionScheduleStep {
 	if len(schedule.Steps) != 0 {
-		return schedule.Steps
+		return cloneSchedulerSteps(schedule.Steps)
 	}
 	if len(schedule.Batches) == 0 {
 		return nil
 	}
 	var steps []configmodel.ActionScheduleStep
 	for _, batch := range schedule.Batches {
-		steps = append(steps, batch...)
+		steps = append(steps, cloneSchedulerSteps(batch)...)
 	}
 	return steps
+}
+
+func cloneSchedulerSteps(steps []configmodel.ActionScheduleStep) []configmodel.ActionScheduleStep {
+	if len(steps) == 0 {
+		return nil
+	}
+	out := make([]configmodel.ActionScheduleStep, 0, len(steps))
+	for _, step := range steps {
+		out = append(out, cloneSchedulerStep(step))
+	}
+	return out
+}
+
+func cloneSchedulerStep(step configmodel.ActionScheduleStep) configmodel.ActionScheduleStep {
+	step.Action = cloneSchedulerAction(step.Action)
+	step.Dependencies = append([]graph.ActionID(nil), step.Dependencies...)
+	step.ProbeOrder = append([]string(nil), step.ProbeOrder...)
+	if step.ProbeHint != nil {
+		probe := *step.ProbeHint
+		step.ProbeHint = &probe
+	}
+	return step
+}
+
+func cloneSchedulerAction(action graph.Action) graph.Action {
+	action.Inputs = append([]graph.ArtifactID(nil), action.Inputs...)
+	action.Outputs = append([]graph.ArtifactID(nil), action.Outputs...)
+	if len(action.Attributes) > 0 {
+		attrs := make(map[string]string, len(action.Attributes))
+		for key, value := range action.Attributes {
+			attrs[key] = value
+		}
+		action.Attributes = attrs
+	}
+	return action
 }
 
 func cloneSchedulerNetworkBudget(schedule configmodel.ActionSchedule, controller *admission.Controller) *admission.NetworkBudget {
