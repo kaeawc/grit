@@ -65,10 +65,25 @@ type ProvenanceSummary struct {
 	Shareability         string   `json:"shareability,omitempty"`
 }
 
+func cloneActionSummary(summary ActionSummary) ActionSummary {
+	summary.Inputs = append([]string(nil), summary.Inputs...)
+	summary.Outputs = append([]string(nil), summary.Outputs...)
+	return summary
+}
+
+func cloneProvenanceSummary(summary ProvenanceSummary) ProvenanceSummary {
+	summary.ClasspathSnapshotIDs = append([]string(nil), summary.ClasspathSnapshotIDs...)
+	summary.SourceRoots = append([]string(nil), summary.SourceRoots...)
+	summary.ManifestPaths = append([]string(nil), summary.ManifestPaths...)
+	summary.ProducedArtifactIDs = append([]string(nil), summary.ProducedArtifactIDs...)
+	summary.ConsumingActionIDs = append([]string(nil), summary.ConsumingActionIDs...)
+	return summary
+}
+
 func (m *Model) ActionSummary(id graph.ActionID) (ActionSummary, bool) {
 	for _, summary := range m.ActionSummaries {
 		if summary.ID == id.String() {
-			return summary, true
+			return cloneActionSummary(summary), true
 		}
 	}
 	return ActionSummary{}, false
@@ -86,7 +101,7 @@ func (m *Model) ArtifactSummary(id graph.ArtifactID) (ArtifactSummary, bool) {
 func (m *Model) ProvenanceSummaryByMaterialization(id graph.MaterializationID) (ProvenanceSummary, bool) {
 	for _, summary := range m.ProvenanceSummaries {
 		if summary.MaterializationID == id.String() {
-			return summary, true
+			return cloneProvenanceSummary(summary), true
 		}
 	}
 	return ProvenanceSummary{}, false
@@ -120,7 +135,7 @@ func (m *Model) ActionSummariesForModule(path string) []ActionSummary {
 	var out []ActionSummary
 	for _, summary := range m.ActionSummaries {
 		if summary.ModulePath == path {
-			out = append(out, summary)
+			out = append(out, cloneActionSummary(summary))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -153,7 +168,7 @@ func (m *Model) ProvenanceSummariesForModule(path string) []ProvenanceSummary {
 	var out []ProvenanceSummary
 	for _, summary := range m.ProvenanceSummaries {
 		if summary.ModulePath == path {
-			out = append(out, summary)
+			out = append(out, cloneProvenanceSummary(summary))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].MaterializationID < out[j].MaterializationID })
@@ -164,7 +179,7 @@ func (m *Model) ActionSummariesForVariant(modulePath, variantName string) []Acti
 	var out []ActionSummary
 	for _, summary := range m.ActionSummaries {
 		if summary.ModulePath == modulePath && summary.VariantName == variantName {
-			out = append(out, summary)
+			out = append(out, cloneActionSummary(summary))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
@@ -201,7 +216,7 @@ func (m *Model) ActionSummariesByIDs(ids []string) []ActionSummary {
 				continue
 			}
 			seen[id] = struct{}{}
-			out = append(out, summary)
+			out = append(out, cloneActionSummary(summary))
 			break
 		}
 	}
@@ -235,7 +250,7 @@ func (m *Model) ArtifactSummariesByIDs(ids []string) []ArtifactSummary {
 func (m *Model) ProvenanceSummaryForVariant(modulePath, variantName string) (ProvenanceSummary, bool) {
 	for _, summary := range m.ProvenanceSummaries {
 		if summary.ModulePath == modulePath && summary.VariantName == variantName {
-			return summary, true
+			return cloneProvenanceSummary(summary), true
 		}
 	}
 	return ProvenanceSummary{}, false
@@ -245,7 +260,7 @@ func (m *Model) ProvenanceSummariesByArtifactSnapshot(snapshotID string) []Prove
 	var out []ProvenanceSummary
 	for _, summary := range m.ProvenanceSummaries {
 		if summary.ArtifactSnapshotID == snapshotID {
-			out = append(out, summary)
+			out = append(out, cloneProvenanceSummary(summary))
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -265,7 +280,7 @@ func (m *Model) ProvenanceSummariesByClasspathSnapshot(snapshotID string) []Prov
 	for _, summary := range m.ProvenanceSummaries {
 		for _, candidate := range summary.ClasspathSnapshotIDs {
 			if candidate == snapshotID {
-				out = append(out, summary)
+				out = append(out, cloneProvenanceSummary(summary))
 				break
 			}
 		}
