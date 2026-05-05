@@ -96,7 +96,7 @@ func (c *Catalog) ResolveBundle(ref string) ([]string, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown bundle ref %q", ref)
 	}
-	return bundle, nil
+	return append([]string(nil), bundle...), nil
 }
 
 func parseVersionLine(c *Catalog, line string) {
