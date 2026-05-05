@@ -150,7 +150,7 @@ func (m *Model) GraphSummary() project.SemanticGraphSummary {
 	if m == nil {
 		return project.SemanticGraphSummary{}
 	}
-	return m.Summary
+	return cloneSemanticGraphSummary(m.Summary)
 }
 
 func (m *Model) Action(id graph.ActionID) (graph.Action, bool) {
@@ -195,7 +195,7 @@ func (m *Model) Module(path string) (project.SemanticModuleSummary, bool) {
 	}
 	for _, mod := range m.Summary.Modules {
 		if mod.Path == path {
-			return mod, true
+			return cloneSemanticModuleSummary(mod), true
 		}
 	}
 	return project.SemanticModuleSummary{}, false
@@ -208,7 +208,7 @@ func (m *Model) Variant(modulePath, variantName string) (project.SemanticVariant
 	}
 	for _, variant := range mod.Variants {
 		if variant.Name == variantName {
-			return variant, true
+			return cloneSemanticVariantSummary(variant), true
 		}
 	}
 	return project.SemanticVariantSummary{}, false
