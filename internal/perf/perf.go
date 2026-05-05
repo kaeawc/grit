@@ -31,9 +31,7 @@ func (d *TimingData) Entries() []TimingEntry {
 	if d == nil || len(d.entries) == 0 {
 		return nil
 	}
-	out := make([]TimingEntry, len(d.entries))
-	copy(out, d.entries)
-	return out
+	return cloneTimingEntries(d.entries)
 }
 
 func newTimingList(entries []TimingEntry) *TimingData {
@@ -57,8 +55,31 @@ func cloneTimingEntries(entries []TimingEntry) []TimingEntry {
 		return nil
 	}
 	out := make([]TimingEntry, len(entries))
-	copy(out, entries)
+	for i, entry := range entries {
+		out[i] = cloneTimingEntry(entry)
+	}
 	return out
+}
+
+func cloneTimingEntry(entry TimingEntry) TimingEntry {
+	if entry.Children != nil {
+		entry.Children = entry.Children.clone()
+	}
+	if entry.Explanation != nil {
+		explanation := *entry.Explanation
+		entry.Explanation = &explanation
+	}
+	return entry
+}
+
+func (d *TimingData) clone() *TimingData {
+	if d == nil {
+		return nil
+	}
+	return &TimingData{
+		shape:   d.shape,
+		entries: cloneTimingEntries(d.entries),
+	}
 }
 
 func (d *TimingData) MarshalJSON() ([]byte, error) {
@@ -192,7 +213,7 @@ func (t *DefaultTracker) Record(entry TimingEntry) {
 		return
 	}
 	t.mu.Lock()
-	t.current.entries = append(t.current.entries, entry)
+	t.current.entries = append(t.current.entries, cloneTimingEntry(entry))
 	t.mu.Unlock()
 }
 
@@ -226,8 +247,7 @@ func (t *DefaultTracker) IsEnabled() bool {
 
 func (t *DefaultTracker) entriesData(block *timingBlock) *TimingData {
 	t.mu.Lock()
-	out := make([]TimingEntry, len(block.entries))
-	copy(out, block.entries)
+	out := cloneTimingEntries(block.entries)
 	kind := block.kind
 	t.mu.Unlock()
 	if kind == parallelBlock {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"github.com/kaeawc/grit/internal/explain"
 )
 
 func TestTimingDataMarshalSerial(t *testing.T) {
@@ -62,6 +64,60 @@ func TestListCopiesInputEntries(t *testing.T) {
 	}
 }
 
+func TestListCopiesNestedEntryMetadata(t *testing.T) {
+	t.Parallel()
+
+	explanation := &explain.Timing{State: explain.StateReused, Basis: "test"}
+	children := List([]TimingEntry{{Name: "child", DurationMs: 1}})
+	entries := []TimingEntry{{
+		Name:        "phase",
+		DurationMs:  12,
+		Children:    children,
+		Explanation: explanation,
+	}}
+
+	data := List(entries)
+	explanation.State = explain.StateRebuilt
+	if err := children.UnmarshalJSON([]byte(`[{"name":"mutated","durationMs":99}]`)); err != nil {
+		t.Fatalf("mutate children: %v", err)
+	}
+
+	got := data.Entries()
+	if got[0].Explanation == nil || got[0].Explanation.State != explain.StateReused {
+		t.Fatalf("List aliased timing explanation: %#v", got[0].Explanation)
+	}
+	childEntries := got[0].Children.Entries()
+	if len(childEntries) != 1 || childEntries[0].Name != "child" {
+		t.Fatalf("List aliased child timings: %#v", childEntries)
+	}
+}
+
+func TestTimingDataEntriesReturnDeepCopies(t *testing.T) {
+	t.Parallel()
+
+	data := List([]TimingEntry{{
+		Name:        "phase",
+		DurationMs:  12,
+		Children:    List([]TimingEntry{{Name: "child", DurationMs: 1}}),
+		Explanation: &explain.Timing{State: explain.StateReused, Basis: "test"},
+	}})
+
+	entries := data.Entries()
+	entries[0].Explanation.State = explain.StateRebuilt
+	if err := entries[0].Children.UnmarshalJSON([]byte(`[{"name":"mutated","durationMs":99}]`)); err != nil {
+		t.Fatalf("mutate returned children: %v", err)
+	}
+
+	fresh := data.Entries()
+	if fresh[0].Explanation == nil || fresh[0].Explanation.State != explain.StateReused {
+		t.Fatalf("Entries aliased timing explanation: %#v", fresh[0].Explanation)
+	}
+	childEntries := fresh[0].Children.Entries()
+	if len(childEntries) != 1 || childEntries[0].Name != "child" {
+		t.Fatalf("Entries aliased child timings: %#v", childEntries)
+	}
+}
+
 func TestMapCopiesInputEntries(t *testing.T) {
 	t.Parallel()
 
@@ -114,15 +170,22 @@ func TestTrackerNestedTimings(t *testing.T) {
 func TestTrackerRecordAppendsSyntheticEntries(t *testing.T) {
 	t.Parallel()
 
+	explanation := &explain.Timing{State: explain.StateReused, Basis: "test"}
+	children := Map([]TimingEntry{
+		{Name: "compile", DurationMs: 5},
+		{Name: "assemble", DurationMs: 7},
+	})
 	tracker := New(true)
 	tracker.Record(TimingEntry{
-		Name:       "batch",
-		DurationMs: 12,
-		Children: Map([]TimingEntry{
-			{Name: "compile", DurationMs: 5},
-			{Name: "assemble", DurationMs: 7},
-		}),
+		Name:        "batch",
+		DurationMs:  12,
+		Children:    children,
+		Explanation: explanation,
 	})
+	explanation.State = explain.StateRebuilt
+	if err := children.UnmarshalJSON([]byte(`[{"name":"mutated","durationMs":99}]`)); err != nil {
+		t.Fatalf("mutate children: %v", err)
+	}
 
 	timings := tracker.GetTimings()
 	if timings == nil {
@@ -138,5 +201,11 @@ func TestTrackerRecordAppendsSyntheticEntries(t *testing.T) {
 	}
 	if len(decoded) != 1 || decoded[0].Name != "batch" || decoded[0].Children == nil {
 		t.Fatalf("unexpected decoded timings: %#v", decoded)
+	}
+	if decoded[0].Explanation == nil || decoded[0].Explanation.State != explain.StateReused {
+		t.Fatalf("tracker record aliased explanation: %#v", decoded[0].Explanation)
+	}
+	if childEntries := decoded[0].Children.Entries(); len(childEntries) != 2 {
+		t.Fatalf("tracker record aliased child timings: %#v", childEntries)
 	}
 }

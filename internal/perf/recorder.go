@@ -120,7 +120,7 @@ func (t *RecorderTracker) Record(entry TimingEntry) {
 	if t.current == nil {
 		t.current = t.root
 	}
-	t.current.entries = append(t.current.entries, entry)
+	t.current.entries = append(t.current.entries, cloneTimingEntry(entry))
 	t.calls = append(t.calls, RecordedCall{
 		Kind:        "record",
 		Name:        entry.Name,
@@ -180,7 +180,7 @@ func (t *RecorderTracker) Entries() []TimingEntry {
 func (t *RecorderTracker) Calls() []RecordedCall {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return append([]RecordedCall(nil), t.calls...)
+	return cloneRecordedCalls(t.calls)
 }
 
 func (t *RecorderTracker) depthLocked() int {
@@ -196,11 +196,22 @@ func (t *RecorderTracker) entriesData(block *recordingBlock) *TimingData {
 		return nil
 	}
 	if block.kind == parallelBlock {
-		out := make([]TimingEntry, len(block.entries))
-		copy(out, block.entries)
-		return newTimingMap(out)
+		return newTimingMap(cloneTimingEntries(block.entries))
 	}
-	out := make([]TimingEntry, len(block.entries))
-	copy(out, block.entries)
-	return newTimingList(out)
+	return newTimingList(cloneTimingEntries(block.entries))
+}
+
+func cloneRecordedCalls(calls []RecordedCall) []RecordedCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	out := make([]RecordedCall, len(calls))
+	for i, call := range calls {
+		out[i] = call
+		if call.Explanation != nil {
+			explanation := *call.Explanation
+			out[i].Explanation = &explanation
+		}
+	}
+	return out
 }
