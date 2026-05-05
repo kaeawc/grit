@@ -1,6 +1,7 @@
 package transform
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -36,6 +37,7 @@ func DiffActionHash(old, new Action) []FieldDelta {
 
 	deltas = append(deltas, diffEnv(old.Env, new.Env)...)
 	deltas = append(deltas, diffInputs(old.Inputs, new.Inputs)...)
+	deltas = append(deltas, diffOrderedInputs(old.OrderedInputs, new.OrderedInputs)...)
 	deltas = append(deltas, diffOutputs(old.Outputs, new.Outputs)...)
 
 	return deltas
@@ -103,6 +105,45 @@ func diffInputs(oldInputs, newInputs []Input) []FieldDelta {
 		deltas = append(deltas, FieldDelta{"Inputs[" + r + "]", ov, nv})
 	}
 	return deltas
+}
+
+// diffOrderedInputs reports per-position input deltas. OrderedInputs preserve
+// caller-provided order because classpath-like inputs can shadow each other.
+func diffOrderedInputs(oldInputs, newInputs []Input) []FieldDelta {
+	if len(oldInputs) == 0 && len(newInputs) == 0 {
+		return nil
+	}
+	maxLen := len(oldInputs)
+	if len(newInputs) > maxLen {
+		maxLen = len(newInputs)
+	}
+	var deltas []FieldDelta
+	for i := 0; i < maxLen; i++ {
+		var oldInput, newInput Input
+		if i < len(oldInputs) {
+			oldInput = oldInputs[i]
+		}
+		if i < len(newInputs) {
+			newInput = newInputs[i]
+		}
+		ov := formatInput(oldInput)
+		nv := formatInput(newInput)
+		if ov == nv {
+			continue
+		}
+		deltas = append(deltas, FieldDelta{fmt.Sprintf("OrderedInputs[%d]", i), ov, nv})
+	}
+	return deltas
+}
+
+func formatInput(input Input) string {
+	if input.Role == "" && input.Hash.IsZero() {
+		return ""
+	}
+	if input.Role == "" {
+		return input.Hash.String()
+	}
+	return input.Role + ":" + input.Hash.String()
 }
 
 // diffOutputs reports per-role Output deltas mirroring diffInputs.

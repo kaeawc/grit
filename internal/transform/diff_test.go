@@ -98,6 +98,43 @@ func TestDiffActionHash_InputOrderIrrelevant(t *testing.T) {
 	}
 }
 
+func TestDiffActionHash_OrderedInputOrderReported(t *testing.T) {
+	h1 := cas.HashBytes([]byte("a.jar"))
+	h2 := cas.HashBytes([]byte("b.jar"))
+	old := Action{
+		OrderedInputs: []Input{{Role: "classpath", Hash: h1}, {Role: "classpath", Hash: h2}},
+	}
+	new := Action{
+		OrderedInputs: []Input{{Role: "classpath", Hash: h2}, {Role: "classpath", Hash: h1}},
+	}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 2 {
+		t.Fatalf("expected 2 ordered input deltas, got %d: %+v", len(deltas), deltas)
+	}
+	if deltas[0].FieldName != "OrderedInputs[0]" || deltas[1].FieldName != "OrderedInputs[1]" {
+		t.Fatalf("unexpected ordered input fields: %+v", deltas)
+	}
+	if deltas[0].OldValue != "classpath:"+h1.String() || deltas[0].NewValue != "classpath:"+h2.String() {
+		t.Fatalf("unexpected first ordered input delta: %+v", deltas[0])
+	}
+	if deltas[1].OldValue != "classpath:"+h2.String() || deltas[1].NewValue != "classpath:"+h1.String() {
+		t.Fatalf("unexpected second ordered input delta: %+v", deltas[1])
+	}
+}
+
+func TestDiffActionHash_OrderedInputAddedAndRemoved(t *testing.T) {
+	h := cas.HashBytes([]byte("a.jar"))
+	old := Action{OrderedInputs: []Input{{Role: "classpath", Hash: h}}}
+	new := Action{}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 1 {
+		t.Fatalf("expected 1 ordered input delta, got %d: %+v", len(deltas), deltas)
+	}
+	if deltas[0].FieldName != "OrderedInputs[0]" || deltas[0].OldValue != "classpath:"+h.String() || deltas[0].NewValue != "" {
+		t.Fatalf("unexpected ordered input removal delta: %+v", deltas[0])
+	}
+}
+
 func TestDiffActionHash_EmptyActions(t *testing.T) {
 	deltas := DiffActionHash(Action{}, Action{})
 	if len(deltas) != 0 {
