@@ -46,6 +46,45 @@ func TestTimingDataMarshalParallel(t *testing.T) {
 	}
 }
 
+func TestListCopiesInputEntries(t *testing.T) {
+	t.Parallel()
+
+	entries := []TimingEntry{{Name: "load", DurationMs: 12}}
+	data := List(entries)
+	entries[0] = TimingEntry{Name: "mutated", DurationMs: 99}
+
+	got := data.Entries()
+	if len(got) != 1 {
+		t.Fatalf("entries len = %d, want 1", len(got))
+	}
+	if got[0].Name != "load" || got[0].DurationMs != 12 {
+		t.Fatalf("List aliased caller entries: %#v", got[0])
+	}
+}
+
+func TestMapCopiesInputEntries(t *testing.T) {
+	t.Parallel()
+
+	entries := []TimingEntry{{Name: "compile", DurationMs: 34}}
+	data := Map(entries)
+	entries[0] = TimingEntry{Name: "mutated", DurationMs: 99}
+
+	got, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]TimingEntry
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := decoded["mutated"]; ok {
+		t.Fatalf("Map aliased caller entries: %#v", decoded)
+	}
+	if decoded["compile"].DurationMs != 34 {
+		t.Fatalf("unexpected copied map entry: %#v", decoded)
+	}
+}
+
 func TestTrackerNestedTimings(t *testing.T) {
 	t.Parallel()
 

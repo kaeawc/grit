@@ -45,11 +45,20 @@ func newTimingMap(entries []TimingEntry) *TimingData {
 }
 
 func List(entries []TimingEntry) *TimingData {
-	return newTimingList(entries)
+	return newTimingList(cloneTimingEntries(entries))
 }
 
 func Map(entries []TimingEntry) *TimingData {
-	return newTimingMap(entries)
+	return newTimingMap(cloneTimingEntries(entries))
+}
+
+func cloneTimingEntries(entries []TimingEntry) []TimingEntry {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]TimingEntry, len(entries))
+	copy(out, entries)
+	return out
 }
 
 func (d *TimingData) MarshalJSON() ([]byte, error) {
