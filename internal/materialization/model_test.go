@@ -193,3 +193,32 @@ func TestMaterializationWithClasspathSnapshotsCanonicalizesAndIndexes(t *testing
 		t.Fatalf("unexpected classpath snapshot ref: %#v", ref)
 	}
 }
+
+func TestMaterializationClasspathSnapshotCopiesEntries(t *testing.T) {
+	m := NewMaterialization(
+		":app",
+		"debug",
+		ModeSourceBacked,
+		nil,
+		"",
+		nil,
+		nil,
+		Provenance{},
+	).WithClasspathSnapshots([]ClasspathSnapshotReference{
+		{ID: "cp", Entries: []string{"/tmp/a", "/tmp/b"}},
+	})
+
+	ref, ok := m.ClasspathSnapshot("cp")
+	if !ok {
+		t.Fatal("expected classpath snapshot lookup")
+	}
+	ref.Entries[0] = "/tmp/mutated"
+
+	refAgain, ok := m.ClasspathSnapshot("cp")
+	if !ok {
+		t.Fatal("expected second classpath snapshot lookup")
+	}
+	if got := refAgain.Entries[0]; got != "/tmp/a" {
+		t.Fatalf("lookup result entries alias stored materialization: got %q", got)
+	}
+}
