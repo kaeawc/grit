@@ -16,6 +16,7 @@ import (
 
 	"github.com/kaeawc/grit/internal/admission"
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/clock"
 	"github.com/kaeawc/grit/internal/configmodel"
 	"github.com/kaeawc/grit/internal/graph"
 	"github.com/kaeawc/grit/internal/integration"
@@ -227,6 +228,8 @@ func TestBuildRoutesToCompiler(t *testing.T) {
 		},
 	}}
 	svc := NewWithCompiler(fake)
+	fixedNow := time.Date(2026, 5, 4, 17, 40, 23, 0, time.UTC)
+	svc.SetClock(clock.NewFake(fixedNow))
 	prj := testsupport.Project(root, testsupport.Module(":app", "android-application", "debug"))
 	mod := prj.FindModule(":app")
 	if mod == nil {
@@ -468,9 +471,13 @@ func TestBuildRoutesToCompiler(t *testing.T) {
 			State string `json:"state"`
 		} `json:"cacheProbes"`
 		PerfTiming json.RawMessage `json:"perfTiming"`
+		WrittenAt  string          `json:"writtenAt"`
 	}
 	if err := json.Unmarshal(data, &summary); err != nil {
 		t.Fatalf("unmarshal run summary: %v", err)
+	}
+	if summary.WrittenAt != fixedNow.Format(time.RFC3339) {
+		t.Fatalf("unexpected writtenAt in run summary: got %q want %q", summary.WrittenAt, fixedNow.Format(time.RFC3339))
 	}
 	if summary.Command != "compile-debug" || summary.ModulePath != ":app" || !summary.Success || summary.Variant != "debug" {
 		t.Fatalf("unexpected run summary: %s", data)
@@ -1166,7 +1173,7 @@ func TestExecuteBatchUsesAdmissionControllerForResourcePacing(t *testing.T) {
 func TestBuildAssembleRoutesEveryVariant(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)
-	prj := testsupport.Project("repo", testsupport.Module(":app", "android-application", "debug", "release"))
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug", "release"))
 	mod := prj.FindModule(":app")
 	if mod == nil {
 		t.Fatal("expected module")
