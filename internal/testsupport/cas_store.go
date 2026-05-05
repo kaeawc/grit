@@ -68,7 +68,7 @@ func (s *CASStoreRecorder) PutBytesExpected(ctx context.Context, data []byte, ex
 	defer s.mu.Unlock()
 	s.Blobs[expected] = append([]byte(nil), data...)
 	if _, ok := s.Provenances[expected]; !ok {
-		s.Provenances[expected] = prov
+		s.Provenances[expected] = cloneProvenance(prov)
 	}
 	return cas.BlobInfo{Hash: expected, Size: int64(len(data))}, nil
 }
@@ -123,7 +123,7 @@ func (s *CASStoreRecorder) Provenance(ctx context.Context, h cas.Hash) (cas.Prov
 	if !ok {
 		return cas.Provenance{}, cas.ErrNotFound
 	}
-	return prov, nil
+	return cloneProvenance(prov), nil
 }
 
 func (s *CASStoreRecorder) PutActionResult(ctx context.Context, result cas.ActionResult) error {
@@ -135,7 +135,7 @@ func (s *CASStoreRecorder) PutActionResult(ctx context.Context, result cas.Actio
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.Results[result.ActionHash] = result
+	s.Results[result.ActionHash] = cloneActionResult(result)
 	return nil
 }
 
@@ -150,7 +150,7 @@ func (s *CASStoreRecorder) GetActionResult(ctx context.Context, actionHash cas.H
 	if !ok {
 		return cas.ActionResult{}, cas.ErrNotFound
 	}
-	return result, nil
+	return cloneActionResult(result), nil
 }
 
 func (s *CASStoreRecorder) CallsSnapshot() []CASStoreCall {
@@ -167,4 +167,38 @@ func (s *CASStoreRecorder) recordCall(call CASStoreCall) error {
 	defer s.mu.Unlock()
 	s.Calls = append(s.Calls, call)
 	return nil
+}
+
+func cloneActionResult(result cas.ActionResult) cas.ActionResult {
+	result.Outputs = append([]cas.NamedOutput(nil), result.Outputs...)
+	return result
+}
+
+func cloneProvenance(prov cas.Provenance) cas.Provenance {
+	prov.Source = cloneSource(prov.Source)
+	if prov.Attributes != nil {
+		attributes := make(map[string]string, len(prov.Attributes))
+		for key, value := range prov.Attributes {
+			attributes[key] = value
+		}
+		prov.Attributes = attributes
+	}
+	return prov
+}
+
+func cloneSource(source cas.Source) cas.Source {
+	if source.Download != nil {
+		download := *source.Download
+		source.Download = &download
+	}
+	if source.Transform != nil {
+		transform := *source.Transform
+		transform.Inputs = append([]cas.TransformInput(nil), source.Transform.Inputs...)
+		source.Transform = &transform
+	}
+	if source.Import != nil {
+		importSource := *source.Import
+		source.Import = &importSource
+	}
+	return source
 }
