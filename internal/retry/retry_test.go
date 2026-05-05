@@ -121,6 +121,44 @@ func TestMaxDelayCap(t *testing.T) {
 	}
 }
 
+func TestJitterAppliesDeterministicOffset(t *testing.T) {
+	s := &Instant{}
+	exec := New(s, &fakeRandom{floats: []float64{0, 1, 0.5}})
+	_ = exec.Do(context.Background(), Policy{
+		MaxAttempts:    4,
+		BaseDelay:      100 * time.Millisecond,
+		Multiplier:     2.0,
+		JitterFraction: 0.5,
+	}, func(context.Context, int) error { return errors.New("x") })
+
+	want := []time.Duration{50 * time.Millisecond, 300 * time.Millisecond, 400 * time.Millisecond}
+	if len(s.Delays) != len(want) {
+		t.Fatalf("got %d delays %v, want %d %v", len(s.Delays), s.Delays, len(want), want)
+	}
+	for i, d := range want {
+		if s.Delays[i] != d {
+			t.Errorf("delay[%d] = %v, want %v", i, s.Delays[i], d)
+		}
+	}
+}
+
+func TestJitterClampsNegativeDelay(t *testing.T) {
+	s := &Instant{}
+	exec := New(s, &fakeRandom{floats: []float64{0}})
+	_ = exec.Do(context.Background(), Policy{
+		MaxAttempts:    2,
+		BaseDelay:      100 * time.Millisecond,
+		JitterFraction: 2.0,
+	}, func(context.Context, int) error { return errors.New("x") })
+
+	if len(s.Delays) != 1 {
+		t.Fatalf("got %d delays %v, want 1", len(s.Delays), s.Delays)
+	}
+	if s.Delays[0] != 0 {
+		t.Fatalf("delay = %v, want 0", s.Delays[0])
+	}
+}
+
 func TestContextCancelStopsRetry(t *testing.T) {
 	exec := New(Real{}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -147,4 +185,33 @@ func TestOnRetryCallback(t *testing.T) {
 	if len(attempts) != 2 || attempts[0] != 1 || attempts[1] != 2 {
 		t.Errorf("OnRetry calls = %v, want [1, 2]", attempts)
 	}
+}
+
+type fakeRandom struct {
+	floats []float64
+}
+
+func (f *fakeRandom) Float64() float64 {
+	if len(f.floats) == 0 {
+		panic("fakeRandom: no float values left")
+	}
+	out := f.floats[0]
+	f.floats = f.floats[1:]
+	return out
+}
+
+func (*fakeRandom) IntN(int) int {
+	panic("fakeRandom: IntN not implemented")
+}
+
+func (*fakeRandom) IntRange(int, int) int {
+	panic("fakeRandom: IntRange not implemented")
+}
+
+func (*fakeRandom) Bytes(int) ([]byte, error) {
+	panic("fakeRandom: Bytes not implemented")
+}
+
+func (*fakeRandom) UUID() string {
+	panic("fakeRandom: UUID not implemented")
 }
