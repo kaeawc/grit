@@ -161,8 +161,8 @@ func diffOutputs(oldOutputs, newOutputs []OutputDecl) []FieldDelta {
 		return nil
 	}
 	roles := map[string]struct{}{}
-	oldByRole := map[string]string{}
-	newByRole := map[string]string{}
+	oldByRole := map[string][]string{}
+	newByRole := map[string][]string{}
 	render := func(o OutputDecl) string {
 		if o.Kind != "" {
 			return o.Kind
@@ -170,11 +170,11 @@ func diffOutputs(oldOutputs, newOutputs []OutputDecl) []FieldDelta {
 		return o.Role
 	}
 	for _, o := range oldOutputs {
-		oldByRole[o.Role] = render(o)
+		oldByRole[o.Role] = append(oldByRole[o.Role], render(o))
 		roles[o.Role] = struct{}{}
 	}
 	for _, o := range newOutputs {
-		newByRole[o.Role] = render(o)
+		newByRole[o.Role] = append(newByRole[o.Role], render(o))
 		roles[o.Role] = struct{}{}
 	}
 	sorted := make([]string, 0, len(roles))
@@ -184,14 +184,23 @@ func diffOutputs(oldOutputs, newOutputs []OutputDecl) []FieldDelta {
 	sort.Strings(sorted)
 	var deltas []FieldDelta
 	for _, r := range sorted {
-		ov := oldByRole[r]
-		nv := newByRole[r]
+		ov := formatOutputDecls(oldByRole[r])
+		nv := formatOutputDecls(newByRole[r])
 		if ov == nv {
 			continue
 		}
 		deltas = append(deltas, FieldDelta{"Outputs[" + r + "]", ov, nv})
 	}
 	return deltas
+}
+
+func formatOutputDecls(outputs []string) string {
+	if len(outputs) == 0 {
+		return ""
+	}
+	sorted := append([]string(nil), outputs...)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ",")
 }
 
 // formatArgs returns a deterministic string representation of the Args slice.
