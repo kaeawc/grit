@@ -74,6 +74,113 @@ dependencies {}
 	}
 }
 
+func TestScheduleActionsCopiesScheduledActionMetadata(t *testing.T) {
+	model := &Model{}
+	actions := []graph.Action{{
+		ID:      graph.ActionID("action:compile"),
+		Name:    "compileDebugSources",
+		Kind:    graph.ActionKindCompile,
+		Inputs:  []graph.ArtifactID{graph.ArtifactID("artifact:input")},
+		Outputs: []graph.ArtifactID{graph.ArtifactID("artifact:output")},
+		Attributes: map[string]string{
+			"operation": "compile",
+		},
+	}}
+
+	schedule := model.ScheduleActions(actions)
+	actions[0].Inputs[0] = graph.ArtifactID("artifact:mutated-input")
+	actions[0].Outputs[0] = graph.ArtifactID("artifact:mutated-output")
+	actions[0].Attributes["operation"] = "mutated"
+
+	step, ok := schedule.StepFor(graph.ActionID("action:compile"))
+	if !ok {
+		t.Fatal("expected schedule step")
+	}
+	if got, want := step.Action.Inputs[0], graph.ArtifactID("artifact:input"); got != want {
+		t.Fatalf("scheduled action input = %q, want %q", got, want)
+	}
+	if got, want := step.Action.Outputs[0], graph.ArtifactID("artifact:output"); got != want {
+		t.Fatalf("scheduled action output = %q, want %q", got, want)
+	}
+	if got, want := step.Action.Attributes["operation"], "compile"; got != want {
+		t.Fatalf("scheduled action operation = %q, want %q", got, want)
+	}
+}
+
+func TestActionScheduleAccessorsReturnCopies(t *testing.T) {
+	model := &Model{
+		Summary: project.SemanticGraphSummary{
+			Modules: []project.SemanticModuleSummary{{
+				Path: ":app",
+				Variants: []project.SemanticVariantSummary{{
+					Name: "debug",
+					Actions: []project.SemanticActionSummary{{
+						ID:             "action:compile",
+						LastCacheProbe: &responsepayload.CacheProbe{ActionID: "action:compile", State: "reused"},
+					}},
+				}},
+			}},
+		},
+	}
+	schedule := model.ScheduleActions([]graph.Action{{
+		ID:      graph.ActionID("action:compile"),
+		Name:    "compileDebugSources",
+		Kind:    graph.ActionKindCompile,
+		Inputs:  []graph.ArtifactID{graph.ArtifactID("artifact:input")},
+		Outputs: []graph.ArtifactID{graph.ArtifactID("artifact:output")},
+		Attributes: map[string]string{
+			"operation": "compile",
+		},
+	}})
+
+	ordered := schedule.OrderedActions()
+	ordered[0].Inputs[0] = graph.ArtifactID("artifact:mutated-input")
+	ordered[0].Outputs[0] = graph.ArtifactID("artifact:mutated-output")
+	ordered[0].Attributes["operation"] = "mutated"
+	schedule.Batches[0][0].Action.Inputs[0] = graph.ArtifactID("artifact:batch-mutated-input")
+	schedule.Batches[0][0].Action.Outputs[0] = graph.ArtifactID("artifact:batch-mutated-output")
+	schedule.Batches[0][0].Action.Attributes["operation"] = "batch-mutated"
+	schedule.Batches[0][0].ProbeOrder[0] = "batch-mutated-tier"
+	schedule.Batches[0][0].ProbeHint.State = "batch-mutated"
+
+	step, ok := schedule.StepFor(graph.ActionID("action:compile"))
+	if !ok {
+		t.Fatal("expected schedule step")
+	}
+	step.Action.Inputs[0] = graph.ArtifactID("artifact:step-mutated-input")
+	step.Action.Outputs[0] = graph.ArtifactID("artifact:step-mutated-output")
+	step.Action.Attributes["operation"] = "step-mutated"
+	step.Dependencies = append(step.Dependencies, graph.ActionID("action:mutated-dependency"))
+	step.ProbeOrder[0] = "mutated-tier"
+	step.ProbeHint.State = "mutated"
+
+	fresh, ok := schedule.StepFor(graph.ActionID("action:compile"))
+	if !ok {
+		t.Fatal("expected fresh schedule step")
+	}
+	if got, want := fresh.Action.Inputs[0], graph.ArtifactID("artifact:input"); got != want {
+		t.Fatalf("fresh schedule step input = %q, want %q", got, want)
+	}
+	if got, want := fresh.Action.Outputs[0], graph.ArtifactID("artifact:output"); got != want {
+		t.Fatalf("fresh schedule step output = %q, want %q", got, want)
+	}
+	if got, want := fresh.Action.Attributes["operation"], "compile"; got != want {
+		t.Fatalf("fresh schedule step operation = %q, want %q", got, want)
+	}
+	if len(fresh.Dependencies) != 0 {
+		t.Fatalf("fresh schedule step dependencies = %#v, want none", fresh.Dependencies)
+	}
+	if got, want := fresh.ProbeOrder[0], "local-overlay"; got != want {
+		t.Fatalf("fresh schedule probe order = %q, want %q", got, want)
+	}
+	if fresh.ProbeHint == nil {
+		t.Fatal("expected fresh schedule probe hint")
+	}
+	if got, want := fresh.ProbeHint.State, "reused"; got != want {
+		t.Fatalf("fresh schedule probe hint state = %q, want %q", got, want)
+	}
+}
+
 func TestScheduleActionsSplitsReadyBatchBySharedResourceBudget(t *testing.T) {
 	g := graph.New()
 	moduleID := graph.LogicalModuleID("module:app")
