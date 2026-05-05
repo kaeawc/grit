@@ -50,6 +50,23 @@ func TestJavaMainArgsDisablesStartupFlagsWhenOff(t *testing.T) {
 	}
 }
 
+func TestJavaMainArgsSkipsAppCDSForNonEmptyClasspathDirInAutoMode(t *testing.T) {
+	t.Setenv("GRIT_JVM_STARTUP_MODE", "")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Example.class"), []byte("class"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := javaMainArgs([]string{dir}, "example.Main", nil)
+	if err != nil {
+		t.Fatalf("javaMainArgs: %v", err)
+	}
+	joined := strings.Join(got, " ")
+	if strings.Contains(joined, "SharedArchiveFile") || strings.Contains(joined, "AutoCreateSharedArchive") {
+		t.Fatalf("did not expect AppCDS startup flags for classpath dir: %v", got)
+	}
+}
+
 func TestSharedArchiveFileArgExtractsArchivePath(t *testing.T) {
 	got, ok := sharedArchiveFileArg([]string{
 		"-Xshare:auto",

@@ -258,11 +258,15 @@ func writeGeneratedR8Rules(mod *project.Module, variant project.BuildType) (stri
 	path := filepath.Join(outDir, "grit-r8-rules.pro")
 	body := strings.Join([]string{
 		"-dontwarn kotlin.**",
+		"-dontwarn kotlinx.coroutines.javafx.**",
 		"-dontwarn kotlinx.coroutines.swing.**",
 		"-dontwarn javax.swing.**",
+		"-dontwarn javafx.**",
 		"-dontwarn java.awt.**",
 		"-dontwarn java.lang.StringLatin1**",
 		"-dontwarn java.lang.StringUTF16**",
+		"-dontwarn jdk.internal.misc.Unsafe",
+		"-dontwarn reactor.blockhound.integration.**",
 		"-dontwarn android.view.RenderNode",
 		"-dontwarn android.view.DisplayListCanvas",
 		"-dontwarn android.view.HardwareCanvas",

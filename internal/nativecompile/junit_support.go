@@ -5,8 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+
+	"github.com/kaeawc/grit/internal/gradlecache"
 )
 
 var (
@@ -26,7 +29,12 @@ func junitPlatformRunnerJar() string {
 }
 
 func buildJUnitPlatformRunnerJar() (string, error) {
-	root := filepath.Join(sharedNativeCacheRoot(), "jvm-support", "junit-platform-runner")
+	versions := alignedJUnitRuntimeVersions()
+	versionDir := versions.platform
+	if versionDir == "" {
+		versionDir = "latest"
+	}
+	root := filepath.Join(sharedNativeCacheRoot(), "jvm-support", "junit-platform-runner", versionDir)
 	jarPath := filepath.Join(root, "junit-platform-runner.jar")
 	if pathIsFile(jarPath) {
 		return jarPath, nil
@@ -106,6 +114,17 @@ public final class PlatformRunner {
 }
 
 func junitPlatformSupportJars() []string {
+	versions := alignedJUnitRuntimeVersions()
+	if versions.platform != "" {
+		return []string{
+			cachedGradleArtifactJar("org.junit.platform", "junit-platform-launcher", versions.platform),
+			cachedGradleArtifactJar("org.junit.platform", "junit-platform-engine", versions.platform),
+			cachedGradleArtifactJar("org.junit.platform", "junit-platform-commons", versions.platform),
+			findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.apiguardian", "apiguardian-api", "*", "*", "apiguardian-api-*.jar")),
+			findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.opentest4j", "opentest4j", "*", "*", "opentest4j-*.jar")),
+			findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.jspecify", "jspecify", "*", "*", "jspecify-*.jar")),
+		}
+	}
 	return []string{
 		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-launcher", "*", "*", "junit-platform-launcher-*.jar")),
 		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-engine", "*", "*", "junit-platform-engine-*.jar")),
@@ -117,9 +136,82 @@ func junitPlatformSupportJars() []string {
 }
 
 func junitJupiterEngineJar() string {
+	if versions := alignedJUnitRuntimeVersions(); versions.jupiter != "" {
+		return cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-engine", versions.jupiter)
+	}
 	return findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.jupiter", "junit-jupiter-engine", "*", "*", "junit-jupiter-engine-*.jar"))
 }
 
 func junitJupiterApiJar() string {
+	if versions := alignedJUnitRuntimeVersions(); versions.jupiter != "" {
+		return cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-api", versions.jupiter)
+	}
 	return findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.jupiter", "junit-jupiter-api", "*", "*", "junit-jupiter-api-*.jar"))
+}
+
+type junitRuntimeVersions struct {
+	platform string
+	jupiter  string
+}
+
+func alignedJUnitRuntimeVersions() junitRuntimeVersions {
+	versions := cachedGradleArtifactVersions("org.junit.platform", "junit-platform-launcher")
+	for i := len(versions) - 1; i >= 0; i-- {
+		platformVersion := versions[i]
+		jupiterVersion := junitJupiterVersionForPlatform(platformVersion)
+		if jupiterVersion == "" {
+			continue
+		}
+		if cachedGradleArtifactJar("org.junit.platform", "junit-platform-engine", platformVersion) == "" {
+			continue
+		}
+		if cachedGradleArtifactJar("org.junit.platform", "junit-platform-commons", platformVersion) == "" {
+			continue
+		}
+		if cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-api", jupiterVersion) == "" {
+			continue
+		}
+		if cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-engine", jupiterVersion) == "" {
+			continue
+		}
+		return junitRuntimeVersions{platform: platformVersion, jupiter: jupiterVersion}
+	}
+	return junitRuntimeVersions{}
+}
+
+func junitJupiterVersionForPlatform(platformVersion string) string {
+	parts := strings.Split(platformVersion, ".")
+	if len(parts) < 3 {
+		return ""
+	}
+	if parts[0] == "1" {
+		return "5." + strings.Join(parts[1:], ".")
+	}
+	return platformVersion
+}
+
+func cachedGradleArtifactVersions(group, module string) []string {
+	root := filepath.Join(gradlecache.Root(), group, module)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var versions []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			versions = append(versions, entry.Name())
+		}
+	}
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersion(versions[i], versions[j]) < 0
+	})
+	return versions
+}
+
+func cachedGradleArtifactJar(group, module, version string) string {
+	jars := findGradleArtifactJars(group, module, version)
+	if len(jars) == 0 {
+		return ""
+	}
+	return jars[0]
 }

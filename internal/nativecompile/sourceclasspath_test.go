@@ -176,6 +176,33 @@ func TestFilterKnownRuntimeDuplicatesDropsLiveDataCoreKtxWhenCorePresent(t *test
 	}
 }
 
+func TestFilterR8ProgramClasspathDropsDesugarJDKLibs(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"/tmp/repo/.grit/worktree/materialized-m2/com/android/tools/desugar_jdk_libs/2.1.5/desugar_jdk_libs-2.1.5.jar",
+		"/tmp/repo/.grit/worktree/materialized-m2/org/example/runtime/1.0/runtime-1.0.jar",
+	}
+	got := filterR8ProgramClasspath(paths)
+	if len(got) != 1 || got[0] != paths[1] {
+		t.Fatalf("unexpected filtered paths: %#v", got)
+	}
+}
+
+func TestFilterJUnitRuntimeSupportJarsDropsJUnitPlatformAndJupiter(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"/tmp/repo/.grit/worktree/materialized-m2/org/junit/platform/junit-platform-engine/1.9.2/junit-platform-engine-1.9.2.jar",
+		"/tmp/repo/.grit/worktree/materialized-m2/org.junit.jupiter/junit-jupiter-engine/5.9.2/junit-jupiter-engine-5.9.2.jar",
+		"/tmp/repo/.grit/worktree/materialized-m2/org/example/runtime/1.0/runtime-1.0.jar",
+	}
+	got := filterJUnitRuntimeSupportJars(paths)
+	if len(got) != 1 || got[0] != paths[2] {
+		t.Fatalf("unexpected filtered paths: %#v", got)
+	}
+}
+
 func TestArtifactKeyVersionRecognizesMaterializedMavenLayout(t *testing.T) {
 	t.Parallel()
 
