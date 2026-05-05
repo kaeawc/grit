@@ -438,6 +438,12 @@ func gradleModuleFilesForKinds(files []lockfile.PinFile, kinds ...lockfile.FileK
 	if len(out) == 0 {
 		return nil
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].URL != out[j].URL {
+			return out[i].URL < out[j].URL
+		}
+		return out[i].Name < out[j].Name
+	})
 	return out
 }
 
@@ -495,6 +501,15 @@ func gradleModuleCapabilities(pin lockfile.Pin) []gradleModuleCapability {
 	if len(out) == 0 {
 		return nil
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Group != out[j].Group {
+			return out[i].Group < out[j].Group
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].Version < out[j].Version
+	})
 	return out
 }
 
@@ -516,6 +531,15 @@ func gradleModuleDependencies(deps []lockfile.Coordinate) []gradleModuleDependen
 	if len(out) == 0 {
 		return nil
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Group != out[j].Group {
+			return out[i].Group < out[j].Group
+		}
+		if out[i].Module != out[j].Module {
+			return out[i].Module < out[j].Module
+		}
+		return out[i].Version.Requires < out[j].Version.Requires
+	})
 	return out
 }
 
