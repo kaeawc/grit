@@ -13,28 +13,48 @@ import (
 func (r *Resolver) resolveClosure(roots []Coordinate) ([]string, []AndroidLibrary, error) {
 	seen := map[string]bool{}
 	selectedByModule := map[string]string{}
-	var jars []string
-	var androidLibraries []AndroidLibrary
+	type artifactEntry struct {
+		coord          Coordinate
+		artifact       string
+		androidLibrary *AndroidLibrary
+	}
+	var entries []artifactEntry
 	queue := append([]Coordinate{}, roots...)
+
+	recordConflict := func(moduleKey, selected, discarded string) {
+		r.addConflict(ResolutionConflict{
+			Kind:        "version_conflict",
+			Module:      moduleKey,
+			Selected:    selected,
+			Discarded:   discarded,
+			Coordinates: []string{moduleKey + ":" + selected, moduleKey + ":" + discarded},
+		})
+	}
+	updateSelected := func(coord Coordinate) {
+		moduleKey := coord.Group + ":" + coord.Module
+		current, ok := selectedByModule[moduleKey]
+		if !ok {
+			selectedByModule[moduleKey] = coord.Version
+			return
+		}
+		if current == coord.Version {
+			return
+		}
+		if compareVersionStrings(coord.Version, current) > 0 {
+			selectedByModule[moduleKey] = coord.Version
+			recordConflict(moduleKey, coord.Version, current)
+			return
+		}
+		recordConflict(moduleKey, current, coord.Version)
+	}
 
 	for len(queue) > 0 {
 		frontier := append([]Coordinate{}, queue...)
 		queue = nil
 		var pending []Coordinate
 		for _, coord := range frontier {
+			updateSelected(coord)
 			key := coord.Group + ":" + coord.Module + ":" + coord.Version
-			moduleKey := coord.Group + ":" + coord.Module
-			if selected, ok := selectedByModule[moduleKey]; ok && selected != coord.Version {
-				r.addConflict(ResolutionConflict{
-					Kind:        "version_conflict",
-					Module:      moduleKey,
-					Selected:    selected,
-					Discarded:   coord.Version,
-					Coordinates: []string{moduleKey + ":" + selected, moduleKey + ":" + coord.Version},
-				})
-			} else if !ok {
-				selectedByModule[moduleKey] = coord.Version
-			}
 			if seen[key] {
 				continue
 			}
@@ -71,17 +91,31 @@ func (r *Resolver) resolveClosure(roots []Coordinate) ([]string, []AndroidLibrar
 		}
 		close(indexCh)
 		wg.Wait()
-		for _, result := range results {
+		for idx, result := range results {
 			if result.err != nil {
 				return nil, nil, result.err
 			}
-			if result.artifact != "" {
-				jars = append(jars, result.artifact)
-			}
-			if result.androidLibrary != nil && (result.androidLibrary.ManifestPath != "" || result.androidLibrary.ResDir != "") {
-				androidLibraries = append(androidLibraries, *result.androidLibrary)
-			}
+			entries = append(entries, artifactEntry{
+				coord:          pending[idx],
+				artifact:       result.artifact,
+				androidLibrary: result.androidLibrary,
+			})
 			queue = append(queue, result.deps...)
+		}
+	}
+
+	var jars []string
+	var androidLibraries []AndroidLibrary
+	for _, entry := range entries {
+		moduleKey := entry.coord.Group + ":" + entry.coord.Module
+		if selectedByModule[moduleKey] != entry.coord.Version {
+			continue
+		}
+		if entry.artifact != "" {
+			jars = append(jars, entry.artifact)
+		}
+		if entry.androidLibrary != nil && (entry.androidLibrary.ManifestPath != "" || entry.androidLibrary.ResDir != "") {
+			androidLibraries = append(androidLibraries, *entry.androidLibrary)
 		}
 	}
 
