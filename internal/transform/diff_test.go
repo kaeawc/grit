@@ -98,6 +98,44 @@ func TestDiffActionHash_InputOrderIrrelevant(t *testing.T) {
 	}
 }
 
+func TestDiffActionHash_SameRoleInputOrderIrrelevant(t *testing.T) {
+	h1 := cas.HashBytes([]byte("a"))
+	h2 := cas.HashBytes([]byte("b"))
+	old := Action{
+		Inputs: []Input{{Role: "src", Hash: h1}, {Role: "src", Hash: h2}},
+	}
+	new := Action{
+		Inputs: []Input{{Role: "src", Hash: h2}, {Role: "src", Hash: h1}},
+	}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 0 {
+		t.Fatalf("reordered same-role inputs should produce no deltas, got %d: %+v", len(deltas), deltas)
+	}
+}
+
+func TestDiffActionHash_SameRoleInputMultisetDiffers(t *testing.T) {
+	h1 := cas.HashBytes([]byte("a"))
+	h2 := cas.HashBytes([]byte("b"))
+	h3 := cas.HashBytes([]byte("c"))
+	old := Action{
+		Inputs: []Input{{Role: "src", Hash: h1}, {Role: "src", Hash: h2}},
+	}
+	new := Action{
+		Inputs: []Input{{Role: "src", Hash: h1}, {Role: "src", Hash: h3}},
+	}
+	deltas := DiffActionHash(old, new)
+	if len(deltas) != 1 {
+		t.Fatalf("expected 1 same-role input delta, got %d: %+v", len(deltas), deltas)
+	}
+	if deltas[0].FieldName != "Inputs[src]" {
+		t.Fatalf("expected Inputs[src], got %s", deltas[0].FieldName)
+	}
+	if deltas[0].OldValue != formatInputHashes([]string{h1.String(), h2.String()}) ||
+		deltas[0].NewValue != formatInputHashes([]string{h1.String(), h3.String()}) {
+		t.Fatalf("unexpected same-role input values: %+v", deltas[0])
+	}
+}
+
 func TestDiffActionHash_OrderedInputOrderReported(t *testing.T) {
 	h1 := cas.HashBytes([]byte("a.jar"))
 	h2 := cas.HashBytes([]byte("b.jar"))
