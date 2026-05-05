@@ -240,6 +240,46 @@ func TestGoAfterCanceledCtxRecordsError(t *testing.T) {
 	}
 }
 
+func TestGoAfterCanceledCtxWithoutLimitDoesNotRun(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	g, _ := WithContext(parent)
+	cancel()
+
+	var ran atomic.Bool
+	g.Go(func() error {
+		ran.Store(true)
+		return nil
+	})
+	err := g.Wait()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait err = %v, want context.Canceled", err)
+	}
+	if ran.Load() {
+		t.Fatal("fn should not run after group context is canceled")
+	}
+}
+
+func TestTryGoAfterCanceledCtxDoesNotRun(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	g, _ := WithContext(parent)
+	cancel()
+
+	var ran atomic.Bool
+	if g.TryGo(func() error {
+		ran.Store(true)
+		return nil
+	}) {
+		t.Fatal("TryGo should fail after group context is canceled")
+	}
+	err := g.Wait()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Wait err = %v, want context.Canceled", err)
+	}
+	if ran.Load() {
+		t.Fatal("fn should not run after group context is canceled")
+	}
+}
+
 func TestWaitReturnsNilWithoutAnyGo(t *testing.T) {
 	g, _ := WithContext(context.Background())
 	if err := g.Wait(); err != nil {
