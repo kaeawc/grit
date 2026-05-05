@@ -116,8 +116,8 @@ func (d *Downloader) Inner() downloader.Downloader {
 }
 
 // Fetch retries the wrapped downloader according to the configured
-// policy. Not-found errors are returned immediately so callers can
-// preserve ordinary fall-through behavior in chain compositions.
+// policy. By default, not-found errors are returned immediately so callers
+// can preserve ordinary fall-through behavior in chain compositions.
 func (d *Downloader) Fetch(ctx context.Context, pin lockfile.Pin, store cas.Store) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -130,9 +130,6 @@ func (d *Downloader) Fetch(ctx context.Context, pin lockfile.Pin, store cas.Stor
 		err := d.inner.Fetch(ctx, pin, store)
 		if err == nil {
 			return nil
-		}
-		if errors.Is(err, downloader.ErrNotFound) {
-			return err
 		}
 		lastErr = err
 		if !d.shouldRetry(err) {

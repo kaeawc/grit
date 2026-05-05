@@ -146,6 +146,36 @@ func TestFetchReturnsNotFoundWithoutRetry(t *testing.T) {
 	}
 }
 
+func TestFetchAllowsRetryPredicateToRetryNotFound(t *testing.T) {
+	ctx := context.Background()
+	payload := []byte("late payload")
+	hash := cas.HashBytes(payload)
+
+	inner := &stubDownloader{
+		id:   "eventual",
+		errs: []error{fmt.Errorf("%w: not yet replicated", downloader.ErrNotFound)},
+		data: map[cas.Hash][]byte{hash: payload},
+	}
+	d, err := New(inner,
+		WithAttempts(2),
+		WithRetryable(func(error) bool { return true }),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store := cas.NewFilesystemStore(t.TempDir())
+	if err := d.Fetch(ctx, testPin(hash), store); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got := inner.callCount(); got != 2 {
+		t.Fatalf("call count: got %d, want 2", got)
+	}
+	if has, _ := store.Has(ctx, hash); !has {
+		t.Fatalf("payload not stored after retrying not-found")
+	}
+}
+
 func TestFetchUsesCustomRetryPredicate(t *testing.T) {
 	ctx := context.Background()
 	inner := &stubDownloader{
