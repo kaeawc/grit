@@ -18,7 +18,11 @@ func (r *Resolver) loadBOM(coord Coordinate) (map[string]string, error) {
 	path := r.moduleBasePath(coord)
 	pomFile, err := findFile(path, ".pom")
 	if err != nil {
-		return nil, err
+		fetched, fetchErr := r.fetchPOM(coord)
+		if fetchErr != nil {
+			return nil, err
+		}
+		pomFile = fetched
 	}
 	return parseBOM(pomFile)
 }
