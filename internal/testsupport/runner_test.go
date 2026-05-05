@@ -20,6 +20,21 @@ func TestCommandRunnerRecordsAndReplaysResponses(t *testing.T) {
 	}
 }
 
+func TestCommandRunnerCallsSnapshotReturnsCopies(t *testing.T) {
+	t.Parallel()
+
+	runner := NewCommandRunner()
+	runner.Run("adb", "install", "-r", "app.apk")
+
+	calls := runner.CallsSnapshot()
+	calls[0].Args[0] = "mutated"
+
+	fresh := runner.CallsSnapshot()
+	if got := fresh[0].Args[0]; got != "install" {
+		t.Fatalf("Args[0] = %q", got)
+	}
+}
+
 func TestADBInstallArgsRoundTrip(t *testing.T) {
 	t.Parallel()
 
