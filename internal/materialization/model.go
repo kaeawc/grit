@@ -155,6 +155,7 @@ func (m Materialization) ClasspathSnapshot(id string) (ClasspathSnapshotReferenc
 	id = strings.TrimSpace(id)
 	for _, ref := range m.ClasspathSnapshots {
 		if ref.ID == id {
+			ref.Entries = append([]string(nil), ref.Entries...)
 			return ref, true
 		}
 	}
