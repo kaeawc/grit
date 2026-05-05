@@ -59,7 +59,14 @@ func (r *CommandRunner) CallsSnapshot() []CommandInvocation {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]CommandInvocation(nil), r.calls...)
+	calls := make([]CommandInvocation, len(r.calls))
+	for i, call := range r.calls {
+		calls[i] = CommandInvocation{
+			Name: call.Name,
+			Args: append([]string(nil), call.Args...),
+		}
+	}
+	return calls
 }
 
 func (r *CommandRunner) Count(name string) int {
