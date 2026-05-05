@@ -499,7 +499,7 @@ func (s *Service) resolveExecutionPlanWithModel(ctx context.Context, model *conf
 			ModulePath:    mod.Path,
 			TargetVariant: plan.TargetVariant,
 			Variants:      append([]string(nil), plan.TargetVariants...),
-			Actions:       append([]graph.Action(nil), plan.Actions...),
+			Actions:       cloneGraphActions(plan.Actions),
 		}, view); err != nil {
 			return BuildPlan{}, err
 		}
@@ -852,6 +852,26 @@ func cloneMaterializationSummary(m project.SemanticMaterializationSummary) proje
 	m.ClasspathSnapshotIDs = append([]string(nil), m.ClasspathSnapshotIDs...)
 	m.SourceRoots = append([]string(nil), m.SourceRoots...)
 	return m
+}
+
+func cloneGraphActions(actions []graph.Action) []graph.Action {
+	if len(actions) == 0 {
+		return nil
+	}
+	out := make([]graph.Action, 0, len(actions))
+	for _, action := range actions {
+		action.Inputs = append([]graph.ArtifactID(nil), action.Inputs...)
+		action.Outputs = append([]graph.ArtifactID(nil), action.Outputs...)
+		if action.Attributes != nil {
+			attributes := make(map[string]string, len(action.Attributes))
+			for key, value := range action.Attributes {
+				attributes[key] = value
+			}
+			action.Attributes = attributes
+		}
+		out = append(out, action)
+	}
+	return out
 }
 
 func uninstallApplication(ctx context.Context, mod *project.Module, deviceSerial string) error {

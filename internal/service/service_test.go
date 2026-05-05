@@ -1397,6 +1397,69 @@ func TestResolveExecutionPlanInvokesHooksWithReadOnlyModel(t *testing.T) {
 	}
 }
 
+func TestResolveExecutionPlanCopiesActionsForPlanHooks(t *testing.T) {
+	root := t.TempDir()
+	prj := &project.Project{
+		RootDir: root,
+		Name:    "ServiceTest",
+		Modules: []project.Module{
+			{
+				Path:       ":app",
+				Dir:        filepath.Join(root, "app"),
+				BuildFile:  filepath.Join(root, "app", "build.gradle.kts"),
+				Type:       "android-application",
+				BuildTypes: map[string]project.BuildType{"debug": {Name: "debug"}},
+			},
+		},
+	}
+	if err := os.MkdirAll(filepath.Join(root, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "app/build.gradle.kts", "dependencies {}\n")
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	svc := NewWithCompiler(&testsupport.CompilerRecorder{})
+	svc.RegisterHook(&testsupport.HookRecorder{
+		AfterFn: func(_ context.Context, result integration.PlanResult, _ integration.ReadOnlyModel) error {
+			if len(result.Actions) == 0 {
+				t.Fatal("expected plan actions")
+			}
+			if result.Actions[0].Attributes != nil {
+				result.Actions[0].Attributes["operation"] = "mutated"
+			}
+			if len(result.Actions[0].Inputs) > 0 {
+				result.Actions[0].Inputs[0] = "artifact.mutated"
+			}
+			if len(result.Actions[0].Outputs) > 0 {
+				result.Actions[0].Outputs[0] = "artifact.mutated"
+			}
+			return nil
+		},
+	})
+
+	plan, err := svc.ResolveExecutionPlan(prj, mod, "assemble", "debug", false)
+	if err != nil {
+		t.Fatalf("ResolveExecutionPlan returned error: %v", err)
+	}
+	for _, action := range plan.Actions {
+		if action.Attributes["operation"] == "mutated" {
+			t.Fatalf("hook mutation leaked into plan action attributes: %#v", action)
+		}
+		for _, input := range action.Inputs {
+			if input == "artifact.mutated" {
+				t.Fatalf("hook mutation leaked into plan action inputs: %#v", action)
+			}
+		}
+		for _, output := range action.Outputs {
+			if output == "artifact.mutated" {
+				t.Fatalf("hook mutation leaked into plan action outputs: %#v", action)
+			}
+		}
+	}
+}
+
 func TestExecuteBatchDeferRemoteWithAdmissionController(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)
