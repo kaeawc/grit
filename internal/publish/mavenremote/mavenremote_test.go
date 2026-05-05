@@ -166,6 +166,53 @@ func TestPublishPinSkipsGeneratedFilesWhenPinAlreadyCarriesThem(t *testing.T) {
 	}
 }
 
+func TestGeneratedModulePayloadStableAcrossPinOrdering(t *testing.T) {
+	files := []lockfile.PinFile{
+		{Kind: lockfile.FileKindPrimary, Name: "demo-b.jar"},
+		{Kind: lockfile.FileKindSources, Name: "demo-sources-b.jar"},
+		{Kind: lockfile.FileKindJavadoc, Name: "demo-javadoc-b.jar"},
+		{Kind: lockfile.FileKindPrimary, Name: "demo-a.jar"},
+		{Kind: lockfile.FileKindSources, Name: "demo-sources-a.jar"},
+		{Kind: lockfile.FileKindJavadoc, Name: "demo-javadoc-a.jar"},
+	}
+	deps := []lockfile.Coordinate{
+		{Group: "org.dep", Artifact: "zeta", Version: "2.0"},
+		{Group: "org.dep", Artifact: "alpha", Version: "1.0"},
+	}
+	caps := []string{"org.example:zeta:2.0", "org.example:alpha:1.0"}
+
+	forward := lockfile.Pin{
+		Coordinate:   lockfile.Coordinate{Group: "org.example", Artifact: "demo", Version: "1.0.0"},
+		Files:        append([]lockfile.PinFile(nil), files...),
+		Dependencies: append([]lockfile.Coordinate(nil), deps...),
+		Capabilities: append([]string(nil), caps...),
+	}
+	reversed := lockfile.Pin{
+		Coordinate:   forward.Coordinate,
+		Files:        reversePinFiles(files),
+		Dependencies: reverseCoordinates(deps),
+		Capabilities: reverseStrings(caps),
+	}
+
+	want, ok, err := generatedModulePayload(forward)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected generated module payload")
+	}
+	got, ok, err := generatedModulePayload(reversed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected generated module payload for reversed pin")
+	}
+	if string(got) != string(want) {
+		t.Fatalf("generated module metadata changed with input ordering\nforward:\n%s\nreversed:\n%s", want, got)
+	}
+}
+
 func TestPublishPinSendsStaticAndEnvHeaders(t *testing.T) {
 	fake := newFakePublishMaven()
 	ts := httptest.NewServer(fake.handler())
@@ -247,4 +294,28 @@ func TestPublishPinRedactsCredentialsInErrors(t *testing.T) {
 	if strings.Contains(err.Error(), "alice") || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("error leaked credentials: %v", err)
 	}
+}
+
+func reversePinFiles(in []lockfile.PinFile) []lockfile.PinFile {
+	out := append([]lockfile.PinFile(nil), in...)
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
+}
+
+func reverseCoordinates(in []lockfile.Coordinate) []lockfile.Coordinate {
+	out := append([]lockfile.Coordinate(nil), in...)
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
+}
+
+func reverseStrings(in []string) []string {
+	out := append([]string(nil), in...)
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
 }
