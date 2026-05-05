@@ -223,7 +223,7 @@ func (m *Model) Module(path string) (Module, bool) {
 	}
 	for _, mod := range m.Modules {
 		if mod.Path == path {
-			return mod, true
+			return cloneModule(mod), true
 		}
 	}
 	return Module{}, false
@@ -233,10 +233,122 @@ func (m Module) Variant(name string) (Variant, bool) {
 	name = strings.TrimSpace(name)
 	for _, variant := range m.Variants {
 		if variant.Name == name {
-			return variant, true
+			return cloneVariant(variant), true
 		}
 	}
 	return Variant{}, false
+}
+
+func cloneModule(mod Module) Module {
+	mod.Identity = cloneIdentity(mod.Identity)
+	mod.KotlinFreeCompilerArgs = cloneStringSlice(mod.KotlinFreeCompilerArgs)
+	mod.LintDisabledChecks = cloneStringSlice(mod.LintDisabledChecks)
+	mod.ConsumerProguardFiles = cloneStringSlice(mod.ConsumerProguardFiles)
+	mod.DefaultTasks = cloneStringSlice(mod.DefaultTasks)
+	mod.Tasks = append([]Task(nil), mod.Tasks...)
+	mod.TaskCatalog = append([]TaskCatalog(nil), mod.TaskCatalog...)
+	mod.Dependencies = append([]Dependency(nil), mod.Dependencies...)
+	mod.Variants = cloneVariants(mod.Variants)
+	return mod
+}
+
+func cloneVariants(variants []Variant) []Variant {
+	if len(variants) == 0 {
+		return nil
+	}
+	out := make([]Variant, 0, len(variants))
+	for _, variant := range variants {
+		out = append(out, cloneVariant(variant))
+	}
+	return out
+}
+
+func cloneVariant(variant Variant) Variant {
+	variant.Identity = cloneIdentity(variant.Identity)
+	variant.Compatibility = cloneCompatibility(variant.Compatibility)
+	variant.Flavors = cloneStringSlice(variant.Flavors)
+	variant.ProguardFiles = cloneStringSlice(variant.ProguardFiles)
+	variant.ConsumerProguardFiles = cloneStringSlice(variant.ConsumerProguardFiles)
+	variant.SourceSetOrder = cloneStringSlice(variant.SourceSetOrder)
+	variant.SourceSetNames = cloneStringSlice(variant.SourceSetNames)
+	variant.TaskAliases = cloneStringSlice(variant.TaskAliases)
+	variant.TaskCatalog = append([]TaskCatalog(nil), variant.TaskCatalog...)
+	variant.ModelSelectors = cloneStringSlice(variant.ModelSelectors)
+	variant.SyncFragments = cloneStringSlice(variant.SyncFragments)
+	variant.ContentRoots = cloneContentRoots(variant.ContentRoots)
+	variant.Materialization = cloneMaterialization(variant.Materialization)
+	variant.Dependencies = append([]Dependency(nil), variant.Dependencies...)
+	variant.OrderEntries = append([]OrderEntry(nil), variant.OrderEntries...)
+	variant.Actions = cloneActions(variant.Actions)
+	variant.Targets = cloneTargets(variant.Targets)
+	return variant
+}
+
+func cloneIdentity(identity Identity) Identity {
+	identity.IDESourceSetIDs = cloneStringSlice(identity.IDESourceSetIDs)
+	identity.ModelSelectors = cloneStringSlice(identity.ModelSelectors)
+	identity.SyncFragments = cloneStringSlice(identity.SyncFragments)
+	return identity
+}
+
+func cloneCompatibility(compatibility Compatibility) Compatibility {
+	compatibility.SourceSetOrder = cloneStringSlice(compatibility.SourceSetOrder)
+	compatibility.SourceSetNames = cloneStringSlice(compatibility.SourceSetNames)
+	compatibility.TaskAliases = cloneStringSlice(compatibility.TaskAliases)
+	compatibility.ModelSelectors = cloneStringSlice(compatibility.ModelSelectors)
+	compatibility.SyncFragments = cloneStringSlice(compatibility.SyncFragments)
+	return compatibility
+}
+
+func cloneContentRoots(roots []ContentRoot) []ContentRoot {
+	if len(roots) == 0 {
+		return nil
+	}
+	out := make([]ContentRoot, 0, len(roots))
+	for _, root := range roots {
+		root.Entries = append([]ContentEntry(nil), root.Entries...)
+		out = append(out, root)
+	}
+	return out
+}
+
+func cloneMaterialization(materialization Materialization) Materialization {
+	materialization.ClasspathSnapshotIDs = cloneStringSlice(materialization.ClasspathSnapshotIDs)
+	materialization.SourceRoots = cloneStringSlice(materialization.SourceRoots)
+	materialization.ManifestPaths = cloneStringSlice(materialization.ManifestPaths)
+	materialization.ProducedArtifactIDs = cloneStringSlice(materialization.ProducedArtifactIDs)
+	materialization.ProducedArtifacts = append([]Artifact(nil), materialization.ProducedArtifacts...)
+	return materialization
+}
+
+func cloneActions(actions []Action) []Action {
+	if len(actions) == 0 {
+		return nil
+	}
+	out := make([]Action, 0, len(actions))
+	for _, action := range actions {
+		action.Inputs = cloneStringSlice(action.Inputs)
+		action.Outputs = cloneStringSlice(action.Outputs)
+		out = append(out, action)
+	}
+	return out
+}
+
+func cloneTargets(targets []Target) []Target {
+	if len(targets) == 0 {
+		return nil
+	}
+	out := make([]Target, 0, len(targets))
+	for _, target := range targets {
+		target.TaskNames = cloneStringSlice(target.TaskNames)
+		target.ArtifactIDs = cloneStringSlice(target.ArtifactIDs)
+		out = append(out, target)
+	}
+	return out
+}
+
+func cloneStringSlice(values []string) []string {
+	return append([]string(nil), values...)
 }
 
 func (m Module) HasTask(name string) bool {
