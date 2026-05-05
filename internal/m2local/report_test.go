@@ -103,6 +103,32 @@ func TestResolveClosureReportsVersionConflict(t *testing.T) {
 	}
 }
 
+func TestResolveClosureKeepsOnlySelectedVersionArtifacts(t *testing.T) {
+	t.Parallel()
+
+	resolver := New(t.TempDir(), t.TempDir(), nil, nil)
+	older := Coordinate{Group: "g", Module: "m", Version: "1.0.0"}
+	newer := Coordinate{Group: "g", Module: "m", Version: "2.0.0"}
+	writeCachedArtifact(t, resolver.moduleBasePath(older), "m-1.0.0.jar")
+	newerJar := writeCachedArtifact(t, resolver.moduleBasePath(newer), "m-2.0.0.jar")
+
+	resolver.resetReport()
+	jars, _, err := resolver.resolveClosure([]Coordinate{older, newer})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jars) != 1 || jars[0] != newerJar {
+		t.Fatalf("expected only selected version artifact %q, got %#v", newerJar, jars)
+	}
+	report := resolver.snapshotReport()
+	if len(report.Conflicts) != 1 {
+		t.Fatalf("expected one conflict, got %#v", report)
+	}
+	if report.Conflicts[0].Selected != "2.0.0" || report.Conflicts[0].Discarded != "1.0.0" {
+		t.Fatalf("unexpected conflict mediation: %#v", report.Conflicts[0])
+	}
+}
+
 func writeModuleMetadataFile(t *testing.T, body string) string {
 	t.Helper()
 	path := t.TempDir() + "/module.module"
@@ -112,13 +138,15 @@ func writeModuleMetadataFile(t *testing.T, body string) string {
 	return path
 }
 
-func writeCachedArtifact(t *testing.T, base, name string) {
+func writeCachedArtifact(t *testing.T, base, name string) string {
 	t.Helper()
 	hashDir := base + "/hash"
 	if err := os.MkdirAll(hashDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(hashDir+"/"+name, []byte("artifact"), 0o644); err != nil {
+	path := hashDir + "/" + name
+	if err := os.WriteFile(path, []byte("artifact"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	return path
 }

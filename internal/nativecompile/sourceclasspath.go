@@ -375,9 +375,29 @@ func filterKnownRuntimeDuplicates(paths []string) []string {
 }
 
 func filterEmptyListenableFuture(paths []string) []string {
+	sep := string(os.PathSeparator)
+	isGuava := func(path string) bool {
+		if strings.Contains(path, sep+"com.google.guava"+sep+"guava"+sep) {
+			return true
+		}
+		if strings.Contains(path, sep+"com"+sep+"google"+sep+"guava"+sep+"guava"+sep) {
+			return true
+		}
+		base := filepath.Base(path)
+		return strings.HasPrefix(base, "guava-") && strings.HasSuffix(base, ".jar")
+	}
+	isListenableFuture := func(path string) bool {
+		if strings.Contains(path, sep+"com.google.guava"+sep+"listenablefuture"+sep) {
+			return true
+		}
+		if strings.Contains(path, sep+"com"+sep+"google"+sep+"guava"+sep+"listenablefuture"+sep) {
+			return true
+		}
+		return strings.HasPrefix(filepath.Base(path), "listenablefuture-")
+	}
 	hasGuava := false
 	for _, path := range paths {
-		if strings.Contains(path, string(os.PathSeparator)+"com.google.guava"+string(os.PathSeparator)+"guava"+string(os.PathSeparator)) {
+		if isGuava(path) {
 			hasGuava = true
 			break
 		}
@@ -387,8 +407,7 @@ func filterEmptyListenableFuture(paths []string) []string {
 	}
 	var out []string
 	for _, path := range paths {
-		if strings.Contains(path, string(os.PathSeparator)+"com.google.guava"+string(os.PathSeparator)+"listenablefuture"+string(os.PathSeparator)) ||
-			strings.Contains(filepath.Base(path), "listenablefuture-") {
+		if isListenableFuture(path) {
 			continue
 		}
 		out = append(out, path)

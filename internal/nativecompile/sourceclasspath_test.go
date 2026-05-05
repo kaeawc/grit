@@ -150,6 +150,19 @@ func TestFilterEmptyListenableFutureDropsStandardJarWhenGuavaPresent(t *testing.
 	}
 }
 
+func TestFilterEmptyListenableFutureRecognizesExpandedGroupPath(t *testing.T) {
+	t.Parallel()
+
+	paths := []string{
+		"/tmp/x/com/google/guava/guava/33.3.1-jre/guava-33.3.1-jre.jar",
+		"/tmp/x/com/google/guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar",
+	}
+	got := filterEmptyListenableFuture(paths)
+	if len(got) != 1 || got[0] != paths[0] {
+		t.Fatalf("unexpected filtered paths: %#v", got)
+	}
+}
+
 func TestFilterKnownRuntimeDuplicatesDropsLiveDataCoreKtxWhenCorePresent(t *testing.T) {
 	t.Parallel()
 
