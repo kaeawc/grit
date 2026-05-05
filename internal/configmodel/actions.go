@@ -82,7 +82,7 @@ func (s ActionSchedule) OrderedActions() []graph.Action {
 	}
 	out := make([]graph.Action, 0, len(s.Steps))
 	for _, step := range s.Steps {
-		out = append(out, step.Action)
+		out = append(out, cloneScheduledAction(step.Action))
 	}
 	return out
 }
@@ -90,7 +90,7 @@ func (s ActionSchedule) OrderedActions() []graph.Action {
 func (s ActionSchedule) StepFor(id graph.ActionID) (ActionScheduleStep, bool) {
 	for _, step := range s.Steps {
 		if step.Action.ID == id {
-			return step, true
+			return cloneActionScheduleStep(step), true
 		}
 	}
 	return ActionScheduleStep{}, false
@@ -171,7 +171,7 @@ func (m *Model) ScheduleActions(actions []graph.Action) ActionSchedule {
 	if len(actions) == 1 {
 		step := m.scheduleStepForAction(actions[0], nil)
 		schedule.Steps = append(schedule.Steps, step)
-		schedule.Batches = append(schedule.Batches, []ActionScheduleStep{step})
+		schedule.Batches = append(schedule.Batches, []ActionScheduleStep{cloneActionScheduleStep(step)})
 		schedule.BatchResources = append(schedule.BatchResources, batchResourceUsage([]ActionScheduleStep{step}))
 		return schedule
 	}
@@ -215,7 +215,7 @@ func (m *Model) ScheduleActions(actions []graph.Action) ActionSchedule {
 		for _, id := range current {
 			step := m.scheduleStepForAction(selected[id], schedule.Dependencies[id])
 			schedule.Steps = append(schedule.Steps, step)
-			batch = append(batch, step)
+			batch = append(batch, cloneActionScheduleStep(step))
 			for _, dep := range schedule.Dependents[id] {
 				indegree[dep]--
 				if indegree[dep] == 0 {
@@ -232,7 +232,7 @@ func (m *Model) ScheduleActions(actions []graph.Action) ActionSchedule {
 		schedule.Batches = make([][]ActionScheduleStep, 0, len(schedule.Steps))
 		schedule.BatchResources = make([]BatchResourceUsage, 0, len(schedule.Steps))
 		for _, step := range schedule.Steps {
-			schedule.Batches = append(schedule.Batches, []ActionScheduleStep{step})
+			schedule.Batches = append(schedule.Batches, []ActionScheduleStep{cloneActionScheduleStep(step)})
 			schedule.BatchResources = append(schedule.BatchResources, batchResourceUsage([]ActionScheduleStep{step}))
 		}
 	}
@@ -482,7 +482,7 @@ func (m *Model) toScheduleSteps(actions []graph.Action) []ActionScheduleStep {
 func (m *Model) scheduleStepForAction(action graph.Action, deps []graph.ActionID) ActionScheduleStep {
 	workerClass := workerClassForAction(action)
 	step := ActionScheduleStep{
-		Action:         action,
+		Action:         cloneScheduledAction(action),
 		Dependencies:   append([]graph.ActionID(nil), deps...),
 		WorkerClass:    workerClass,
 		MaxParallelism: maxParallelismForWorkerClass(workerClass),
@@ -523,6 +523,30 @@ func (m *Model) scheduleStepForAction(action graph.Action, deps []graph.ActionID
 		}
 	}
 	return step
+}
+
+func cloneActionScheduleStep(step ActionScheduleStep) ActionScheduleStep {
+	step.Action = cloneScheduledAction(step.Action)
+	step.Dependencies = append([]graph.ActionID(nil), step.Dependencies...)
+	step.ProbeOrder = append([]string(nil), step.ProbeOrder...)
+	if step.ProbeHint != nil {
+		probe := *step.ProbeHint
+		step.ProbeHint = &probe
+	}
+	return step
+}
+
+func cloneScheduledAction(action graph.Action) graph.Action {
+	action.Inputs = append([]graph.ArtifactID(nil), action.Inputs...)
+	action.Outputs = append([]graph.ArtifactID(nil), action.Outputs...)
+	if len(action.Attributes) > 0 {
+		attrs := make(map[string]string, len(action.Attributes))
+		for key, value := range action.Attributes {
+			attrs[key] = value
+		}
+		action.Attributes = attrs
+	}
+	return action
 }
 
 func batchResourceUsage(batch []ActionScheduleStep) BatchResourceUsage {
