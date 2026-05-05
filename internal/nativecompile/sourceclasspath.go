@@ -324,6 +324,98 @@ func excludePath(paths []string, target string) []string {
 	return out
 }
 
+func filterR8ProgramClasspath(paths []string) []string {
+	var out []string
+	for _, path := range paths {
+		if isDesugarJDKLibs(path) {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
+}
+
+func isDesugarJDKLibs(path string) bool {
+	sep := string(os.PathSeparator)
+	if strings.Contains(path, sep+"com.android.tools"+sep+"desugar_jdk_libs"+sep) {
+		return true
+	}
+	if strings.Contains(path, sep+"com"+sep+"android"+sep+"tools"+sep+"desugar_jdk_libs"+sep) {
+		return true
+	}
+	return strings.HasPrefix(filepath.Base(path), "desugar_jdk_libs-")
+}
+
+func junitRuntimeClasspath(classpath []string) []string {
+	return mergePaths(junitRuntimeSupportJars(), filterJUnitRuntimeSupportJars(classpath), runtimeSupportJars())
+}
+
+func junitRuntimeSupportJars() []string {
+	versions := alignedJUnitRuntimeVersions()
+	candidates := []string{}
+	candidates = append(candidates, junitPlatformSupportJars()...)
+	candidates = append(candidates, junitJupiterApiJar())
+	candidates = append(candidates, junitJupiterEngineJar())
+	if versions.jupiter != "" {
+		candidates = append(candidates, cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-params", versions.jupiter))
+		candidates = append(candidates, cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter", versions.jupiter))
+	} else {
+		candidates = append(candidates, latestArtifactJars("org.junit.jupiter", "junit-jupiter-params")...)
+		candidates = append(candidates, latestArtifactJars("org.junit.jupiter", "junit-jupiter")...)
+	}
+	if versions.platform != "" {
+		candidates = append(candidates, cachedGradleArtifactJar("org.junit.platform", "junit-platform-suite-api", versions.platform))
+	} else {
+		candidates = append(candidates, latestArtifactJars("org.junit.platform", "junit-platform-suite-api")...)
+	}
+	candidates = append(candidates, kotlinTestShimJar())
+	candidates = append(candidates, junitPlatformRunnerJar())
+	var out []string
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil { // #nosec
+			out = append(out, candidate)
+		}
+	}
+	return out
+}
+
+func filterJUnitRuntimeSupportJars(paths []string) []string {
+	var out []string
+	for _, path := range paths {
+		if isJUnitRuntimeSupportJar(path) {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
+}
+
+func isJUnitRuntimeSupportJar(path string) bool {
+	sep := string(os.PathSeparator)
+	for _, groupPath := range []string{
+		sep + "org.junit.platform" + sep,
+		sep + "org" + sep + "junit" + sep + "platform" + sep,
+		sep + "org.junit.jupiter" + sep,
+		sep + "org" + sep + "junit" + sep + "jupiter" + sep,
+		sep + "org.apiguardian" + sep,
+		sep + "org" + sep + "apiguardian" + sep,
+		sep + "org.opentest4j" + sep,
+		sep + "org" + sep + "opentest4j" + sep,
+		sep + "org.jspecify" + sep,
+		sep + "org" + sep + "jspecify" + sep,
+	} {
+		if strings.Contains(path, groupPath) {
+			return true
+		}
+	}
+	base := filepath.Base(path)
+	return strings.HasPrefix(base, "junit-platform-") ||
+		strings.HasPrefix(base, "junit-jupiter-") ||
+		strings.HasPrefix(base, "apiguardian-api-") ||
+		strings.HasPrefix(base, "opentest4j-") ||
+		strings.HasPrefix(base, "jspecify-")
+}
+
 func collapseVersions(paths []string) []string {
 	paths = filterEmptyListenableFuture(paths)
 	paths = filterKnownRuntimeDuplicates(paths)

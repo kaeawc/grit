@@ -27,12 +27,23 @@ func kotlinTestShimJar() string {
 }
 
 func buildKotlinTestShimJar() (string, error) {
-	root := filepath.Join(sharedNativeCacheRoot(), "jvm-support", "kotlin-test-shim")
+	versions := alignedJUnitRuntimeVersions()
+	versionDir := versions.platform
+	if versionDir == "" {
+		versionDir = "latest"
+	}
+	root := filepath.Join(sharedNativeCacheRoot(), "jvm-support", "kotlin-test-shim", versionDir)
 	jarPath := filepath.Join(root, "kotlin-test-shim.jar")
 	if pathIsFile(jarPath) {
 		return jarPath, nil
 	}
-	commonsJar := findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-commons", "*", "*", "junit-platform-commons-*.jar"))
+	commonsJar := ""
+	if versions.platform != "" {
+		commonsJar = cachedGradleArtifactJar("org.junit.platform", "junit-platform-commons", versions.platform)
+	}
+	if commonsJar == "" {
+		commonsJar = findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-commons", "*", "*", "junit-platform-commons-*.jar"))
+	}
 	if commonsJar == "" {
 		return "", fmt.Errorf("junit-platform-commons jar not found")
 	}

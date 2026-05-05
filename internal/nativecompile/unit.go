@@ -226,7 +226,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		_, _ = fmt.Fprintln(stdout, "compiled tests but found no JUnit test classes")
 		return nil
 	}
-	testRuntimeCP := append(testCP, testOut)
+	testRuntimeCP := junitRuntimeClasspath(append(testCP, testOut))
 	testRunCachePath := unitTestRunCachePath(prj.RootDir, mod.Path, variantName, testClasses, testRuntimeCP)
 	return c.track("runJUnit", func() error {
 		if canReuseUnitTestRun(testRunCachePath) {

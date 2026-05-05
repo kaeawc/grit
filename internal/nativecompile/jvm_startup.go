@@ -88,6 +88,9 @@ func javaStartupArgs(classpath []string, mainClass string) []string {
 	case jvmStartupCRaC:
 		return nil
 	default:
+		if configuredJVMStartupMode() == jvmStartupAuto && classpathHasNonEmptyDir(classpath) {
+			return nil
+		}
 		archive := appCDSArchivePath(classpath, mainClass)
 		return []string{
 			"-Xshare:auto",
@@ -95,6 +98,20 @@ func javaStartupArgs(classpath []string, mainClass string) []string {
 			"-XX:SharedArchiveFile=" + archive,
 		}
 	}
+}
+
+func classpathHasNonEmptyDir(classpath []string) bool {
+	for _, entry := range classpath {
+		info, err := os.Stat(entry)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		dirEntries, err := os.ReadDir(entry)
+		if err == nil && len(dirEntries) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func appCDSArchivePath(classpath []string, mainClass string) string {

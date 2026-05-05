@@ -3,10 +3,40 @@ package nativecompile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/project"
 	"github.com/kaeawc/grit/internal/testutil"
 )
+
+func TestWriteGeneratedR8RulesSuppressesOptionalDesktopDependencies(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	mod := &project.Module{
+		Dir: filepath.Join(root, "app"),
+	}
+	path, err := writeGeneratedR8Rules(mod, project.BuildType{Name: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	for _, rule := range []string{
+		"-dontwarn kotlinx.coroutines.javafx.**",
+		"-dontwarn javafx.**",
+		"-dontwarn jdk.internal.misc.Unsafe",
+		"-dontwarn reactor.blockhound.integration.**",
+	} {
+		if !strings.Contains(body, rule+"\n") {
+			t.Fatalf("generated R8 rules missing %q in:\n%s", rule, body)
+		}
+	}
+}
 
 func TestSharedAABAssemblyRoundTrip(t *testing.T) {
 	t.Parallel()

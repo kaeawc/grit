@@ -94,7 +94,7 @@ func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, s
 }
 
 func runJUnit(ctx context.Context, tests []string, classpath []string, stdout, stderr *os.File) error {
-	classpath = mergePaths(classpath, runtimeSupportJars())
+	classpath = junitRuntimeClasspath(classpath)
 	return runJavaMain(ctx, classpath, "grit.junit.PlatformRunner", tests, stdout, stderr)
 }
 
@@ -162,7 +162,8 @@ func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) e
 }
 
 func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
-	inputs := append([]string{classesJar, androidJarPath()}, collapseVersions(runtimeCP)...)
+	r8ProgramCP := filterR8ProgramClasspath(collapseVersions(runtimeCP))
+	inputs := append([]string{classesJar, androidJarPath()}, r8ProgramCP...)
 	if outputsNewerThanInputs(dexDir, inputs) {
 		return nil
 	}
@@ -170,7 +171,7 @@ func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, 
 	if err != nil {
 		return err
 	}
-	args := r8Args(androidJarPath(), mod, variant, classesJar, dexDir, collapseVersions(runtimeCP), extraRules)
+	args := r8Args(androidJarPath(), mod, variant, classesJar, dexDir, r8ProgramCP, extraRules)
 	if err := prepareJavaStartupArgs(args); err != nil {
 		return err
 	}
