@@ -80,14 +80,14 @@ func diffInputs(oldInputs, newInputs []Input) []FieldDelta {
 		return nil
 	}
 	roles := map[string]struct{}{}
-	oldByRole := map[string]string{}
-	newByRole := map[string]string{}
+	oldByRole := map[string][]string{}
+	newByRole := map[string][]string{}
 	for _, in := range oldInputs {
-		oldByRole[in.Role] = in.Hash.String()
+		oldByRole[in.Role] = append(oldByRole[in.Role], in.Hash.String())
 		roles[in.Role] = struct{}{}
 	}
 	for _, in := range newInputs {
-		newByRole[in.Role] = in.Hash.String()
+		newByRole[in.Role] = append(newByRole[in.Role], in.Hash.String())
 		roles[in.Role] = struct{}{}
 	}
 	sorted := make([]string, 0, len(roles))
@@ -97,14 +97,23 @@ func diffInputs(oldInputs, newInputs []Input) []FieldDelta {
 	sort.Strings(sorted)
 	var deltas []FieldDelta
 	for _, r := range sorted {
-		ov := oldByRole[r]
-		nv := newByRole[r]
+		ov := formatInputHashes(oldByRole[r])
+		nv := formatInputHashes(newByRole[r])
 		if ov == nv {
 			continue
 		}
 		deltas = append(deltas, FieldDelta{"Inputs[" + r + "]", ov, nv})
 	}
 	return deltas
+}
+
+func formatInputHashes(hashes []string) string {
+	if len(hashes) == 0 {
+		return ""
+	}
+	sorted := append([]string(nil), hashes...)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ",")
 }
 
 // diffOrderedInputs reports per-position input deltas. OrderedInputs preserve
