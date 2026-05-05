@@ -114,11 +114,24 @@ func (g *Group) Go(fn func() error) {
 }
 
 // TryGo schedules fn only if a slot is immediately available. Returns
-// false if a limit is set and exhausted, leaving fn unscheduled. With no
-// limit set, TryGo is equivalent to Go and always returns true.
+// false if a limit is set and exhausted or the group context is canceled,
+// leaving fn unscheduled. With no limit set and an active context, TryGo is
+// equivalent to Go and returns true.
 func (g *Group) TryGo(fn func() error) bool {
-	if lim := g.currentLimiter(); lim != nil && !lim.TryAcquire() {
+	if err := g.ctx.Err(); err != nil {
+		g.recordErr(fmt.Errorf("errgroup: acquire: %w", err))
 		return false
+	}
+	lim := g.currentLimiter()
+	if lim != nil {
+		if !lim.TryAcquire() {
+			return false
+		}
+		if err := g.ctx.Err(); err != nil {
+			lim.Release()
+			g.recordErr(fmt.Errorf("errgroup: acquire: %w", err))
+			return false
+		}
 	}
 	g.wg.Add(1)
 	go g.run(fn)
@@ -129,6 +142,10 @@ func (g *Group) TryGo(fn func() error) bool {
 // cancellation error if ctx was canceled mid-acquire (in which case the
 // caller should not spawn).
 func (g *Group) acquire() error {
+	if err := g.ctx.Err(); err != nil {
+		g.recordErr(fmt.Errorf("errgroup: acquire: %w", err))
+		return err
+	}
 	lim := g.currentLimiter()
 	if lim == nil {
 		return nil
