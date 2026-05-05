@@ -3,6 +3,8 @@ package perf
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/kaeawc/grit/internal/explain"
 )
 
 func TestRecorderTrackerUsesScriptedDurations(t *testing.T) {
@@ -65,5 +67,20 @@ func TestRecorderTrackerExposesCallLog(t *testing.T) {
 	}
 	if calls[1].Explanation == nil || calls[1].Explanation.State != "reused" {
 		t.Fatalf("expected probe explanation on tracked call, got %#v", calls[1])
+	}
+}
+
+func TestRecorderTrackerCallsReturnCopies(t *testing.T) {
+	t.Parallel()
+
+	tracker := NewRecorder().QueueDurations(0)
+	_ = tracker.Track("compileTests", func() error { return nil })
+
+	calls := tracker.Calls()
+	calls[0].Explanation.State = explain.StateRebuilt
+
+	fresh := tracker.Calls()
+	if fresh[0].Explanation == nil || fresh[0].Explanation.State != explain.StateReused {
+		t.Fatalf("recorder calls aliased explanation: %#v", fresh[0].Explanation)
 	}
 }
