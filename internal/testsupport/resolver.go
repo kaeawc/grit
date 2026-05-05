@@ -32,7 +32,7 @@ func (r *WiringResolverRecorder) Resolve(deps *modulebuild.Dependencies) (*m2loc
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if deps != nil {
-		r.Calls = append(r.Calls, *deps)
+		r.Calls = append(r.Calls, cloneDependencies(*deps))
 	}
 	return r.Result, r.Err
 }
@@ -60,5 +60,31 @@ func (r *WiringResolverRecorder) SetTopology(t m2local.CacheTopology) {
 func (r *WiringResolverRecorder) CallsSnapshot() []modulebuild.Dependencies {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]modulebuild.Dependencies(nil), r.Calls...)
+	calls := make([]modulebuild.Dependencies, len(r.Calls))
+	for i, call := range r.Calls {
+		calls[i] = cloneDependencies(call)
+	}
+	return calls
+}
+
+func cloneDependencies(deps modulebuild.Dependencies) modulebuild.Dependencies {
+	deps.Main = append([]modulebuild.Ref(nil), deps.Main...)
+	deps.Debug = append([]modulebuild.Ref(nil), deps.Debug...)
+	deps.Test = append([]modulebuild.Ref(nil), deps.Test...)
+	deps.AndroidTest = append([]modulebuild.Ref(nil), deps.AndroidTest...)
+	deps.CompileOnly = append([]modulebuild.Ref(nil), deps.CompileOnly...)
+	deps.RuntimeOnly = append([]modulebuild.Ref(nil), deps.RuntimeOnly...)
+	deps.TestCompileOnly = append([]modulebuild.Ref(nil), deps.TestCompileOnly...)
+	deps.TestRuntimeOnly = append([]modulebuild.Ref(nil), deps.TestRuntimeOnly...)
+	deps.AndroidTestCompileOnly = append([]modulebuild.Ref(nil), deps.AndroidTestCompileOnly...)
+	deps.AndroidTestRuntimeOnly = append([]modulebuild.Ref(nil), deps.AndroidTestRuntimeOnly...)
+	deps.CoreLibraryDesugaring = append([]modulebuild.Ref(nil), deps.CoreLibraryDesugaring...)
+	if deps.Scoped != nil {
+		scoped := make(map[string][]modulebuild.Ref, len(deps.Scoped))
+		for scope, refs := range deps.Scoped {
+			scoped[scope] = append([]modulebuild.Ref(nil), refs...)
+		}
+		deps.Scoped = scoped
+	}
+	return deps
 }
