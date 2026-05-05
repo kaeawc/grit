@@ -681,3 +681,77 @@ func TestParsePOMDepsResolvesProjectVersionPropertyWithParentVersion(t *testing.
 		t.Fatalf("expected resolved version 2.57.2, got %#v", got[0])
 	}
 }
+
+// TestResolveClosureParallelAvailableAtDoesNotExceedDepth pins down a
+// concurrency bug where a single shared atomic redirect counter caused
+// parallel resolutions to falsely trip the maxAvailableAtDepth ceiling.
+// Each module here redirects exactly once, so per-chain depth is 1 — but
+// resolveClosure dispatches up to 8 of them at once, which previously
+// pushed the global counter past 5 and surfaced as
+// "available-at redirect depth exceeded" for unrelated modules.
+func TestResolveClosureParallelAvailableAtDoesNotExceedDepth(t *testing.T) {
+	t.Parallel()
+
+	const moduleCount = maxAvailableAtDepth + 5
+
+	resolver := New(t.TempDir(), t.TempDir(), nil, nil)
+
+	roots := make([]Coordinate, 0, moduleCount)
+	for i := 0; i < moduleCount; i++ {
+		root := Coordinate{Group: "org.example", Module: fmt.Sprintf("umbrella-%d", i), Version: "1.0.0"}
+		target := Coordinate{Group: "org.example", Module: fmt.Sprintf("target-%d", i), Version: "1.0.0"}
+
+		rootBase := resolver.moduleBasePath(root) + "/hash"
+		if err := os.MkdirAll(rootBase, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		rootBody := fmt.Sprintf(`{
+			"variants": [{
+				"name": "jvmRuntimeElements",
+				"attributes": {
+					"org.jetbrains.kotlin.platform.type": "jvm",
+					"org.gradle.usage": "java-runtime"
+				},
+				"available-at": {
+					"group": "org.example",
+					"module": "%s",
+					"version": "1.0.0"
+				}
+			}]
+		}`, target.Module)
+		if err := os.WriteFile(fmt.Sprintf("%s/%s-1.0.0.module", rootBase, root.Module), []byte(rootBody), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		targetBase := resolver.moduleBasePath(target) + "/hash"
+		if err := os.MkdirAll(targetBase, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		targetBody := fmt.Sprintf(`{
+			"variants": [{
+				"name": "jvmRuntimeElements",
+				"attributes": {
+					"org.jetbrains.kotlin.platform.type": "jvm",
+					"org.gradle.usage": "java-runtime"
+				},
+				"files": [{"name":"%s-1.0.0.jar","url":"%s-1.0.0.jar"}]
+			}]
+		}`, target.Module, target.Module)
+		if err := os.WriteFile(fmt.Sprintf("%s/%s-1.0.0.module", targetBase, target.Module), []byte(targetBody), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(fmt.Sprintf("%s/%s-1.0.0.jar", targetBase, target.Module), []byte("jar"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		roots = append(roots, root)
+	}
+
+	jars, _, err := resolver.resolveClosure(roots)
+	if err != nil {
+		t.Fatalf("resolveClosure: %v", err)
+	}
+	if len(jars) != moduleCount {
+		t.Fatalf("expected %d jars from parallel redirects, got %d", moduleCount, len(jars))
+	}
+}

@@ -118,6 +118,10 @@ func matchesExclude(coord Coordinate, exclude Exclude) bool {
 }
 
 func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coordinate, error) {
+	return r.resolveOneDepth(coord, 0)
+}
+
+func (r *Resolver) resolveOneDepth(coord Coordinate, depth int) (string, *AndroidLibrary, []Coordinate, error) {
 	key := coordinateID(coord)
 	r.mu.Lock()
 	if call, ok := r.inflight[key]; ok {
@@ -162,7 +166,7 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 		}
 	}
 	if moduleFile != "" {
-		artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+		artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"), depth)
 		if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
 			call.result = resolveResult{err: err}
 			return "", nil, nil, err
@@ -197,7 +201,7 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 				}
 			}
 			if moduleFile != "" {
-				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"), depth)
 				if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
 					call.result = resolveResult{err: err}
 					return "", nil, nil, err
@@ -233,7 +237,7 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 				}
 			}
 			if moduleFile != "" {
-				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"), depth)
 				if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
 					call.result = resolveResult{err: err}
 					return "", nil, nil, err
@@ -274,7 +278,7 @@ func (r *Resolver) resolveOne(coord Coordinate) (string, *AndroidLibrary, []Coor
 				}
 			}
 			if moduleFile != "" {
-				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"))
+				artifact, androidLibrary, deps, err := r.resolveModuleMetadata(coord, moduleFile, r.metadataSourceForPath(moduleFile, "module"), depth)
 				if err != nil && errors.Is(err, errAvailableAtDepthExceeded) {
 					call.result = resolveResult{err: err}
 					return "", nil, nil, err
