@@ -2,7 +2,6 @@ package m2local
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/perf"
@@ -15,17 +14,16 @@ import (
 const maxAvailableAtDepth = 5
 
 type Resolver struct {
-	CacheRoot     string
-	WorkRoot      string
-	Repositories  []project.Repository
-	Catalog       *catalog.Catalog
-	Tracker       perf.Tracker
-	mu            sync.Mutex
-	inflight      map[string]*resolveCall
-	fetched       map[string]ResolutionMetadataSource
-	report        ResolutionReport
-	replay        ResolutionReplay
-	redirectDepth atomic.Int32
+	CacheRoot    string
+	WorkRoot     string
+	Repositories []project.Repository
+	Catalog      *catalog.Catalog
+	Tracker      perf.Tracker
+	mu           sync.Mutex
+	inflight     map[string]*resolveCall
+	fetched      map[string]ResolutionMetadataSource
+	report       ResolutionReport
+	replay       ResolutionReplay
 }
 
 type resolveCall struct {

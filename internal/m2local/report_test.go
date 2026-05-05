@@ -44,7 +44,7 @@ func TestResolveModuleMetadataReportsVariantSelection(t *testing.T) {
 		RepositoryURL: "https://repo1.maven.org/maven2/",
 		Fetched:       true,
 	}
-	_, _, _, err := resolver.resolveModuleMetadata(coord, path, source)
+	_, _, _, err := resolver.resolveModuleMetadata(coord, path, source, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

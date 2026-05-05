@@ -427,7 +427,7 @@ func mergeUnique(parts ...[]string) []string {
 	return out
 }
 
-func (r *Resolver) resolveModuleMetadata(coord Coordinate, path string, source *ResolutionMetadataSource) (string, *AndroidLibrary, []Coordinate, error) {
+func (r *Resolver) resolveModuleMetadata(coord Coordinate, path string, source *ResolutionMetadataSource, depth int) (string, *AndroidLibrary, []Coordinate, error) {
 	var mod moduleMetadata
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -473,9 +473,7 @@ func (r *Resolver) resolveModuleMetadata(coord Coordinate, path string, source *
 	}
 
 	if chosen.AvailableAt != nil {
-		depth := r.redirectDepth.Add(1)
-		defer r.redirectDepth.Add(-1)
-		if depth > int32(maxAvailableAtDepth) {
+		if depth+1 > maxAvailableAtDepth {
 			return "", nil, nil, fmt.Errorf("%w for %s:%s:%s", errAvailableAtDepthExceeded, coord.Group, coord.Module, coord.Version)
 		}
 		r.addSelection(ResolutionSelection{
@@ -485,11 +483,11 @@ func (r *Resolver) resolveModuleMetadata(coord Coordinate, path string, source *
 			Reason:         chosen.Name,
 			MetadataSource: cloneMetadataSource(source),
 		})
-		return r.resolveOne(Coordinate{
+		return r.resolveOneDepth(Coordinate{
 			Group:   chosen.AvailableAt.Group,
 			Module:  chosen.AvailableAt.Module,
 			Version: chosen.AvailableAt.Version,
-		})
+		}, depth+1)
 	}
 
 	deps := toCoordinatesWithConstraints(chosen.Dependencies, constraintVersions(mod.DependencyConstraints))
