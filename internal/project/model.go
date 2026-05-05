@@ -841,13 +841,13 @@ func uniqueOrderedStrings(values []string) []string {
 
 func (m Module) Variants() []BuildType {
 	if m.IsJVM() {
-		return []BuildType{m.ResolveVariant(m.DefaultVariantName()).Config}
+		return []BuildType{cloneBuildType(m.ResolveVariant(m.DefaultVariantName()).Config)}
 	}
-	return m.allVariants()
+	return cloneBuildTypes(m.allVariants())
 }
 
 func (m Module) Variant(name string) BuildType {
-	return m.variantConfigForName(name)
+	return cloneBuildType(m.variantConfigForName(name))
 }
 
 func (m Module) IsAndroid() bool {
@@ -894,11 +894,11 @@ func (m Module) variantConfigForName(name string) BuildType {
 		}
 		buildType.Optimization.MinifyEnabled = buildType.IsMinifyEnabled
 		buildType.Optimization.ShrinkResources = buildType.IsShrinkResources
-		return buildType
+		return cloneBuildType(buildType)
 	}
 	for _, variant := range m.allVariants() {
 		if variant.Name == name {
-			return variant
+			return cloneBuildType(variant)
 		}
 	}
 	buildType := m.variantConfigForBaseBuildType(name)
@@ -910,7 +910,7 @@ func (m Module) variantConfigForName(name string) BuildType {
 			ShrinkResources: false,
 		}
 	}
-	return buildType
+	return cloneBuildType(buildType)
 }
 
 func (m Module) allVariants() []BuildType {
@@ -991,7 +991,7 @@ func (m Module) variantConfigForBaseBuildType(name string) BuildType {
 	}
 	buildType.Optimization.MinifyEnabled = buildType.IsMinifyEnabled
 	buildType.Optimization.ShrinkResources = buildType.IsShrinkResources
-	return buildType
+	return cloneBuildType(buildType)
 }
 
 func (m Module) mergeVariant(buildTypeName string, flavors []string) BuildType {
@@ -1016,7 +1016,7 @@ func (m Module) mergeVariant(buildTypeName string, flavors []string) BuildType {
 	cfg.Name = firstNonEmpty(cfg.DeclaredName, variantNameFromFlavors(flavors, buildTypeName))
 	cfg.BaseBuildType = buildTypeName
 	cfg.Flavors = append([]string(nil), flavors...)
-	return cfg
+	return cloneBuildType(cfg)
 }
 
 func (m Module) customVariantOverride(buildTypeName string, flavors []string) (BuildType, bool) {
@@ -1030,9 +1030,48 @@ func (m Module) customVariantOverride(buildTypeName string, flavors []string) (B
 		if strings.TrimSpace(buildType.Name) == "" {
 			buildType.Name = name
 		}
-		return buildType, true
+		return cloneBuildType(buildType), true
 	}
 	return BuildType{}, false
+}
+
+func cloneBuildTypes(values []BuildType) []BuildType {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]BuildType, 0, len(values))
+	for _, value := range values {
+		out = append(out, cloneBuildType(value))
+	}
+	return out
+}
+
+func cloneBuildType(buildType BuildType) BuildType {
+	buildType.Flavors = append([]string(nil), buildType.Flavors...)
+	buildType.MatchingFallbacks = append([]string(nil), buildType.MatchingFallbacks...)
+	buildType.Optimization = cloneVariantOptimization(buildType.Optimization)
+	buildType.ProguardFiles = append([]string(nil), buildType.ProguardFiles...)
+	return buildType
+}
+
+func cloneVariantOptimization(optimization VariantOptimization) VariantOptimization {
+	if len(optimization.PackageOptimizations) == 0 {
+		return optimization
+	}
+	items := optimization.PackageOptimizations
+	optimization.PackageOptimizations = make([]PackageOptimization, 0, len(items))
+	for _, item := range items {
+		if item.MinifyEnabled != nil {
+			value := *item.MinifyEnabled
+			item.MinifyEnabled = &value
+		}
+		if item.ShrinkResources != nil {
+			value := *item.ShrinkResources
+			item.ShrinkResources = &value
+		}
+		optimization.PackageOptimizations = append(optimization.PackageOptimizations, item)
+	}
+	return optimization
 }
 
 func sameOrderedStrings(a, b []string) bool {
