@@ -78,6 +78,23 @@ func TestCanonicalizeSortsDependenciesAndCapabilities(t *testing.T) {
 	}
 }
 
+func TestCanonicalizeCopiesAttributes(t *testing.T) {
+	lf := Lockfile{
+		SchemaVersion: 1,
+		Pins: []Pin{{
+			Coordinate:   Coordinate{Group: "a.lib", Artifact: "b", Version: "1"},
+			RepositoryID: "r",
+			Attributes:   map[string]string{"platform": "jvm"},
+		}},
+	}
+	out := lf.Canonicalize()
+	out.Pins[0].Attributes["platform"] = "androidJvm"
+
+	if got := lf.Pins[0].Attributes["platform"]; got != "jvm" {
+		t.Fatalf("canonicalized attributes alias original map: got %q", got)
+	}
+}
+
 func TestEncodeDeterministic(t *testing.T) {
 	lf := sampleLockfile()
 	var a, b bytes.Buffer
