@@ -29,7 +29,7 @@ func runGeneratedFallbacks(prj *project.Project, mod *project.Module, variantNam
 		rel  string
 		body string
 	}{
-		koinGeneratedFallback(),
+		koinGeneratedFallback(mod),
 		sqldelightGeneratedFallback(mod),
 		sqldelightAsyncFallback(mod),
 		buildConfigFallback(mod),
@@ -50,7 +50,10 @@ func runGeneratedFallbacks(prj *project.Project, mod *project.Module, variantNam
 	return out, nil
 }
 
-func koinGeneratedFallback() struct{ rel, body string } {
+func koinGeneratedFallback(mod *project.Module) struct{ rel, body string } {
+	if !moduleSourcesContain(mod, "org.koin.ksp.generated.") {
+		return struct{ rel, body string }{}
+	}
 	body := `package org.koin.ksp.generated
 
 import org.koin.core.context.startKoin

@@ -265,6 +265,7 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 		{needle: "androidx.compose.ui.platform.LocalResources", groups: []string{"androidx.compose.ui"}},
 		{needle: "app.cash.sqldelight.", groups: []string{"app.cash.sqldelight"}},
 		{needle: "androidx.compose.remote.", groups: []string{"androidx.compose.remote", "androidx.wear.compose.remote"}},
+		{needle: "coil3.", groups: []string{"io.coil-kt.coil3"}},
 		{needle: "co.touchlab.kermit.", groups: []string{"co.touchlab"}},
 		{needle: "io.ktor.client.engine.android.", groups: []string{"io.ktor"}},
 		{needle: "okio.", groups: []string{"com.squareup.okio"}},
@@ -277,6 +278,11 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 		}
 		if fallback.needle == "androidx.compose.ui.platform.LocalResources" {
 			if jar := latestMaterializedAARClasses(prj, "androidx.compose.ui", "ui-android"); jar != "" {
+				out = append(out, jar)
+			}
+		}
+		if fallback.needle == "coil3." {
+			if jar := fetchMavenJar(prj, "io.coil-kt.coil3:coil-core-jvm:"+catalogGroupVersion(cat, "io.coil-kt.coil3")); jar != "" {
 				out = append(out, jar)
 			}
 		}
@@ -302,10 +308,13 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 			if jar := fetchMavenAARClasses(prj, coord); jar != "" {
 				out = append(out, jar)
 			}
+			out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
 			if !strings.HasSuffix(lib.Name, "-android") {
-				if jar := fetchMavenAARClasses(prj, lib.Group+":"+lib.Name+"-android:"+lib.Version); jar != "" {
+				androidCoord := lib.Group + ":" + lib.Name + "-android:" + lib.Version
+				if jar := fetchMavenAARClasses(prj, androidCoord); jar != "" {
 					out = append(out, jar)
 				}
+				out = append(out, fetchMavenPOMDependencyJars(prj, androidCoord)...)
 			}
 			if strings.HasSuffix(lib.Name, "-jvm") {
 				out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
@@ -328,6 +337,24 @@ func stringInList(value string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func catalogGroupVersion(cat *catalog.Catalog, group string) string {
+	if cat == nil || group == "" {
+		return ""
+	}
+	for _, lib := range cat.Libraries {
+		if lib.Group != group {
+			continue
+		}
+		if lib.Version != "" {
+			return lib.Version
+		}
+		if lib.VersionRef != "" {
+			return cat.Versions[lib.VersionRef]
+		}
+	}
+	return ""
 }
 
 func catalogCoordinates(prj *project.Project, refs []modulebuild.Ref) []string {

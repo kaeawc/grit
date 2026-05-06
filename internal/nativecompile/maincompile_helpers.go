@@ -133,6 +133,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		out.compileCP = mergePaths(out.compileCP, fallbackJVMCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
 		out.compileCP = mergePaths(out.compileCP, fallbackAndroidCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
 		out.compileCP = mergePaths(out.compileCP, fallbackImportedCatalogJars(prj, mod))
+		out.compileCP = collapseVersions(out.compileCP)
 		out.compileCP = existingClasspathEntries(out.compileCP)
 		out.androidResources = out.resourceDeps
 		return nil
@@ -255,7 +256,8 @@ func (c *Compiler) finishMainWithoutSources(prj *project.Project, mod *project.M
 		if innerErr != nil {
 			return innerErr
 		}
-		runtimeInputs = mergePaths(deps.projectRuntimeInputs, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, toolchain.RuntimeJars)
+		runtimeInputs = mergePaths(deps.projectRuntimeInputs, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, fallbackImportedCatalogJars(prj, mod), toolchain.RuntimeJars)
+		runtimeInputs = collapseVersions(runtimeInputs)
 		return nil
 	})
 	if err != nil {
@@ -288,6 +290,12 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 			return nil
 		}
 		recordCacheProbe(c.tracker, "compileKotlin", false, "cache-miss", "compiled classes required fresh Kotlin compilation")
+		if err := os.RemoveAll(prepared.mainOut); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(prepared.mainOut, 0o755); err != nil {
+			return err
+		}
 		toolchain, toolchainErr := state.kotlinToolchainForProject(prj)
 		if toolchainErr != nil {
 			return toolchainErr
@@ -357,7 +365,8 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 		if innerErr != nil {
 			return innerErr
 		}
-		runtimeInputs = mergePaths(deps.projectRuntimeInputs, []string{moduleJar}, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, toolchain.RuntimeJars)
+		runtimeInputs = mergePaths(deps.projectRuntimeInputs, []string{moduleJar}, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, fallbackImportedCatalogJars(prj, mod), toolchain.RuntimeJars)
+		runtimeInputs = collapseVersions(runtimeInputs)
 		return nil
 	})
 	if err != nil {

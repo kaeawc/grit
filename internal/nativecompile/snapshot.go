@@ -12,7 +12,7 @@ import (
 	"github.com/kaeawc/grit/internal/project"
 )
 
-const moduleSnapshotCacheVersion = "module-snapshot-v2"
+const moduleSnapshotCacheVersion = "module-snapshot-v3"
 
 func loadModuleSnapshot(prj *project.Project, mod *project.Module, variantName string) (moduleSnapshot, bool) {
 	snapshotPath := moduleSnapshotPath(prj, mod, variantName)

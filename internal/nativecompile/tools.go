@@ -169,6 +169,7 @@ func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) e
 
 func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
 	r8ProgramCP := filterR8ProgramClasspath(collapseVersions(runtimeCP))
+	traceD8Inputs("r8", r8ProgramCP, stderr)
 	inputs := append([]string{classesJar, androidJarPath()}, r8ProgramCP...)
 	if outputsNewerThanInputs(dexDir, inputs) {
 		return nil
