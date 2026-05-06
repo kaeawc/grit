@@ -24,6 +24,7 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"hash"
@@ -106,6 +107,10 @@ func (p *Publisher) moduleBasePath(coord lockfile.Coordinate) string {
 }
 
 func (p *Publisher) publishBlob(ctx context.Context, store cas.Store, blobHash cas.Hash, target string) error {
+	if sidecarMatches(target+".sha256", blobHash.String()) && fileExists(target) {
+		return nil
+	}
+
 	rc, err := store.Get(ctx, blobHash)
 	if err != nil {
 		return fmt.Errorf("get blob %s: %w", blobHash, err)
@@ -138,6 +143,9 @@ func (p *Publisher) publishBlob(ctx context.Context, store cas.Store, blobHash c
 	if err := writeSidecar(target+".md5", m5); err != nil {
 		return err
 	}
+	if err := writeSidecarString(target+".sha256", blobHash.String()); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -146,6 +154,11 @@ func writeFileAtomically(path string, data []byte) error {
 }
 
 func writeBytesWithSidecars(path string, data []byte) error {
+	sum := sha256.Sum256(data)
+	sha := hex.EncodeToString(sum[:])
+	if sidecarMatches(path+".sha256", sha) && fileExists(path) {
+		return nil
+	}
 	if err := writeFileAtomically(path, data); err != nil {
 		return err
 	}
@@ -163,6 +176,9 @@ func writeBytesWithSidecars(path string, data []byte) error {
 	if err := writeSidecar(path+".md5", m5); err != nil {
 		return err
 	}
+	if err := writeSidecarString(path+".sha256", sha); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -170,7 +186,21 @@ func writeBytesWithSidecars(path string, data []byte) error {
 // checksum files contain just the hex digest, with no trailing newline.
 func writeSidecar(path string, h hash.Hash) error {
 	digest := hex.EncodeToString(h.Sum(nil))
+	return writeSidecarString(path, digest)
+}
+
+func writeSidecarString(path string, digest string) error {
 	return writeFileAtomically(path, []byte(digest))
+}
+
+func sidecarMatches(path string, digest string) bool {
+	got, err := os.ReadFile(path)
+	return err == nil && string(got) == digest
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // Compile-time assertion that *Publisher satisfies publish.Publisher.

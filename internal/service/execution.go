@@ -39,6 +39,10 @@ type androidTestUninstaller interface {
 	UninstallAndroidTestVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, deviceSerial string, stdout, stderr *os.File) error
 }
 
+type unitTestRunner interface {
+	RunDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error
+}
+
 func (s *Service) executeBatch(ctx context.Context, prj *project.Project, rootMod *project.Module, model *configmodel.Model, semanticGraph *graph.Graph, req BuildRequest, batchIndex int, batch []configmodel.ActionScheduleStep, stdout, stderr *os.File) ([]BuildOutcome, error) {
 	return s.executeBatchWithRemoteProbeDecisions(ctx, prj, rootMod, model, semanticGraph, req, batchIndex, batch, nil, stdout, stderr)
 }
@@ -457,7 +461,12 @@ func (s *Service) executeAction(ctx context.Context, prj *project.Project, rootM
 	case "test":
 		outcome.Tested = true
 		outcome.Message = "unit tests completed"
-		err := compiler.TestDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr)
+		var err error
+		if runner, ok := compiler.(unitTestRunner); ok {
+			err = runner.RunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr)
+		} else {
+			err = compiler.TestDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr)
+		}
 		return finish(err)
 	case "compile-tests":
 		outcome.Compiled = true

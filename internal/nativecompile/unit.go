@@ -15,14 +15,59 @@ import (
 )
 
 func (c *Compiler) TestDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
-	return c.compileAndMaybeRunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr, true)
+	return c.compileAndMaybeRunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr, true, true)
 }
 
 func (c *Compiler) CompileDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
-	return c.compileAndMaybeRunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr, false)
+	return c.compileAndMaybeRunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr, false, true)
 }
 
-func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File, run bool) error {
+func (c *Compiler) RunDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	mod := prj.FindModule(modulePath)
+	if mod == nil {
+		return fmt.Errorf("module %s not found", modulePath)
+	}
+	if variantName == "" {
+		variantName = mod.DefaultVariantName()
+	}
+	testOut := filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName+"UnitTest", "classes")
+	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
+	if !hasOutputFiles(testOut) {
+		recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled test outputs were not available to the test action")
+		return fmt.Errorf("compiled unit test outputs for %s %s are missing; run compileDebugUnitTestSources before testDebugUnitTest", mod.Path, variantName)
+	}
+	recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "reused compiled test outputs from prior action")
+
+	var testClasses []string
+	err := c.track("discoverJUnitTests", func() error {
+		var innerErr error
+		testClasses, innerErr = discoverJUnitTestsInRoots(unitTestSourceRoots(mod, variantName), os.Getenv("GOJVM_INCLUDE_AUTOMOBILE") == "")
+		return innerErr
+	})
+	if err != nil {
+		return err
+	}
+	if len(testClasses) == 0 {
+		_, _ = fmt.Fprintln(stdout, "compiled tests but found no JUnit test classes")
+		return nil
+	}
+
+	runtimeSupportCP := runtimeSupportJars()
+	junitSupportCP := junitRuntimeSupportJars()
+	runSupportCP := mergePaths(junitSupportCP, runtimeSupportCP)
+	if testRunCachePath, ok := unitTestRunCachePathFromCompileStamp(prj.RootDir, mod.Path, variantName, testClasses, testCompileStampPath, runSupportCP); ok {
+		return c.track("runJUnit", func() error {
+			if canReuseUnitTestRun(testRunCachePath) {
+				recordCacheProbe(c.tracker, "runJUnit", true, "shared-cache-hit", "reused successful unit test result from shared cache")
+				return nil
+			}
+			return c.compileAndMaybeRunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr, true, false)
+		})
+	}
+	return c.compileAndMaybeRunDebugUnit(ctx, prj, modulePath, variantName, stdout, stderr, true, false)
+}
+
+func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File, run bool, compileTests bool) error {
 	mod := prj.FindModule(modulePath)
 	if mod == nil {
 		return fmt.Errorf("module %s not found", modulePath)
@@ -158,55 +203,62 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 	testCP = append(testCP, projectTestRuntimeInputs...)
 	testCP = append(testCP, mainOut)
 	testCP = append(testCP, cp...)
-	testCompileInputs := append([]string{}, testSources...)
-	testCompileInputs = append(testCompileInputs, mod.BuildFile)
-	testCompileInputs = append(testCompileInputs, prj.VersionCatalogs...)
-	testCompileInputs = append(testCompileInputs, mainOut)
-	testCompileInputs = append(testCompileInputs, testCP...)
-	testCompileInputs = append(testCompileInputs, toolchain.RuntimeJars...)
-	testCompileInputs = append(testCompileInputs, toolchain.CompilerClasspath...)
-	testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#unitTest", variantName, mod.ResolveVariant(variantName).ConfigHash(), testCompileInputs)
 	testJarPath := filepath.Join(filepath.Dir(testOut), "test-classes.jar")
 	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
-	endCompileTests := c.beginSerial("compileTests")
-	err = c.track("restoreCompileTestsCache", func() error {
-		if stampMatches(testCompileStampPath, testSharedCompileDir) && hasOutputFiles(testOut) {
-			recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "test compile stamp matched local outputs")
+	if compileTests {
+		testCompileInputs := append([]string{}, testSources...)
+		testCompileInputs = append(testCompileInputs, mod.BuildFile)
+		testCompileInputs = append(testCompileInputs, prj.VersionCatalogs...)
+		testCompileInputs = append(testCompileInputs, mainOut)
+		testCompileInputs = append(testCompileInputs, testCP...)
+		testCompileInputs = append(testCompileInputs, toolchain.RuntimeJars...)
+		testCompileInputs = append(testCompileInputs, toolchain.CompilerClasspath...)
+		testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#unitTest", variantName, mod.ResolveVariant(variantName).ConfigHash(), testCompileInputs)
+		endCompileTests := c.beginSerial("compileTests")
+		err = c.track("restoreCompileTestsCache", func() error {
+			if stampMatches(testCompileStampPath, testSharedCompileDir) && hasOutputFiles(testOut) {
+				recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "test compile stamp matched local outputs")
+				return nil
+			}
+			if outputsNewerThanInputs(testOut, testCompileInputs) {
+				_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+				recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "compiled test outputs newer than test inputs")
+				return nil
+			}
+			if restoreSharedCompileCache(testOut, testJarPath, testSharedCompileDir) {
+				_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+				recordCacheProbe(c.tracker, "compileTests", true, "shared-cache-hit", "restored compiled tests from shared cache")
+			}
 			return nil
-		}
-		if outputsNewerThanInputs(testOut, testCompileInputs) {
-			_ = writeStamp(testCompileStampPath, testSharedCompileDir)
-			recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "compiled test outputs newer than test inputs")
-			return nil
-		}
-		if restoreSharedCompileCache(testOut, testJarPath, testSharedCompileDir) {
-			_ = writeStamp(testCompileStampPath, testSharedCompileDir)
-			recordCacheProbe(c.tracker, "compileTests", true, "shared-cache-hit", "restored compiled tests from shared cache")
-		}
-		return nil
-	})
-	if err == nil && !stampMatches(testCompileStampPath, testSharedCompileDir) {
-		recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled tests required fresh Kotlin compilation")
-		err = c.track("kotlincTests", func() error {
-			return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, nil, includeAndroid, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
 		})
-		if err == nil {
-			err = c.track("publishCompileTestsCache", func() error {
-				testJar, innerErr := classesJarForDir(ctx, testOut, stdout, stderr)
-				if innerErr != nil {
-					return innerErr
-				}
-				testJarPath = testJar
-				if innerErr := saveSharedCompileCache(testOut, testJar, testSharedCompileDir); innerErr != nil {
-					return innerErr
-				}
-				return writeStamp(testCompileStampPath, testSharedCompileDir)
+		if err == nil && !stampMatches(testCompileStampPath, testSharedCompileDir) {
+			recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled tests required fresh Kotlin compilation")
+			err = c.track("kotlincTests", func() error {
+				return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, nil, includeAndroid, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
 			})
+			if err == nil {
+				err = c.track("publishCompileTestsCache", func() error {
+					testJar, innerErr := classesJarForDir(ctx, testOut, stdout, stderr)
+					if innerErr != nil {
+						return innerErr
+					}
+					testJarPath = testJar
+					if innerErr := saveSharedCompileCache(testOut, testJar, testSharedCompileDir); innerErr != nil {
+						return innerErr
+					}
+					return writeStamp(testCompileStampPath, testSharedCompileDir)
+				})
+			}
 		}
-	}
-	endCompileTests()
-	if err != nil {
-		return err
+		endCompileTests()
+		if err != nil {
+			return err
+		}
+	} else if !hasOutputFiles(testOut) {
+		recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled test outputs were not available to the test action")
+		return fmt.Errorf("compiled unit test outputs for %s %s are missing or stale; run compileDebugUnitTestSources before testDebugUnitTest", mod.Path, variantName)
+	} else {
+		recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "reused compiled test outputs from prior action")
 	}
 	if !run {
 		_, _ = fmt.Fprintln(stdout, "unit test sources compiled")
@@ -226,13 +278,20 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		_, _ = fmt.Fprintln(stdout, "compiled tests but found no JUnit test classes")
 		return nil
 	}
-	testRuntimeCP := junitRuntimeClasspath(append(testCP, testOut))
-	testRunCachePath := unitTestRunCachePath(prj.RootDir, mod.Path, variantName, testClasses, testRuntimeCP)
+	runtimeSupportCP := runtimeSupportJars()
+	junitSupportCP := junitRuntimeSupportJars()
+	runSupportCP := mergePaths(junitSupportCP, runtimeSupportCP)
+	testRunCachePath, ok := unitTestRunCachePathFromCompileStamp(prj.RootDir, mod.Path, variantName, testClasses, testCompileStampPath, runSupportCP)
+	if !ok {
+		testRuntimeCP := mergePaths(junitSupportCP, filterJUnitRuntimeSupportJars(append(testCP, testOut)), runtimeSupportCP)
+		testRunCachePath = unitTestRunCachePath(prj.RootDir, mod.Path, variantName, testClasses, testRuntimeCP)
+	}
 	return c.track("runJUnit", func() error {
 		if canReuseUnitTestRun(testRunCachePath) {
 			recordCacheProbe(c.tracker, "runJUnit", true, "shared-cache-hit", "reused successful unit test result from shared cache")
 			return nil
 		}
+		testRuntimeCP := mergePaths(junitSupportCP, filterJUnitRuntimeSupportJars(append(testCP, testOut)), runtimeSupportCP)
 		recordCacheProbe(c.tracker, "runJUnit", false, "cache-miss", "unit tests required fresh JUnit execution")
 		if err := runJUnit(ctx, testClasses, testRuntimeCP, stdout, stderr); err != nil {
 			return err

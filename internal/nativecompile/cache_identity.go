@@ -96,9 +96,10 @@ func moduleCompileCacheDir(modulePath, variantName, configHash string, inputs []
 	sum.Write([]byte(configHash))
 	sum.Write([]byte{0})
 	for _, input := range inputs {
+		identity := cacheIdentityForInput(input)
 		sum.Write([]byte(input))
 		sum.Write([]byte{0})
-		sum.Write([]byte(cacheIdentityForInput(input)))
+		sum.Write([]byte(identity))
 		sum.Write([]byte{0})
 	}
 	return filepath.Join(sharedNativeCacheRoot(), "compile", hex.EncodeToString(sum.Sum(nil)))
@@ -160,11 +161,17 @@ func cacheIdentityForInput(path string) string {
 	if err != nil {
 		return "missing"
 	}
+	clean := filepath.Clean(path)
 	if info.IsDir() {
+		if usesContentCacheIdentity(clean) {
+			return "dirhash:" + dirFingerprint(clean)
+		}
 		return "dir:" + strconv.FormatInt(latestInputModTime([]string{path}).UnixNano(), 10)
 	}
-	clean := filepath.Clean(path)
-	if strings.Contains(clean, string(os.PathSeparator)+"build"+string(os.PathSeparator)+"grit"+string(os.PathSeparator)) {
+	if usesContentCacheIdentity(clean) {
+		if digest, ok := cacheIdentitySidecar(clean); ok {
+			return "sha256-sidecar:" + digest
+		}
 		if strings.HasSuffix(clean, ".jar") || strings.HasSuffix(clean, ".zip") {
 			if digest, err := zipFingerprint(clean); err == nil {
 				return "zip:" + digest
@@ -182,6 +189,34 @@ func cacheIdentityForInput(path string) string {
 		strconv.FormatInt(info.Size(), 10),
 		strconv.FormatInt(info.ModTime().UnixNano(), 10),
 	}, ":")
+}
+
+func usesContentCacheIdentity(path string) bool {
+	sep := string(os.PathSeparator)
+	return strings.Contains(path, sep+"build"+sep+"grit"+sep) ||
+		strings.Contains(path, sep+".grit"+sep+"worktree"+sep+"materialized-m2"+sep)
+}
+
+func cacheIdentitySidecar(path string) (string, bool) {
+	clean := filepath.Clean(path)
+	sep := string(os.PathSeparator)
+	if !strings.Contains(clean, sep+".grit"+sep+"worktree"+sep+"materialized-m2"+sep) {
+		return "", false
+	}
+	data, err := os.ReadFile(clean + ".sha256")
+	if err != nil {
+		return "", false
+	}
+	digest := strings.TrimSpace(string(data))
+	if len(digest) != sha256.Size*2 {
+		return "", false
+	}
+	for _, r := range digest {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return "", false
+		}
+	}
+	return digest, true
 }
 
 func fileSHA256(path string) (string, error) {

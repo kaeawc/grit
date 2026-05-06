@@ -30,6 +30,35 @@ func unitTestRunCachePath(prjRoot string, modulePath string, variantName string,
 	return filepath.Join(sharedNativeCacheRoot(), "unit-test-run", hex.EncodeToString(sum.Sum(nil))+".stamp")
 }
 
+func unitTestRunCachePathFromCompileStamp(prjRoot string, modulePath string, variantName string, testClasses []string, compileStampPath string, supportClasspath []string) (string, bool) {
+	stamp, err := os.ReadFile(compileStampPath)
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.New()
+	sum.Write([]byte("unit-test-run-v2"))
+	sum.Write([]byte{0})
+	sum.Write([]byte(prjRoot))
+	sum.Write([]byte{0})
+	sum.Write([]byte(modulePath))
+	sum.Write([]byte{0})
+	sum.Write([]byte(variantName))
+	sum.Write([]byte{0})
+	sum.Write(stamp)
+	sum.Write([]byte{0})
+	for _, testClass := range testClasses {
+		sum.Write([]byte(testClass))
+		sum.Write([]byte{0})
+	}
+	for _, entry := range supportClasspath {
+		sum.Write([]byte(entry))
+		sum.Write([]byte{0})
+		sum.Write([]byte(cacheIdentityForInput(entry)))
+		sum.Write([]byte{0})
+	}
+	return filepath.Join(sharedNativeCacheRoot(), "unit-test-run", hex.EncodeToString(sum.Sum(nil))+".stamp"), true
+}
+
 func canReuseUnitTestRun(cachePath string) bool {
 	return pathIsFile(cachePath)
 }
