@@ -117,6 +117,11 @@ func parseLibraryLine(c *Catalog, line string) error {
 	key := strings.TrimSpace(parts[0])
 	value := strings.TrimSpace(parts[1])
 	if !strings.HasPrefix(value, "{") {
+		value = stripInlineComment(value)
+		coordParts := strings.Split(value, ":")
+		if len(coordParts) == 3 {
+			c.Libraries[key] = Library{Group: coordParts[0], Name: coordParts[1], Version: coordParts[2]}
+		}
 		return nil
 	}
 	value = strings.Trim(value, "{}")

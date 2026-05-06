@@ -3472,7 +3472,7 @@ func (s *Service) Properties(mod *project.Module, prj *project.Project) Properti
 }
 
 func (s *Service) Dependencies(mod *project.Module, prj *project.Project) (DependenciesResult, error) {
-	deps, err := modulebuild.ParseDependencies(mod.BuildFile)
+	deps, err := modulebuild.ParseDependenciesForModule(mod.BuildFile, prj.RootDir, mod.Plugins)
 	if err != nil {
 		return DependenciesResult{}, err
 	}
@@ -3512,7 +3512,7 @@ func (s *Service) ArtifactTransforms(mod *project.Module, prj *project.Project) 
 }
 
 func (s *Service) DependencyInsight(mod *project.Module, prj *project.Project, query string) (DependencyInsightResult, error) {
-	deps, err := modulebuild.ParseDependencies(mod.BuildFile)
+	deps, err := modulebuild.ParseDependenciesForModule(mod.BuildFile, prj.RootDir, mod.Plugins)
 	if err != nil {
 		return DependencyInsightResult{}, err
 	}
@@ -3547,7 +3547,7 @@ func (s *Service) DependencyInsight(mod *project.Module, prj *project.Project, q
 }
 
 func (s *Service) ResolverReport(mod *project.Module, prj *project.Project) (ResolverReportResult, error) {
-	deps, err := modulebuild.ParseDependencies(mod.BuildFile)
+	deps, err := modulebuild.ParseDependenciesForModule(mod.BuildFile, prj.RootDir, mod.Plugins)
 	if err != nil {
 		return ResolverReportResult{}, err
 	}

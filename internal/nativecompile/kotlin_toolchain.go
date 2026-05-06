@@ -55,13 +55,14 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-test-junit5", version),
 		),
 	}
-	toolchain.CompilerClasspath = mergePaths(
+	toolchain.CompilerClasspath = filterKotlinCompilerClasspathVersion(version, mergePaths(
+		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version),
 		compilerResolved.RuntimeJars,
 		toolchain.RuntimeJars,
 		findGradleArtifactJars("org.jetbrains", "annotations", latestCachedVersionFor("org.jetbrains", "annotations")),
 		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-reflect", version),
 		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-script-runtime", version),
-	)
+	))
 	if paths := findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", version); len(paths) > 0 {
 		toolchain.ComposePlugin = paths[0]
 	}
@@ -78,6 +79,31 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 		toolchain.TestRuntimeJars = fallbackKotlinToolchain().TestRuntimeJars
 	}
 	return toolchain, nil
+}
+
+func filterKotlinCompilerClasspathVersion(version string, paths []string) []string {
+	if strings.TrimSpace(version) == "" {
+		return paths
+	}
+	dotMarker := filepath.Join("org.jetbrains.kotlin") + string(filepath.Separator)
+	pathMarker := filepath.Join("org", "jetbrains", "kotlin") + string(filepath.Separator)
+	versionSegment := string(filepath.Separator) + version + string(filepath.Separator)
+	var out []string
+	for _, path := range paths {
+		if !strings.Contains(path, dotMarker) && !strings.Contains(path, pathMarker) {
+			out = append(out, path)
+			continue
+		}
+		base := filepath.Base(path)
+		if strings.HasPrefix(base, "kotlin-stdlib") || strings.HasPrefix(base, "kotlin-test") {
+			out = append(out, path)
+			continue
+		}
+		if strings.Contains(path, versionSegment) {
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 func projectKotlinVersion(prj *project.Project) string {

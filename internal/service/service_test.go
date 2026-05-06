@@ -1344,6 +1344,64 @@ func TestBuildAssembleReleaseInfersReleaseVariant(t *testing.T) {
 	}
 }
 
+func TestBuildAssembleReleaseRoutesFlavorReleaseVariants(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+	prj := testsupport.Project(t.TempDir(), project.Module{
+		Path:             ":app",
+		Type:             "android-application",
+		FlavorDimensions: []string{"store", "env"},
+		ProductFlavors: map[string]project.ProductFlavor{
+			"play":    {Name: "play", Dimension: "store"},
+			"website": {Name: "website", Dimension: "store"},
+			"prod":    {Name: "prod", Dimension: "env"},
+			"staging": {Name: "staging", Dimension: "env"},
+		},
+		BuildTypes: map[string]project.BuildType{
+			"debug":   {Name: "debug"},
+			"release": {Name: "release"},
+		},
+	})
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	outcome, err := svc.Build(context.Background(), prj, mod, BuildRequest{
+		Command: "assembleRelease",
+	}, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("build returned error: %v", err)
+	}
+	wantTasks := []string{
+		"assemblePlayProdRelease",
+		"assemblePlayStagingRelease",
+		"assembleWebsiteProdRelease",
+		"assembleWebsiteStagingRelease",
+	}
+	if len(outcome.ExecutedTasks) != len(wantTasks) {
+		t.Fatalf("unexpected outcome tasks: %#v", outcome.ExecutedTasks)
+	}
+	for _, task := range wantTasks {
+		if !slices.Contains(outcome.ExecutedTasks, task) {
+			t.Fatalf("missing task %q in %#v", task, outcome.ExecutedTasks)
+		}
+	}
+	wantCalls := []string{
+		"assemble::app:playProdRelease",
+		"assemble::app:playStagingRelease",
+		"assemble::app:websiteProdRelease",
+		"assemble::app:websiteStagingRelease",
+	}
+	if len(fake.Calls) != len(wantCalls) {
+		t.Fatalf("unexpected compiler calls: %#v", fake.Calls)
+	}
+	for _, call := range wantCalls {
+		if !slices.Contains(fake.Calls, call) {
+			t.Fatalf("missing compiler call %q in %#v", call, fake.Calls)
+		}
+	}
+}
+
 func TestBuildDependentsUsesSemanticGraphPlanning(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)

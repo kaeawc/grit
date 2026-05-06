@@ -43,6 +43,24 @@ func TestKotlinToolchainValidateAcceptsExplicitCompilerClasspath(t *testing.T) {
 	}
 }
 
+func TestFilterKotlinCompilerClasspathVersion(t *testing.T) {
+	paths := []string{
+		"/cache/org.jetbrains.kotlin/kotlin-compiler-embeddable/2.3.0/hash/kotlin-compiler-embeddable-2.3.0.jar",
+		"/cache/org.jetbrains.kotlin/kotlin-compiler-embeddable/2.3.20/hash/kotlin-compiler-embeddable-2.3.20.jar",
+		"/cache/org.jetbrains.kotlin/kotlin-stdlib/2.3.20/hash/kotlin-stdlib-2.3.20.jar",
+		"/cache/org.jetbrains/annotations/24.0.0/hash/annotations-24.0.0.jar",
+	}
+	got := filterKotlinCompilerClasspathVersion("2.3.0", paths)
+	want := []string{
+		"/cache/org.jetbrains.kotlin/kotlin-compiler-embeddable/2.3.0/hash/kotlin-compiler-embeddable-2.3.0.jar",
+		"/cache/org.jetbrains.kotlin/kotlin-stdlib/2.3.20/hash/kotlin-stdlib-2.3.20.jar",
+		"/cache/org.jetbrains/annotations/24.0.0/hash/annotations-24.0.0.jar",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected filtered classpath: got %#v want %#v", got, want)
+	}
+}
+
 func TestCompilerPluginsForModuleUsesActiveVariantPlugins(t *testing.T) {
 	reg := modulebuild.NewPluginRegistry()
 	reg.Register(modulebuild.CompilerPlugin{

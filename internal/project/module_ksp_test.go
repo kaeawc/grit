@@ -72,6 +72,7 @@ func TestParseKSPProcessorsDeduplicates(t *testing.T) {
 	body := `
 dependencies {
   ksp(libs.glide.ksp)
+  add("kspCommonMainMetadata", libs.glide.ksp)
   ksp(libs.glide.ksp)
 }
 `

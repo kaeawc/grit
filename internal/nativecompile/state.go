@@ -49,6 +49,7 @@ type compiledModule struct {
 }
 
 type moduleSnapshot struct {
+	CacheVersion     string                    `json:"cacheVersion,omitempty"`
 	RuntimeInputs    []string                  `json:"runtimeInputs"`
 	AndroidResources []androidResourceArtifact `json:"androidResources"`
 	DirectDepStamps  map[string]string         `json:"directDepStamps"`
@@ -109,7 +110,8 @@ func (s *compileState) reachesLocked(from, target string) bool {
 	return false
 }
 
-func (s *compileState) dependenciesForModule(buildFile string) (*modulebuild.Dependencies, error) {
+func (s *compileState) dependenciesForModule(prj *project.Project, mod *project.Module) (*modulebuild.Dependencies, error) {
+	buildFile := mod.BuildFile
 	s.mu.Lock()
 	if deps, ok := s.parsedDeps[buildFile]; ok {
 		s.mu.Unlock()
@@ -117,7 +119,7 @@ func (s *compileState) dependenciesForModule(buildFile string) (*modulebuild.Dep
 	}
 	s.mu.Unlock()
 
-	deps, err := modulebuild.ParseDependencies(buildFile)
+	deps, err := modulebuild.ParseDependenciesForModule(buildFile, prj.RootDir, mod.Plugins)
 	if err != nil {
 		return nil, err
 	}

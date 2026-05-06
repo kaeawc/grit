@@ -61,7 +61,7 @@ func (c *Compiler) resolveMainDependencies(ctx context.Context, prj *project.Pro
 	var out resolvedMainDeps
 	err := c.track("parseDependencies", func() error {
 		var innerErr error
-		out.deps, innerErr = state.dependenciesForModule(mod.BuildFile)
+		out.deps, innerErr = state.dependenciesForModule(prj, mod)
 		if innerErr == nil {
 			out.deps = dependenciesForVariant(out.deps, mod, variantName)
 		}
@@ -258,7 +258,7 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 			recordCacheProbe(c.tracker, "compileKotlin", true, "local-up-to-date", "compile stamp matched local outputs")
 			return nil
 		}
-		if outputsNewerThanInputs(prepared.mainOut, prepared.compileInputs) {
+		if !pathIsFile(prepared.compileStampPath) && outputsNewerThanInputs(prepared.mainOut, prepared.compileInputs) {
 			_ = writeStamp(prepared.compileStampPath, prepared.sharedCompileDir)
 			recordCacheProbe(c.tracker, "compileKotlin", true, "local-up-to-date", "compiled outputs newer than compile inputs")
 			return nil
@@ -282,16 +282,18 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 			}
 		}
 		if hasKotlin {
-			if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, nil, stdout, stderr); err != nil {
+			var extraArgs []string
+			if moduleUsesKotlinMultiplatform(mod) {
+				extraArgs = append(extraArgs, "-Xmulti-platform")
+			}
+			if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, extraArgs, stdout, stderr); err != nil {
 				return err
 			}
 		}
 		javaSrcs := collectGeneratedJavaSources(prepared.kspJavaGenDir)
-		if !hasKotlin {
-			for _, src := range prepared.mainSources {
-				if strings.HasSuffix(src, ".java") {
-					javaSrcs = append(javaSrcs, src)
-				}
+		for _, src := range prepared.mainSources {
+			if strings.HasSuffix(src, ".java") {
+				javaSrcs = append(javaSrcs, src)
 			}
 		}
 		if len(javaSrcs) > 0 {

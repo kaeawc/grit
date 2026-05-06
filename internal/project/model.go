@@ -18,6 +18,7 @@ type Project struct {
 	VersionCatalog     string
 	VersionCatalogs    []string
 	VersionCatalogData map[string]string
+	PluginAliases      map[string]string
 	Repositories       []Repository
 	RootPlugins        []string
 	Modules            []Module

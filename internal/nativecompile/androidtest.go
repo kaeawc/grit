@@ -82,7 +82,7 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 	var deps *modulebuild.Dependencies
 	err = c.track("parseDependencies", func() error {
 		var innerErr error
-		deps, innerErr = modulebuild.ParseDependencies(mod.BuildFile)
+		deps, innerErr = modulebuild.ParseDependenciesForModule(mod.BuildFile, prj.RootDir, mod.Plugins)
 		if innerErr == nil {
 			deps = dependenciesForVariant(deps, mod, variantName)
 		}

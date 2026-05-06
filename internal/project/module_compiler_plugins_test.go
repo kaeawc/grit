@@ -55,6 +55,98 @@ android {
 	}
 }
 
+func TestLoadRefreshesCompilerPluginsFromConventionPlugins(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, root, "settings.gradle.kts", `
+pluginManagement {
+  repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) }
+rootProject.name = "Example"
+include(":core-ui")
+`)
+	testutil.WriteFile(t, root, "build.gradle.kts", "")
+	testutil.WriteFile(t, root, "build-logic/plugins/src/main/kotlin/signal-library.gradle.kts", `
+plugins {
+  id("com.android.library")
+  id("org.jetbrains.kotlin.plugin.compose")
+}
+`)
+	testutil.WriteFile(t, root, "core-ui/build.gradle.kts", `
+plugins {
+  id("signal-library")
+}
+`)
+
+	prj, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	mod := prj.FindModule(":core-ui")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	if !mod.UsesCompose {
+		t.Fatal("expected expanded compose plugin to mark module as using Compose")
+	}
+	plugins := mod.ActiveCompilerPlugins("release")
+	if got, want := len(plugins), 1; got != want {
+		t.Fatalf("unexpected compiler plugin count: got %d want %d (%#v)", got, want, plugins)
+	}
+	if got, want := plugins[0].ID, modulebuild.ComposeCompilerPluginID; got != want {
+		t.Fatalf("unexpected compiler plugin id: got %q want %q", got, want)
+	}
+}
+
+func TestLoadExpandsVersionCatalogPluginAliases(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, root, "settings.gradle.kts", `
+pluginManagement {
+  repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) }
+rootProject.name = "Example"
+include(":lib")
+`)
+	testutil.WriteFile(t, root, "build.gradle.kts", "")
+	testutil.WriteFile(t, root, "gradle/libs.versions.toml", `
+[plugins]
+android-library = { id = "com.android.library", version = "8.13.1" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "2.3.0" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version = "2.3.0" }
+ksp = { id = "com.google.devtools.ksp", version = "2.3.0-1.0.0" }
+`)
+	testutil.WriteFile(t, root, "lib/build.gradle.kts", `
+plugins {
+  alias(libs.plugins.android.library)
+  alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.compose.compiler)
+  alias(libs.plugins.ksp)
+}
+`)
+
+	prj, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	mod := prj.FindModule(":lib")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	if got, want := mod.Type, "android-library"; got != want {
+		t.Fatalf("unexpected module type: got %q want %q", got, want)
+	}
+	if !mod.UsesCompose {
+		t.Fatal("expected compose alias to enable Compose compiler")
+	}
+	if !mod.UsesKotlinSerialization {
+		t.Fatal("expected serialization alias to enable serialization compiler")
+	}
+	if !mod.UsesKSP {
+		t.Fatal("expected ksp alias to enable KSP")
+	}
+}
+
 func TestLoadModuleParsesCustomCompilerPlugins(t *testing.T) {
 	root := t.TempDir()
 	prj := &Project{RootDir: root}

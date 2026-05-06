@@ -335,6 +335,90 @@ func loadVersionCatalogs(paths []string) (map[string]string, error) {
 	return out, nil
 }
 
+func loadVersionCatalogPluginAliases(paths []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+
+		inPlugins := false
+		for _, raw := range strings.Split(string(data), "\n") {
+			line := strings.TrimSpace(raw)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+				inPlugins = line == "[plugins]"
+				continue
+			}
+			if !inPlugins {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if !strings.HasPrefix(value, "{") {
+				continue
+			}
+			id := parseCatalogPluginID(value)
+			if id != "" {
+				out[normalizePluginAlias(key)] = id
+			}
+		}
+	}
+	return out, nil
+}
+
+func parseCatalogPluginID(value string) string {
+	value = strings.Trim(value, "{}")
+	for _, field := range splitCatalogFields(value) {
+		parts := strings.SplitN(field, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		if strings.TrimSpace(parts[0]) != "id" {
+			continue
+		}
+		return stripInlineComment(strings.TrimSpace(parts[1]))
+	}
+	return ""
+}
+
+func splitCatalogFields(value string) []string {
+	var fields []string
+	var current strings.Builder
+	inQuote := false
+	for _, r := range value {
+		switch r {
+		case '"':
+			inQuote = !inQuote
+			current.WriteRune(r)
+		case ',':
+			if inQuote {
+				current.WriteRune(r)
+				continue
+			}
+			fields = append(fields, strings.TrimSpace(current.String()))
+			current.Reset()
+		default:
+			current.WriteRune(r)
+		}
+	}
+	if strings.TrimSpace(current.String()) != "" {
+		fields = append(fields, strings.TrimSpace(current.String()))
+	}
+	return fields
+}
+
+func normalizePluginAlias(alias string) string {
+	return strings.ReplaceAll(strings.TrimSpace(alias), "-", ".")
+}
+
 func stripInlineComment(v string) string {
 	if idx := strings.Index(v, "#"); idx >= 0 {
 		v = v[:idx]

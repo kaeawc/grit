@@ -3,11 +3,14 @@ package nativecompile
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -101,6 +104,9 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 	if len(jars) == 0 {
 		return nil, fmt.Errorf("ksp2 runtime jars not found for version %s; bump KSP to a release that ships symbol-processing-aa-embeddable", version)
 	}
+	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
+		jars = mergePaths(jars, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
+	}
 	return jars, nil
 }
 
@@ -118,7 +124,105 @@ func resolveKSPProcessors(state *compileState, prj *project.Project, refs []modu
 	if err != nil {
 		return nil, fmt.Errorf("resolve ksp processors: %w", err)
 	}
-	return mergePaths(resolved.CompileJars, resolved.RuntimeJars), nil
+	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
+	if len(jars) > 0 {
+		return jars, nil
+	}
+	fallbackRefs := kspProcessorJVMFallbackRefs(prj, refs)
+	if len(fallbackRefs) == 0 {
+		return jars, nil
+	}
+	resolved, err = resolver.Resolve(&modulebuild.Dependencies{Main: fallbackRefs})
+	if err != nil {
+		return nil, fmt.Errorf("resolve ksp jvm processors: %w", err)
+	}
+	jars = mergePaths(resolved.CompileJars, resolved.RuntimeJars)
+	if len(jars) > 0 {
+		return jars, nil
+	}
+	for _, ref := range fallbackRefs {
+		if ref.Kind != "raw" {
+			continue
+		}
+		if jar := fetchKSPProcessorJar(prj, ref.Value); jar != "" {
+			jars = append(jars, jar)
+		}
+	}
+	return mergePaths(jars), nil
+}
+
+func kspProcessorJVMFallbackRefs(prj *project.Project, refs []modulebuild.Ref) []modulebuild.Ref {
+	cat, err := dependencywiring.LoadCatalog(prj)
+	if err != nil || cat == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []modulebuild.Ref
+	for _, ref := range refs {
+		if ref.Kind != "library" {
+			continue
+		}
+		lib, err := cat.ResolveLibrary(ref.Value)
+		if err != nil || lib.Group == "" || lib.Name == "" || lib.Version == "" {
+			continue
+		}
+		coord := lib.Group + ":" + lib.Name + "-jvm:" + lib.Version
+		if seen[coord] {
+			continue
+		}
+		seen[coord] = true
+		out = append(out, modulebuild.Ref{Kind: "raw", Value: coord})
+	}
+	return out
+}
+
+func fetchKSPProcessorJar(prj *project.Project, raw string) string {
+	parts := strings.Split(raw, ":")
+	if len(parts) != 3 || prj == nil {
+		return ""
+	}
+	group, module, version := parts[0], parts[1], parts[2]
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + version + ".jar"
+	out := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", rel)
+	if pathIsFile(out) {
+		return out
+	}
+	var urls []string
+	for _, repo := range prj.Repositories {
+		base := strings.TrimSpace(repo.URL)
+		if base == "" || strings.HasPrefix(base, "file:") {
+			continue
+		}
+		urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
+	}
+	urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
+	for _, url := range urls {
+		resp, err := http.Get(url)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			_ = resp.Body.Close()
+			return ""
+		}
+		f, err := os.Create(out)
+		if err != nil {
+			_ = resp.Body.Close()
+			return ""
+		}
+		_, copyErr := io.Copy(f, resp.Body)
+		closeErr := f.Close()
+		_ = resp.Body.Close()
+		if copyErr == nil && closeErr == nil {
+			return out
+		}
+		_ = os.Remove(out)
+	}
+	return ""
 }
 
 // kspLanguageVersion derives the KSP -language-version flag from the
@@ -183,6 +287,9 @@ func ksp2Args(modName, projectBaseDir, classOut, kotlinOut, javaOut, resourceOut
 // KSP2 errors out if a passed root is missing.
 func kspSourceRoots(mod *project.Module, variantName string) []string {
 	roots := mainSourceRoots(mod, variantName)
+	if moduleUsesKotlinMultiplatform(mod) {
+		roots = []string{filepath.Join(mod.Dir, "src", "commonMain")}
+	}
 	out := make([]string, 0, len(roots))
 	for _, r := range roots {
 		if pathIsDir(r) {
@@ -212,6 +319,9 @@ func (c *Compiler) runKSP2ForModule(ctx context.Context, state *compileState, pr
 	processorCP, err := resolveKSPProcessors(state, prj, mod.KSP.Processors)
 	if err != nil {
 		return out, err
+	}
+	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
+		processorCP = mergePaths(processorCP, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
 	}
 	if len(processorCP) == 0 {
 		return out, fmt.Errorf("no processor jars resolved for %s; declared refs: %v", mod.Path, mod.KSP.Processors)

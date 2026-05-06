@@ -283,7 +283,7 @@ func (prj *Project) SemanticGraphDetailed() *graph.Graph {
 		}
 	}
 	for _, mod := range prj.Modules {
-		deps, err := modulebuild.ParseDependencies(mod.BuildFile)
+		deps, err := modulebuild.ParseDependenciesForModule(mod.BuildFile, prj.RootDir, mod.Plugins)
 		if err != nil {
 			continue
 		}

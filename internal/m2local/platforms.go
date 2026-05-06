@@ -85,6 +85,10 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 			}
 			out = append(out, r.normalizeRootCoordinate(Coordinate{Group: lib.Group, Module: lib.Name, Version: version}))
 		case "raw":
+			if coord, ok := r.composeAccessorCoordinate(ref.Value, platforms); ok {
+				out = append(out, r.normalizeRootCoordinate(coord))
+				continue
+			}
 			coord, err := parseRawCoordinate(ref.Value)
 			if err != nil {
 				return nil, err
@@ -113,6 +117,48 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 		}
 	}
 	return out, nil
+}
+
+func (r *Resolver) composeAccessorCoordinate(value string, platforms map[string]map[string]string) (Coordinate, bool) {
+	group, module, ok := ComposeAccessorModule(value)
+	if !ok {
+		return Coordinate{}, false
+	}
+	version := ""
+	if r != nil && r.Catalog != nil {
+		for _, key := range []string{"compose-multiplatform", "composeMultiplatform", "compose"} {
+			if v := strings.TrimSpace(r.Catalog.Versions[key]); v != "" {
+				version = v
+				break
+			}
+		}
+	}
+	if version == "" {
+		version = r.lookupVersion(platforms, group, module)
+	}
+	if version == "" {
+		return Coordinate{}, false
+	}
+	return Coordinate{Group: group, Module: module, Version: version}, true
+}
+
+func ComposeAccessorModule(value string) (string, string, bool) {
+	switch strings.TrimSpace(value) {
+	case "compose.ui":
+		return "org.jetbrains.compose.ui", "ui", true
+	case "compose.runtime":
+		return "org.jetbrains.compose.runtime", "runtime", true
+	case "compose.foundation":
+		return "org.jetbrains.compose.foundation", "foundation", true
+	case "compose.material3":
+		return "org.jetbrains.compose.material3", "material3", true
+	case "compose.components.resources":
+		return "org.jetbrains.compose.components", "components-resources", true
+	case "compose.uiTest":
+		return "org.jetbrains.compose.ui", "ui-test", true
+	default:
+		return "", "", false
+	}
 }
 
 func (r *Resolver) normalizeRootCoordinate(coord Coordinate) Coordinate {
