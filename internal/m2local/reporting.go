@@ -3,6 +3,7 @@ package m2local
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -91,6 +92,9 @@ func LoadCachedResolvedProduct(cacheRoot, workRoot string, repos []project.Repos
 		product.Found = true
 		product.Topology = envelope.Topology
 		product.Resolved = resolved
+		if !resolvedArtifactsExist(workRoot, resolved) {
+			product.Found = false
+		}
 		return product, nil
 	}
 	var resolved Resolved
@@ -115,7 +119,34 @@ func LoadCachedResolvedProduct(cacheRoot, workRoot string, repos []project.Repos
 	}
 	product.Found = true
 	product.Resolved = resolved
+	if !resolvedArtifactsExist(workRoot, resolved) {
+		product.Found = false
+	}
 	return product, nil
+}
+
+func resolvedArtifactsExist(workRoot string, resolved Resolved) bool {
+	for _, path := range append(append(append([]string{}, resolved.CompileJars...), resolved.RuntimeJars...), resolved.TestJars...) {
+		if shouldValidateResolvedPath(workRoot, path) && !fileExists(path) {
+			return false
+		}
+	}
+	for _, lib := range resolved.AndroidLibraries {
+		for _, path := range []string{lib.ManifestPath, lib.ResDir, lib.ClassesJar} {
+			if shouldValidateResolvedPath(workRoot, path) && !fileExists(path) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func shouldValidateResolvedPath(workRoot, path string) bool {
+	if workRoot == "" || path == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Join(workRoot, ".grit"), path)
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
 func (r *Resolver) resolvedCacheInputs(deps *modulebuild.Dependencies, found bool) (ResolvedCacheInputs, error) {

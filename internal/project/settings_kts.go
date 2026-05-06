@@ -50,6 +50,9 @@ func parseSettingsKTSWithProperties(body string, gradleProperties map[string]str
 			}
 		}
 	}
+	if len(model.Repositories) == 0 {
+		model.Repositories = append(model.Repositories, collectProjectRepositoriesWithOrigin(body, gradleProperties, "settings")...)
+	}
 	model.Repositories = annotateRepositories(dedupeRepositories(model.Repositories), "settings", 0)
 	model.Includes = mergeStrings(nil, model.Includes)
 	model.ModuleDirs = parseProjectDirAssignments(body)
