@@ -4,8 +4,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/kaeawc/grit/internal/gradlecache"
+	"github.com/kaeawc/grit/internal/project"
 )
 
 // KotlincLibDir resolves kotlinc on PATH (following symlinks) and returns its
@@ -61,6 +63,35 @@ func LocateSerializationCompilerPlugin() string {
 	if version := gradlecache.LatestVersion(group, module); version != "" {
 		if jars := gradlecache.FindArtifactJars(group, module, version); len(jars) > 0 {
 			return jars[0]
+		}
+	}
+	return ""
+}
+
+// LocateKotlinCompiler returns either the project-requested Kotlin compiler
+// embeddable jar from the Gradle cache or the latest cached compiler jar.
+func LocateKotlinCompiler(prj *project.Project) string {
+	version := projectKotlinVersion(prj)
+	if version == "" {
+		version = gradlecache.LatestVersion("org.jetbrains.kotlin", "kotlin-compiler-embeddable")
+	}
+	if version == "" {
+		return ""
+	}
+	jars := gradlecache.FindArtifactJars("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
+	if len(jars) == 0 {
+		return ""
+	}
+	return jars[0]
+}
+
+func projectKotlinVersion(prj *project.Project) string {
+	if prj == nil {
+		return ""
+	}
+	for _, key := range []string{"kotlin", "build-kotlin", "kotlin-version"} {
+		if v := strings.TrimSpace(prj.VersionCatalogData[key]); v != "" {
+			return v
 		}
 	}
 	return ""

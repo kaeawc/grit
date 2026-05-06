@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kaeawc/grit/internal/project"
 )
 
 func TestKotlincLibDirResolvesAdjacentLib(t *testing.T) {
@@ -57,5 +59,55 @@ func TestLocateComposeCompilerPluginPrefersKotlincLib(t *testing.T) {
 	got := LocateComposeCompilerPlugin()
 	if got != jar {
 		t.Fatalf("LocateComposeCompilerPlugin = %q want %q", got, jar)
+	}
+}
+
+func TestCheckKotlinCompilerAcceptsProjectCompilerFromGradleCache(t *testing.T) {
+	tempDir := t.TempDir()
+	emptyPath := filepath.Join(tempDir, "bin")
+	if err := os.MkdirAll(emptyPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", emptyPath)
+	t.Setenv("HOME", tempDir)
+
+	jar := filepath.Join(
+		tempDir,
+		".gradle", "caches", "modules-2", "files-2.1",
+		"org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.20",
+		"hash", "kotlin-compiler-embeddable-2.1.20.jar",
+	)
+	if err := os.MkdirAll(filepath.Dir(jar), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(jar, []byte("jar"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	item := checkKotlinCompiler(&project.Project{
+		VersionCatalogData: map[string]string{"build-kotlin": "2.1.20"},
+	})
+	if !item.OK {
+		t.Fatalf("expected cached Kotlin compiler to pass: %#v", item)
+	}
+	if item.Detail != "using Gradle cache: "+jar {
+		t.Fatalf("checkKotlinCompiler detail = %q want cached jar %q", item.Detail, jar)
+	}
+}
+
+func TestCheckKotlinCompilerFailsWithoutPathOrCachedCompiler(t *testing.T) {
+	tempDir := t.TempDir()
+	emptyPath := filepath.Join(tempDir, "bin")
+	if err := os.MkdirAll(emptyPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", emptyPath)
+	t.Setenv("HOME", tempDir)
+
+	item := checkKotlinCompiler(&project.Project{
+		VersionCatalogData: map[string]string{"build-kotlin": "2.1.20"},
+	})
+	if item.OK {
+		t.Fatalf("expected missing Kotlin compiler to fail: %#v", item)
 	}
 }

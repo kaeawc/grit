@@ -646,6 +646,47 @@ func TestBuildRoutesJvmModuleToCompileAndTest(t *testing.T) {
 	}
 }
 
+func TestBuildRoutesJvmCompileCommand(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":lib", "jvm-library"))
+	mod := prj.FindModule(":lib")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	outcome, err := svc.Build(context.Background(), prj, mod, BuildRequest{
+		Command: "compile",
+	}, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("compile returned error: %v", err)
+	}
+	if !outcome.Compiled || outcome.Tested {
+		t.Fatalf("expected JVM compile to compile without testing, got %#v", outcome)
+	}
+	if len(fake.Calls) != 1 || fake.Calls[0] != "compile::lib:main" {
+		t.Fatalf("unexpected compiler calls: %#v", fake.Calls)
+	}
+}
+
+func TestBuildRejectsGenericCompileForAndroidModule(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	_, err := svc.Build(context.Background(), prj, mod, BuildRequest{
+		Command: "compile",
+	}, os.Stdout, os.Stderr, perf.New(false))
+	if err == nil {
+		t.Fatal("expected generic compile to be unsupported for Android modules")
+	}
+	if len(fake.Calls) != 0 {
+		t.Fatalf("unexpected compiler calls: %#v", fake.Calls)
+	}
+}
+
 func TestBuildRoutesFlavoredUnitTestExecutionToRequestedVariant(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)

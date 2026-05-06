@@ -333,6 +333,11 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err, s.clock.Now())
 		return outcome, err
 	}
+	if req.Command == "compile" && !mod.IsJVM() {
+		err := griterr.Newf(griterr.ErrUnsupported, "command %s", req.Command)
+		outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), err, s.clock.Now())
+		return outcome, err
+	}
 	restoreAdmission := s.installScheduleAdmissionController(plan.Schedule)
 	defer restoreAdmission()
 
@@ -368,7 +373,7 @@ func (s *Service) Build(ctx context.Context, prj *project.Project, mod *project.
 	}
 	outcome.RunSummaryPath = persistRunSummary(prj.RootDir, mod.Path, req, outcome, tracker.GetTimings(), nil, s.clock.Now())
 	switch req.Command {
-	case "compile-debug", "compileDebugSources", "compileReleaseSources":
+	case "compile", "compile-debug", "compileDebugSources", "compileReleaseSources":
 		outcome.Compiled = true
 		return outcome, nil
 	case "install", "install-debug", "installDebug", "installRelease":
@@ -509,7 +514,7 @@ func (s *Service) resolveExecutionPlanWithModel(ctx context.Context, model *conf
 
 func commandUsesDebugVariant(command string) bool {
 	switch command {
-	case "assemble-debug", "assembleDebug", "compile-debug", "compileDebugSources", "install-debug", "installDebug", "uninstallDebug", "test-debug-unit", "testDebugUnitTest", "compileDebugUnitTestSources", "compileDebugAndroidTestSources", "assembleAndroidTest", "installDebugAndroidTest", "install-android-tests", "uninstallDebugAndroidTest", "uninstall-android-tests", "check":
+	case "assemble-debug", "assembleDebug", "compile", "compile-debug", "compileDebugSources", "install-debug", "installDebug", "uninstallDebug", "test-debug-unit", "testDebugUnitTest", "compileDebugUnitTestSources", "compileDebugAndroidTestSources", "assembleAndroidTest", "installDebugAndroidTest", "install-android-tests", "uninstallDebugAndroidTest", "uninstall-android-tests", "check":
 		return true
 	default:
 		return false

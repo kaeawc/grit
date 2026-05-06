@@ -650,7 +650,7 @@ func (m *Model) jvmActionsForResolvedCommand(g *graph.Graph, modulePath, command
 		variants = m.requestedVariants(modulePath, nil)
 	}
 	switch command {
-	case "compile-debug", "compileDebugSources", "compileReleaseSources", "assemble", "assembleDebug", "assembleRelease":
+	case "compile", "compile-debug", "compileDebugSources", "compileReleaseSources", "assemble", "assembleDebug", "assembleRelease":
 		return expandActionDependencies(g, m.actionsForVariants(g, modulePath, variants, "compile")), nil
 	case "build", "buildNeeded":
 		actions := m.actionsForVariants(g, modulePath, variants, "compile")

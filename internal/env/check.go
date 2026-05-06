@@ -21,7 +21,7 @@ type Item struct {
 func Check(prj *project.Project) Report {
 	items := []Item{
 		checkCommand("java"),
-		checkCommand("kotlinc"),
+		checkKotlinCompiler(prj),
 		checkAndroidJar(),
 		checkComposeCompilerPlugin(),
 		checkSerializationCompilerPlugin(),
@@ -36,6 +36,16 @@ func checkCommand(name string) Item {
 		return Item{Name: name, Detail: "not found on PATH", OK: false}
 	}
 	return Item{Name: name, Detail: path, OK: true}
+}
+
+func checkKotlinCompiler(prj *project.Project) Item {
+	if path, err := exec.LookPath("kotlinc"); err == nil {
+		return Item{Name: "kotlinc", Detail: path, OK: true}
+	}
+	if path := LocateKotlinCompiler(prj); path != "" {
+		return Item{Name: "kotlinc", Detail: "using Gradle cache: " + path, OK: true}
+	}
+	return Item{Name: "kotlinc", Detail: "not found on PATH or in Gradle cache", OK: false}
 }
 
 func checkAndroidJar() Item {

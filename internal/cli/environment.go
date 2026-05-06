@@ -60,6 +60,9 @@ func runJavaToolchains(_ context.Context, args []string, stdout, stderr io.Write
 		return cmd.fail(1, err)
 	}
 	kotlinc, _ := exec.LookPath("kotlinc")
+	if kotlinc == "" {
+		kotlinc = env.LocateKotlinCompiler(prj)
+	}
 	return cmd.success(resultJSON(javaToolchainsResult{
 		Repo: prj.RootDir,
 		Java: responsepayload.JavaToolchainInfo{JavaHome: os.Getenv("JAVA_HOME")},

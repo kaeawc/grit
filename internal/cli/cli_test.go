@@ -3592,20 +3592,6 @@ android {
     targetSdk = 34
   }
 }
-
-func TestTaskNameForVariant(t *testing.T) {
-	t.Parallel()
-
-	if got := taskNameForVariant("assemble", "debug"); got != "assembleDebug" {
-		t.Fatalf("unexpected task name: %q", got)
-	}
-	if got := taskNameForVariant("assemble", "release"); got != "assembleRelease" {
-		t.Fatalf("unexpected task name: %q", got)
-	}
-	if got := taskNameForVariant("assemble", ""); got != "assemble" {
-		t.Fatalf("unexpected empty-variant task name: %q", got)
-	}
-}
 dependencies {
   implementation(projects.lib)
   implementation(libs.okhttp)
@@ -3630,6 +3616,29 @@ android {
 		if exitCode := Run(context.Background(), args, &stdout, &stderr); exitCode != 0 {
 			t.Fatalf("%v exited with %d: stderr=%s", args, exitCode, stderr.String())
 		}
+	}
+}
+
+func TestCompileCommandDispatchesAsNativeBuild(t *testing.T) {
+	var stdout, stderr strings.Builder
+	exitCode := Run(context.Background(), []string{"compile", "--repo", filepath.Join(t.TempDir(), "missing"), "--module", ":lib"}, &stdout, &stderr)
+	if exitCode == 0 {
+		t.Fatalf("expected compile to fail on missing repo")
+	}
+	var resp struct {
+		Command string `json:"command"`
+		Error   struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Command != "compile" {
+		t.Fatalf("expected compile dispatch, got %#v", resp)
+	}
+	if strings.Contains(resp.Error.Message, "unknown command") {
+		t.Fatalf("compile should dispatch as a native build command, got %#v", resp.Error.Message)
 	}
 }
 
