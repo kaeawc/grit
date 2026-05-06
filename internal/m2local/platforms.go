@@ -125,11 +125,16 @@ func (r *Resolver) composeAccessorCoordinate(value string, platforms map[string]
 		return Coordinate{}, false
 	}
 	version := ""
+	if strings.HasPrefix(group, "androidx.compose") {
+		version = r.lookupVersion(platforms, group, module)
+	}
 	if r != nil && r.Catalog != nil {
-		for _, key := range []string{"compose-multiplatform", "composeMultiplatform", "compose"} {
-			if v := strings.TrimSpace(r.Catalog.Versions[key]); v != "" {
-				version = v
-				break
+		if version == "" {
+			for _, key := range []string{"compose-multiplatform", "composeMultiplatform", "compose"} {
+				if v := strings.TrimSpace(r.Catalog.Versions[key]); v != "" {
+					version = v
+					break
+				}
 			}
 		}
 	}
@@ -151,7 +156,7 @@ func ComposeAccessorModule(value string) (string, string, bool) {
 	case "compose.foundation":
 		return "org.jetbrains.compose.foundation", "foundation", true
 	case "compose.material3":
-		return "org.jetbrains.compose.material3", "material3", true
+		return "androidx.compose.material3", "material3-android", true
 	case "compose.components.resources":
 		return "org.jetbrains.compose.components", "components-resources", true
 	case "compose.uiTest":

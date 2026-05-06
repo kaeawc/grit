@@ -27,6 +27,7 @@ type preparedMainCompile struct {
 	androidResources  []androidResourceArtifact
 	compileCP         []string
 	mainSources       []string
+	commonSources     []string
 	mainOut           string
 	sharedCompileDir  string
 	moduleJarPath     string
@@ -129,6 +130,8 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	err = c.track("prepareCompileInputs", func() error {
 		out.resourceDeps = uniqueResourceArtifacts(append(append([]androidResourceArtifact{}, deps.projectResources...), externalResources...))
 		out.compileCP = mergePaths(deps.projectCompileCP, collapseVersions(deps.resolved.CompileJars), deps.localCompileRefs)
+		out.compileCP = mergePaths(out.compileCP, fallbackJVMCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
+		out.compileCP = mergePaths(out.compileCP, fallbackAndroidCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
 		out.androidResources = out.resourceDeps
 		return nil
 	})
@@ -199,6 +202,18 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		// Generated Kotlin sources fold into the main kotlinc invocation
 		// alongside originals; generated Java handled by post-kotlinc javac.
 		out.mainSources = append(out.mainSources, kspResult.GeneratedKotlinFiles...)
+	}
+	generatedFallbacks, err := runGeneratedFallbacks(prj, mod, variantName)
+	if err != nil {
+		return out, err
+	}
+	out.mainSources = append(out.mainSources, generatedFallbacks.Sources...)
+	if moduleUsesKotlinMultiplatform(mod) {
+		out.commonSources, err = collectSourcesFromRoots([]string{filepath.Join(mod.Dir, "src", "commonMain")})
+		if err != nil {
+			return out, err
+		}
+		out.commonSources = append(out.commonSources, generatedFallbacks.CommonSources...)
 	}
 	out.effectiveCompile = out.compileCP
 	kotlinInputs := append([]string{}, out.mainSources...)
@@ -285,6 +300,9 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 			var extraArgs []string
 			if moduleUsesKotlinMultiplatform(mod) {
 				extraArgs = append(extraArgs, "-Xmulti-platform")
+				if len(prepared.commonSources) > 0 {
+					extraArgs = append(extraArgs, "-Xcommon-sources="+strings.Join(prepared.commonSources, ","))
+				}
 			}
 			if err := runKotlinc(ctx, toolchain, prepared.mainSources, prepared.mainOut, prepared.effectiveCompile, prepared.pluginPaths, prepared.pluginOptions, prepared.androidModuleType, mod.UsesCompose || prepared.androidModuleType, extraArgs, stdout, stderr); err != nil {
 				return err

@@ -1,7 +1,9 @@
 package nativecompile
 
 import (
+	"archive/zip"
 	"context"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +12,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -45,6 +49,17 @@ func projectKSPVersion(prj *project.Project) string {
 		for _, key := range []string{"ksp", "build-kotlin-ksp", "kotlin-ksp", "ksp-version", "kotlin-symbol-processing"} {
 			if v := strings.TrimSpace(prj.VersionCatalogData[key]); v != "" {
 				return v
+			}
+		}
+		for _, path := range prj.VersionCatalogs {
+			cat, err := catalog.Load(path)
+			if err != nil || cat == nil {
+				continue
+			}
+			for _, key := range []string{"ksp", "build-kotlin-ksp", "kotlin-ksp", "ksp-version", "kotlin-symbol-processing"} {
+				if v := strings.TrimSpace(cat.Versions[key]); v != "" {
+					return v
+				}
 			}
 		}
 	}
@@ -94,6 +109,7 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 		return nil, fmt.Errorf("resolve ksp2 runtime %s: %w", version, err)
 	}
 	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
+	jars = filterKSPRuntimeClasspathVersion(version, jars)
 	if len(jars) == 0 {
 		jars = mergePaths(
 			findGradleArtifactJars("com.google.devtools.ksp", "symbol-processing-aa-embeddable", version),
@@ -102,12 +118,50 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 		)
 	}
 	if len(jars) == 0 {
+		for _, raw := range []string{
+			"com.google.devtools.ksp:symbol-processing-aa-embeddable:" + version,
+			"com.google.devtools.ksp:symbol-processing-api:" + version,
+			"com.google.devtools.ksp:symbol-processing-common-deps:" + version,
+		} {
+			if jar := fetchMavenJar(prj, raw); jar != "" {
+				jars = append(jars, jar)
+			}
+		}
+	}
+	if len(jars) == 0 {
 		return nil, fmt.Errorf("ksp2 runtime jars not found for version %s; bump KSP to a release that ships symbol-processing-aa-embeddable", version)
 	}
 	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
 		jars = mergePaths(jars, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
 	}
 	return jars, nil
+}
+
+func filterKSPRuntimeClasspathVersion(version string, paths []string) []string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return paths
+	}
+	marker := string(filepath.Separator) + filepath.Join("com", "google", "devtools", "ksp") + string(filepath.Separator)
+	var out []string
+	for _, path := range paths {
+		if !strings.Contains(path, marker) {
+			out = append(out, path)
+			continue
+		}
+		parts := strings.Split(filepath.ToSlash(path), "/")
+		keep := false
+		for _, part := range parts {
+			if part == version {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 // resolveKSPProcessors resolves the per-module processor refs into an
@@ -126,7 +180,12 @@ func resolveKSPProcessors(state *compileState, prj *project.Project, refs []modu
 	}
 	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
 	if len(jars) > 0 {
-		return jars, nil
+		for _, ref := range kspProcessorJVMFallbackRefs(prj, refs) {
+			if ref.Kind == "raw" {
+				jars = append(jars, fetchMavenPOMDependencyJars(prj, ref.Value)...)
+			}
+		}
+		return mergePaths(jars), nil
 	}
 	fallbackRefs := kspProcessorJVMFallbackRefs(prj, refs)
 	if len(fallbackRefs) == 0 {
@@ -144,14 +203,125 @@ func resolveKSPProcessors(state *compileState, prj *project.Project, refs []modu
 		if ref.Kind != "raw" {
 			continue
 		}
-		if jar := fetchKSPProcessorJar(prj, ref.Value); jar != "" {
+		if jar := fetchMavenJar(prj, ref.Value); jar != "" {
 			jars = append(jars, jar)
 		}
+		jars = append(jars, fetchMavenPOMDependencyJars(prj, ref.Value)...)
 	}
 	return mergePaths(jars), nil
 }
 
 func kspProcessorJVMFallbackRefs(prj *project.Project, refs []modulebuild.Ref) []modulebuild.Ref {
+	return jvmFallbackRefs(prj, refs)
+}
+
+func fallbackJVMCompileJars(prj *project.Project, refs []modulebuild.Ref) []string {
+	var out []string
+	for _, coord := range catalogCoordinates(prj, refs) {
+		if jar := fetchMavenJar(prj, coord); jar != "" {
+			out = append(out, jar)
+		}
+		out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
+	}
+	for _, ref := range jvmFallbackRefs(prj, refs) {
+		if ref.Kind != "raw" {
+			continue
+		}
+		if jar := fetchMavenJar(prj, ref.Value); jar != "" {
+			out = append(out, jar)
+		}
+		out = append(out, fetchMavenPOMDependencyJars(prj, ref.Value)...)
+	}
+	return mergePaths(out, transitiveJarsForMaterialized(prj, out), companionCoreJVMJars(prj, out))
+}
+
+func fallbackAndroidCompileJars(prj *project.Project, refs []modulebuild.Ref) []string {
+	var out []string
+	for _, coord := range catalogCoordinates(prj, refs) {
+		if jar := fetchMavenAARClasses(prj, coord); jar != "" {
+			out = append(out, jar)
+		}
+		parts := strings.Split(coord, ":")
+		if len(parts) == 3 && !strings.HasSuffix(parts[1], "-android") {
+			androidCoord := parts[0] + ":" + parts[1] + "-android:" + parts[2]
+			if jar := fetchMavenAARClasses(prj, androidCoord); jar != "" {
+				out = append(out, jar)
+			}
+		}
+	}
+	return mergePaths(out)
+}
+
+func catalogCoordinates(prj *project.Project, refs []modulebuild.Ref) []string {
+	cat, err := dependencywiring.LoadCatalog(prj)
+	if err != nil || cat == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(group, module, version string) {
+		if group == "" || module == "" || version == "" {
+			return
+		}
+		coord := group + ":" + module + ":" + version
+		if seen[coord] {
+			return
+		}
+		seen[coord] = true
+		out = append(out, coord)
+	}
+	for _, ref := range refs {
+		switch ref.Kind {
+		case "library":
+			lib, err := cat.ResolveLibrary(ref.Value)
+			if err == nil {
+				add(lib.Group, lib.Name, lib.Version)
+			}
+		case "raw":
+			if group, module, ok := m2local.ComposeAccessorModule(ref.Value); ok {
+				version := ""
+				if strings.HasPrefix(group, "androidx.compose") {
+					version = latestMaterializedAARVersion(prj, group, module)
+				}
+				if version == "" {
+					for _, key := range []string{"compose-multiplatform", "composeMultiplatform", "compose"} {
+						if v := strings.TrimSpace(cat.Versions[key]); v != "" {
+							version = v
+							break
+						}
+					}
+				}
+				add(group, module, version)
+				continue
+			}
+			parts := strings.Split(ref.Value, ":")
+			if len(parts) == 3 {
+				add(parts[0], parts[1], parts[2])
+			}
+		}
+	}
+	return out
+}
+
+func latestMaterializedAARVersion(prj *project.Project, group, module string) string {
+	if prj == nil {
+		return ""
+	}
+	root := filepath.Join(prj.RootDir, ".grit", "worktree", "aar", group, module)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	var best string
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() > best {
+			best = entry.Name()
+		}
+	}
+	return best
+}
+
+func jvmFallbackRefs(prj *project.Project, refs []modulebuild.Ref) []modulebuild.Ref {
 	cat, err := dependencywiring.LoadCatalog(prj)
 	if err != nil || cat == nil {
 		return nil
@@ -176,7 +346,7 @@ func kspProcessorJVMFallbackRefs(prj *project.Project, refs []modulebuild.Ref) [
 	return out
 }
 
-func fetchKSPProcessorJar(prj *project.Project, raw string) string {
+func fetchMavenJar(prj *project.Project, raw string) string {
 	parts := strings.Split(raw, ":")
 	if len(parts) != 3 || prj == nil {
 		return ""
@@ -225,6 +395,226 @@ func fetchKSPProcessorJar(prj *project.Project, raw string) string {
 	return ""
 }
 
+func fetchMavenAARClasses(prj *project.Project, raw string) string {
+	parts := strings.Split(raw, ":")
+	if len(parts) != 3 || prj == nil {
+		return ""
+	}
+	group, module, version := parts[0], parts[1], parts[2]
+	out := filepath.Join(prj.RootDir, ".grit", "worktree", "aar", group, module, version, "classes.jar")
+	if pathIsFile(out) {
+		return out
+	}
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + version + ".aar"
+	aarPath := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", rel)
+	if !pathIsFile(aarPath) {
+		var urls []string
+		for _, repo := range prj.Repositories {
+			base := strings.TrimSpace(repo.URL)
+			if base == "" || strings.HasPrefix(base, "file:") {
+				continue
+			}
+			urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
+		}
+		urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
+		for _, url := range urls {
+			resp, err := http.Get(url)
+			if err != nil {
+				continue
+			}
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				_ = resp.Body.Close()
+				continue
+			}
+			if err := os.MkdirAll(filepath.Dir(aarPath), 0o755); err != nil {
+				_ = resp.Body.Close()
+				return ""
+			}
+			f, err := os.Create(aarPath)
+			if err != nil {
+				_ = resp.Body.Close()
+				return ""
+			}
+			_, copyErr := io.Copy(f, resp.Body)
+			closeErr := f.Close()
+			_ = resp.Body.Close()
+			if copyErr == nil && closeErr == nil {
+				break
+			}
+			_ = os.Remove(aarPath)
+		}
+	}
+	if !pathIsFile(aarPath) {
+		return ""
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return ""
+	}
+	if err := extractZipFile(aarPath, "classes.jar", out); err != nil {
+		return ""
+	}
+	return out
+}
+
+func extractZipFile(zipPath, name, out string) error {
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = zr.Close() }()
+	for _, f := range zr.File {
+		if f.Name != name {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rc.Close() }()
+		w, err := os.Create(out)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(w, rc)
+		closeErr := w.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	}
+	return os.ErrNotExist
+}
+
+type mavenPOM struct {
+	Dependencies []mavenDependency `xml:"dependencies>dependency"`
+}
+
+type mavenDependency struct {
+	GroupID    string `xml:"groupId"`
+	ArtifactID string `xml:"artifactId"`
+	Version    string `xml:"version"`
+	Scope      string `xml:"scope"`
+	Optional   string `xml:"optional"`
+}
+
+func fetchMavenPOMDependencyJars(prj *project.Project, raw string) []string {
+	pomData := fetchMavenPOM(prj, raw)
+	if len(pomData) == 0 {
+		return nil
+	}
+	var pom mavenPOM
+	if err := xml.Unmarshal(pomData, &pom); err != nil {
+		return nil
+	}
+	var out []string
+	for _, dep := range pom.Dependencies {
+		scope := strings.TrimSpace(dep.Scope)
+		if scope == "test" || scope == "provided" || strings.TrimSpace(dep.Optional) == "true" {
+			continue
+		}
+		if dep.GroupID == "" || dep.ArtifactID == "" || dep.Version == "" || strings.Contains(dep.Version, "${") {
+			continue
+		}
+		if jar := fetchMavenJar(prj, dep.GroupID+":"+dep.ArtifactID+":"+dep.Version); jar != "" {
+			out = append(out, jar)
+		}
+	}
+	return out
+}
+
+func transitiveJarsForMaterialized(prj *project.Project, jars []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, jar := range jars {
+		coord := materializedJarCoordinate(prj, jar)
+		if coord == "" || seen[coord] {
+			continue
+		}
+		seen[coord] = true
+		out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
+	}
+	return out
+}
+
+func materializedJarCoordinate(prj *project.Project, path string) string {
+	if prj == nil || path == "" {
+		return ""
+	}
+	root := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2")
+	rel, err := filepath.Rel(root, path)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return ""
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) < 4 {
+		return ""
+	}
+	version := parts[len(parts)-2]
+	module := parts[len(parts)-3]
+	file := parts[len(parts)-1]
+	if file != module+"-"+version+".jar" {
+		return ""
+	}
+	group := strings.Join(parts[:len(parts)-3], ".")
+	if group == "" || module == "" || version == "" {
+		return ""
+	}
+	return group + ":" + module + ":" + version
+}
+
+func companionCoreJVMJars(prj *project.Project, jars []string) []string {
+	var out []string
+	for _, jar := range jars {
+		coord := materializedJarCoordinate(prj, jar)
+		parts := strings.Split(coord, ":")
+		if len(parts) != 3 || !strings.HasSuffix(parts[1], "-jvm") {
+			continue
+		}
+		base := strings.TrimSuffix(parts[1], "-jvm")
+		if strings.HasSuffix(base, "-core") {
+			continue
+		}
+		if core := fetchMavenJar(prj, parts[0]+":"+base+"-core-jvm:"+parts[2]); core != "" {
+			out = append(out, core)
+		}
+	}
+	return out
+}
+
+func fetchMavenPOM(prj *project.Project, raw string) []byte {
+	parts := strings.Split(raw, ":")
+	if len(parts) != 3 || prj == nil {
+		return nil
+	}
+	group, module, version := parts[0], parts[1], parts[2]
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + version + ".pom"
+	var urls []string
+	for _, repo := range prj.Repositories {
+		base := strings.TrimSpace(repo.URL)
+		if base == "" || strings.HasPrefix(base, "file:") {
+			continue
+		}
+		urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
+	}
+	urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
+	for _, url := range urls {
+		resp, err := http.Get(url)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
+			continue
+		}
+		data, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err == nil {
+			return data
+		}
+	}
+	return nil
+}
+
 // kspLanguageVersion derives the KSP -language-version flag from the
 // project's pinned Kotlin version. KSP accepts MAJOR.MINOR (e.g. "2.1");
 // patch-level is dropped.
@@ -271,6 +661,7 @@ func ksp2Args(modName, projectBaseDir, classOut, kotlinOut, javaOut, resourceOut
 		"-jvm-target=" + jvmTarget,
 		"-language-version=" + languageVersion,
 		"-api-version=" + languageVersion,
+		"-incremental=false",
 	}
 	if libraries != "" {
 		args = append(args, "-libraries="+libraries)
@@ -323,6 +714,8 @@ func (c *Compiler) runKSP2ForModule(ctx context.Context, state *compileState, pr
 	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
 		processorCP = mergePaths(processorCP, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
 	}
+	processorCP = mergePaths(processorCP, fallbackJVMCompileJars(prj, mod.KSP.Processors))
+	processorCP = mergePaths(processorCP, compileCP)
 	if len(processorCP) == 0 {
 		return out, fmt.Errorf("no processor jars resolved for %s; declared refs: %v", mod.Path, mod.KSP.Processors)
 	}
@@ -369,7 +762,7 @@ func (c *Compiler) runKSP2ForModule(ctx context.Context, state *compileState, pr
 		strings.Join(libraries, string(os.PathListSeparator)),
 		langVersion,
 		"21",
-		kspProcessorOptionsArg(mod.KSP.Options),
+		"",
 		processorCP,
 	)
 
