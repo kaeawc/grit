@@ -12,6 +12,12 @@ func parseMatchingFallbacks(body string) []string {
 	for _, match := range reArray.FindAllStringSubmatch(body, -1) {
 		out = appendUniqueQuoted(out, match[1])
 	}
+	reSingle := regexp.MustCompile(`matchingFallbacks\s*\+=\s*"([^"]+)"`)
+	for _, match := range reSingle.FindAllStringSubmatch(body, -1) {
+		if len(match) > 1 && !containsString(out, match[1]) {
+			out = append(out, match[1])
+		}
+	}
 	return out
 }
 
