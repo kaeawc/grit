@@ -423,13 +423,9 @@ func mergeDependencies(dst, src *Dependencies) {
 func dependencyCallRefs(block string) [][]string {
 	var out [][]string
 	kotlinCall := regexp.MustCompile(`(?m)^\s*([A-Za-z][A-Za-z0-9_]*)\((.+?)\)\s*(?:\{.*\})?\s*$`)
-	for _, match := range kotlinCall.FindAllStringSubmatch(block, -1) {
-		out = append(out, match)
-	}
+	out = append(out, kotlinCall.FindAllStringSubmatch(block, -1)...)
 	groovyCall := regexp.MustCompile(`(?m)^\s*([A-Za-z][A-Za-z0-9_]*)\s+(.+?)\s*(?:\{.*\})?\s*$`)
-	for _, match := range groovyCall.FindAllStringSubmatch(block, -1) {
-		out = append(out, match)
-	}
+	out = append(out, groovyCall.FindAllStringSubmatch(block, -1)...)
 	return out
 }
 
@@ -503,7 +499,7 @@ func includeDependencyBlock(body string, start int) bool {
 	i := len(prefix) - 1
 	for i >= 0 {
 		r := rune(prefix[i])
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
 			break
 		}
 		i--
