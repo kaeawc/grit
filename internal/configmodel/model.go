@@ -18,7 +18,7 @@ import (
 	"github.com/kaeawc/grit/internal/responsepayload"
 )
 
-const schemaVersion = 7
+const schemaVersion = 8
 
 type Builder interface {
 	Build(*project.Project) (*Model, error)

@@ -77,6 +77,7 @@ type Module struct {
 	FlavorDimensions          []string
 	ProductFlavors            map[string]ProductFlavor
 	BuildTypes                map[string]BuildType
+	EnabledVariants           []string
 }
 
 // WireConfig captures the resolved settings from a `wire { }` block on a
@@ -504,12 +505,14 @@ func (m Module) ResolveVariants(requested []string) []ResolvedVariant {
 		}
 		if _, ok := available[name]; ok {
 			out = append(out, m.ResolveVariant(name))
+			continue
 		}
+		out = append(out, m.ResolveVariant(name))
 	}
 	if len(out) > 0 {
 		return out
 	}
-	return m.ResolvedVariants()
+	return nil
 }
 
 func (m Module) Tasks() []Task {
@@ -928,7 +931,10 @@ func (m Module) allVariants() []BuildType {
 		sort.Strings(names)
 		out := make([]BuildType, 0, len(names))
 		for _, name := range names {
-			out = append(out, m.variantConfigForBaseBuildType(name))
+			variant := m.variantConfigForBaseBuildType(name)
+			if m.variantEnabled(variant.Name) {
+				out = append(out, variant)
+			}
 		}
 		return out
 	}
@@ -940,10 +946,25 @@ func (m Module) allVariants() []BuildType {
 	out := make([]BuildType, 0, len(buildTypeNames)*len(combinations))
 	for _, combo := range combinations {
 		for _, buildTypeName := range buildTypeNames {
-			out = append(out, m.mergeVariant(buildTypeName, combo))
+			variant := m.mergeVariant(buildTypeName, combo)
+			if m.variantEnabled(variant.Name) {
+				out = append(out, variant)
+			}
 		}
 	}
 	return out
+}
+
+func (m Module) variantEnabled(name string) bool {
+	if len(m.EnabledVariants) == 0 {
+		return true
+	}
+	for _, enabled := range m.EnabledVariants {
+		if strings.TrimSpace(enabled) == strings.TrimSpace(name) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m Module) baseBuildTypes() map[string]BuildType {
