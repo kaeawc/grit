@@ -106,6 +106,19 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return nil
 	}
 
+	testOut := filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName+"UnitTest", "classes")
+	if err := os.MkdirAll(testOut, 0o755); err != nil {
+		return err
+	}
+	testJarPath := filepath.Join(filepath.Dir(testOut), "test-classes.jar")
+	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
+	testSourceFingerprintPath := filepath.Join(filepath.Dir(testOut), "source-fingerprints.json")
+	if compileTests && !run && pathIsFile(testCompileStampPath) && hasOutputFiles(testOut) && semanticSourceFingerprintsMatch(testSourceFingerprintPath, testSources) {
+		recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "unit test source changes did not affect semantic compile inputs")
+		_, _ = fmt.Fprintln(stdout, "unit test sources compiled")
+		return nil
+	}
+
 	var deps *modulebuild.Dependencies
 	err = c.track("parseDependencies", func() error {
 		var innerErr error
@@ -191,10 +204,6 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return err
 	}
 
-	testOut := filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName+"UnitTest", "classes")
-	if err := os.MkdirAll(testOut, 0o755); err != nil {
-		return err
-	}
 	testCP := append([]string{}, resolved.TestJars...)
 	testCP = append(testCP, toolchain.TestRuntimeJars...)
 	testCP = append(testCP, kotlinTestShimJar())
@@ -203,8 +212,6 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 	testCP = append(testCP, projectTestRuntimeInputs...)
 	testCP = append(testCP, mainOut)
 	testCP = append(testCP, cp...)
-	testJarPath := filepath.Join(filepath.Dir(testOut), "test-classes.jar")
-	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
 	if compileTests {
 		testCompileInputs := append([]string{}, testSources...)
 		testCompileInputs = append(testCompileInputs, mod.BuildFile)
@@ -222,32 +229,51 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 			}
 			if outputsNewerThanInputs(testOut, testCompileInputs) {
 				_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+				_ = writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
 				recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "compiled test outputs newer than test inputs")
 				return nil
 			}
 			if restoreSharedCompileCache(testOut, testJarPath, testSharedCompileDir) {
 				_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+				_ = writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
 				recordCacheProbe(c.tracker, "compileTests", true, "shared-cache-hit", "restored compiled tests from shared cache")
 			}
 			return nil
 		})
 		if err == nil && !stampMatches(testCompileStampPath, testSharedCompileDir) {
-			recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled tests required fresh Kotlin compilation")
-			err = c.track("kotlincTests", func() error {
-				return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, nil, includeAndroid, false, []string{"-Xfriend-paths=" + mainOut}, stdout, stderr)
-			})
-			if err == nil {
-				err = c.track("publishCompileTestsCache", func() error {
-					testJar, innerErr := classesJarForDir(ctx, testOut, stdout, stderr)
-					if innerErr != nil {
-						return innerErr
-					}
-					testJarPath = testJar
-					if innerErr := saveSharedCompileCache(testOut, testJar, testSharedCompileDir); innerErr != nil {
-						return innerErr
-					}
-					return writeStamp(testCompileStampPath, testSharedCompileDir)
-				})
+			if semanticSourceFingerprintsMatch(testSourceFingerprintPath, testSources) && hasOutputFiles(testOut) {
+				recordCacheProbe(c.tracker, "compileTests", true, "local-up-to-date", "unit test source changes did not affect semantic compile inputs")
+				_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+				_ = writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
+			} else {
+				recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled tests required fresh Kotlin compilation")
+				extraArgs := []string{"-Xfriend-paths=" + mainOut}
+				if changedSource, ok := singleChangedSourceForIncrementalCompile(testSources, testOut); ok {
+					err = c.track("kotlincTestsIncremental", func() error {
+						incrementalCP := mergePaths([]string{testOut}, testCP)
+						return runKotlinc(ctx, toolchain, []string{changedSource}, testOut, incrementalCP, nil, nil, includeAndroid, false, extraArgs, stdout, stderr)
+					})
+				} else {
+					err = c.track("kotlincTests", func() error {
+						return runKotlinc(ctx, toolchain, testSources, testOut, testCP, nil, nil, includeAndroid, false, extraArgs, stdout, stderr)
+					})
+				}
+				if err == nil {
+					err = c.track("publishCompileTestsCache", func() error {
+						testJar, innerErr := classesJarForDir(ctx, testOut, stdout, stderr)
+						if innerErr != nil {
+							return innerErr
+						}
+						testJarPath = testJar
+						if innerErr := saveSharedCompileCache(testOut, testJar, testSharedCompileDir); innerErr != nil {
+							return innerErr
+						}
+						if innerErr := writeStamp(testCompileStampPath, testSharedCompileDir); innerErr != nil {
+							return innerErr
+						}
+						return writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
+					})
+				}
 			}
 		}
 		endCompileTests()
@@ -446,6 +472,31 @@ func appendUniqueRefs(base []modulebuild.Ref, extra ...modulebuild.Ref) []module
 
 func collectUnitTestSources(mod *project.Module, variantName string) ([]string, error) {
 	return collectSourcesFromRoots(unitTestSourceRoots(mod, variantName))
+}
+
+func singleChangedSourceForIncrementalCompile(sources []string, outDir string) (string, bool) {
+	if len(sources) == 0 || !hasOutputFiles(outDir) {
+		return "", false
+	}
+	outputTime := latestInputModTime([]string{outDir})
+	if outputTime.IsZero() {
+		return "", false
+	}
+	var changed string
+	for _, source := range sources {
+		info, err := os.Stat(source)
+		if err != nil || info.IsDir() {
+			return "", false
+		}
+		if !info.ModTime().After(outputTime) {
+			continue
+		}
+		if changed != "" {
+			return "", false
+		}
+		changed = source
+	}
+	return changed, changed != ""
 }
 
 func collectAndroidTestSources(mod *project.Module, variantName string) ([]string, error) {

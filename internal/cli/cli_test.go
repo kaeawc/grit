@@ -3279,22 +3279,38 @@ android {
 		t.Fatal(err)
 	}
 	required := map[string]bool{
-		"assembleDebug":               false,
-		"compileDebugSources":         false,
-		"compileDebugUnitTestSources": false,
-		"installRelease":              false,
-		"testDebugUnitTest":           false,
-		"check":                       false,
-		"signingReport":               false,
+		"assembleDebug":                  false,
+		"compileDebugSources":            false,
+		"compileDebugUnitTestSources":    false,
+		"compileDebugAndroidTestSources": false,
+		"installRelease":                 false,
+		"testDebugUnitTest":              false,
+		"check":                          false,
+		"signingReport":                  false,
+	}
+	unsupported := map[string]bool{
+		"assembleDebugAndroidTest":      false,
+		"assembleReleaseAndroidTest":    false,
+		"compileReleaseUnitTestSources": false,
+		"lintDebug":                     false,
+		"lintRelease":                   false,
 	}
 	for _, task := range tasksResp.Result.Tasks {
 		if _, ok := required[task.Name]; ok && task.Supported {
 			required[task.Name] = true
 		}
+		if _, ok := unsupported[task.Name]; ok && !task.Supported {
+			unsupported[task.Name] = true
+		}
 	}
 	for name, seen := range required {
 		if !seen {
 			t.Fatalf("expected supported task %s in %#v", name, tasksResp.Result.Tasks)
+		}
+	}
+	for name, seen := range unsupported {
+		if !seen {
+			t.Fatalf("expected unsupported task %s in %#v", name, tasksResp.Result.Tasks)
 		}
 	}
 

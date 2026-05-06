@@ -19,7 +19,7 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
 	modulePath := fs.String("module", ":app", "Android module path")
-	variant := fs.String("variant", "debug", "Build variant name")
+	variant := fs.String("variant", "", "Build variant name")
 	deviceSerial := fs.String("device", "", "ADB device serial")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)

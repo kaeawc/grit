@@ -1281,6 +1281,28 @@ func TestBuildAssembleRoutesEveryVariant(t *testing.T) {
 	}
 }
 
+func TestBuildAssembleReleaseInfersReleaseVariant(t *testing.T) {
+	fake := &testsupport.CompilerRecorder{}
+	svc := NewWithCompiler(fake)
+	prj := testsupport.Project(t.TempDir(), testsupport.Module(":app", "android-application", "debug", "release"))
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+	outcome, err := svc.Build(context.Background(), prj, mod, BuildRequest{
+		Command: "assembleRelease",
+	}, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("build returned error: %v", err)
+	}
+	if len(outcome.ExecutedTasks) != 1 || outcome.ExecutedTasks[0] != "assembleRelease" {
+		t.Fatalf("unexpected outcome tasks: %#v", outcome.ExecutedTasks)
+	}
+	if len(fake.Calls) != 1 || fake.Calls[0] != "assemble::app:release" {
+		t.Fatalf("unexpected compiler calls: %#v", fake.Calls)
+	}
+}
+
 func TestBuildDependentsUsesSemanticGraphPlanning(t *testing.T) {
 	fake := &testsupport.CompilerRecorder{}
 	svc := NewWithCompiler(fake)

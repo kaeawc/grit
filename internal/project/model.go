@@ -534,13 +534,13 @@ func (m Module) Tasks() []Task {
 			{Name: "outgoingVariants", Category: "help", Description: "Display published variants for this module.", Supported: true},
 			{Name: "resolvableConfigurations", Category: "help", Description: "Display supported resolvable configurations.", Supported: true},
 			{Name: "bundle", Category: "build", Description: "Assemble bundles for all variants.", Supported: false},
-			{Name: "assembleAndroidTest", Category: "build", Description: "Assemble androidTest outputs.", Supported: true},
+			{Name: "assembleAndroidTest", Category: "build", Description: "Assemble androidTest outputs.", Supported: false},
 			{Name: "assembleUnitTest", Category: "build", Description: "Assemble unit test outputs.", Supported: true},
 			{Name: "buildDependents", Category: "build", Description: "Build projects depending on this module.", Supported: true},
 			{Name: "buildNeeded", Category: "build", Description: "Build dependent project requirements.", Supported: true},
-			{Name: "lint", Category: "verification", Description: "Run lint.", Supported: true},
-			{Name: "lintDebug", Category: "verification", Description: "Run lint for debug.", Supported: true},
-			{Name: "lintRelease", Category: "verification", Description: "Run lint for release.", Supported: true},
+			{Name: "lint", Category: "verification", Description: "Run lint.", Supported: false},
+			{Name: "lintDebug", Category: "verification", Description: "Run lint for debug.", Supported: false},
+			{Name: "lintRelease", Category: "verification", Description: "Run lint for release.", Supported: false},
 			{Name: "lintVitalRelease", Category: "verification", Description: "Run vital lint for release.", Supported: false},
 			{Name: "lintFix", Category: "verification", Description: "Apply lint fixes.", Supported: false},
 			{Name: "connectedAndroidTest", Category: "verification", Description: "Run connected instrumentation tests.", Supported: false},
@@ -576,7 +576,7 @@ func (m Module) Tasks() []Task {
 			{Name: "assembleUnitTest", Category: "build", Description: "Assemble unit test outputs.", Supported: true},
 			{Name: "buildDependents", Category: "build", Description: "Build projects depending on this module.", Supported: true},
 			{Name: "buildNeeded", Category: "build", Description: "Build dependent project requirements.", Supported: true},
-			{Name: "lint", Category: "verification", Description: "Run lint.", Supported: true},
+			{Name: "lint", Category: "verification", Description: "Run lint.", Supported: false},
 		}
 		return append(tasks, m.androidVariantTasks(false)...)
 	case "jvm-library":
@@ -634,13 +634,14 @@ func (m Module) androidVariantTasks(includeInstall bool) []Task {
 
 func androidTasksForVariant(variantName string, includeInstall bool) []Task {
 	suffix := taskNameSuffix(variantName)
+	debugLike := androidVariantSupportsAndroidTestInstall(variantName)
 	tasks := []Task{
 		{Name: "assemble" + suffix, Category: "build", Description: "Assemble " + variantName + " outputs.", Supported: true},
 		{Name: "compile" + suffix + "Sources", Category: "build", Description: "Compile " + variantName + " sources.", Supported: true},
-		{Name: "compile" + suffix + "UnitTestSources", Category: "build", Description: "Compile " + variantName + " unit test sources.", Supported: true},
-		{Name: "compile" + suffix + "AndroidTestSources", Category: "build", Description: "Compile " + variantName + " androidTest sources.", Supported: true},
-		{Name: "assemble" + suffix + "AndroidTest", Category: "build", Description: "Assemble " + variantName + " androidTest outputs.", Supported: true},
-		{Name: "test" + suffix + "UnitTest", Category: "verification", Description: "Run " + variantName + " unit tests.", Supported: true},
+		{Name: "compile" + suffix + "UnitTestSources", Category: "build", Description: "Compile " + variantName + " unit test sources.", Supported: debugLike},
+		{Name: "compile" + suffix + "AndroidTestSources", Category: "build", Description: "Compile " + variantName + " androidTest sources.", Supported: debugLike},
+		{Name: "assemble" + suffix + "AndroidTest", Category: "build", Description: "Assemble " + variantName + " androidTest outputs.", Supported: false},
+		{Name: "test" + suffix + "UnitTest", Category: "verification", Description: "Run " + variantName + " unit tests.", Supported: debugLike},
 	}
 	if includeInstall {
 		tasks = append(tasks, Task{Name: "install" + suffix, Category: "install", Description: "Install the " + variantName + " build.", Supported: true})
