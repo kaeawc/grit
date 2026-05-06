@@ -33,6 +33,10 @@ type androidTestCompilerStub struct {
 	calls []string
 }
 
+type optimizedUnitTestCompiler struct {
+	calls []string
+}
+
 type remoteReadCompiler struct {
 	*testsupport.CompilerRecorder
 	client *remotecache.Client
@@ -68,6 +72,36 @@ func (f *androidTestCompilerStub) InstallAndroidTestVariant(ctx context.Context,
 }
 func (f *androidTestCompilerStub) UninstallAndroidTestVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, deviceSerial string, stdout, stderr *os.File) error {
 	f.calls = append(f.calls, fmt.Sprintf("uninstall-android-tests:%s:%s:%s", modulePath, variantName, deviceSerial))
+	return nil
+}
+
+func (f *optimizedUnitTestCompiler) SetTracker(perf.Tracker) {}
+func (f *optimizedUnitTestCompiler) CompileVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "compile:"+modulePath+":"+variantName)
+	return nil
+}
+func (f *optimizedUnitTestCompiler) AssembleVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "assemble:"+modulePath+":"+variantName)
+	return nil
+}
+func (f *optimizedUnitTestCompiler) InstallVariant(ctx context.Context, prj *project.Project, modulePath string, variantName string, deviceSerial string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "install:"+modulePath+":"+variantName+":"+deviceSerial)
+	return nil
+}
+func (f *optimizedUnitTestCompiler) TestDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "test-with-compile:"+modulePath+":"+variantName)
+	return nil
+}
+func (f *optimizedUnitTestCompiler) RunDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "run-test:"+modulePath+":"+variantName)
+	return nil
+}
+func (f *optimizedUnitTestCompiler) CompileDebugUnit(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "compile-tests:"+modulePath+":"+variantName)
+	return nil
+}
+func (f *optimizedUnitTestCompiler) CompileDebugAndroidTest(ctx context.Context, prj *project.Project, modulePath string, variantName string, stdout, stderr *os.File) error {
+	f.calls = append(f.calls, "compile-android-tests:"+modulePath+":"+variantName)
 	return nil
 }
 
@@ -660,6 +694,49 @@ func TestBuildRoutesFlavoredUnitTestExecutionToRequestedVariant(t *testing.T) {
 	}
 	if len(fake.Calls) != 3 || fake.Calls[0] != "compile::app:freeDebug" || fake.Calls[1] != "compile-tests::app:freeDebug" || fake.Calls[2] != "test::app:freeDebug" {
 		t.Fatalf("unexpected flavored unit-test compiler calls: %#v", fake.Calls)
+	}
+}
+
+func TestBuildRunsUnitTestsWithoutRecompilingWhenCompilerSupportsRunner(t *testing.T) {
+	fake := &optimizedUnitTestCompiler{}
+	svc := NewWithCompiler(fake)
+	root := t.TempDir()
+	prj := &project.Project{
+		RootDir: root,
+		Name:    "OptimizedUnitTest",
+		Modules: []project.Module{{
+			Path:      ":app",
+			Dir:       filepath.Join(root, "app"),
+			BuildFile: filepath.Join(root, "app", "build.gradle.kts"),
+			Type:      "android-application",
+			BuildTypes: map[string]project.BuildType{
+				"debug": {Name: "debug"},
+			},
+		}},
+	}
+	if err := os.MkdirAll(filepath.Join(root, "app"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, root, "app/build.gradle.kts", "dependencies {}\n")
+	mod := prj.FindModule(":app")
+	if mod == nil {
+		t.Fatal("expected module")
+	}
+
+	outcome, err := svc.Build(context.Background(), prj, mod, BuildRequest{
+		Command:          "testDebugUnitTest",
+		RequestedVariant: "debug",
+		VariantExplicit:  true,
+	}, os.Stdout, os.Stderr, perf.New(false))
+	if err != nil {
+		t.Fatalf("build returned error: %v", err)
+	}
+	if !outcome.Tested {
+		t.Fatalf("expected tested outcome, got %#v", outcome)
+	}
+	want := []string{"compile::app:debug", "compile-tests::app:debug", "run-test::app:debug"}
+	if !slices.Equal(fake.calls, want) {
+		t.Fatalf("unexpected optimized unit-test calls: got %#v want %#v", fake.calls, want)
 	}
 }
 

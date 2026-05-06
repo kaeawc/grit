@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	readadapter "github.com/kaeawc/grit/internal/downloader/mavenlocal"
 
@@ -192,6 +194,20 @@ func TestPublishPinIdempotent(t *testing.T) {
 	if err != nil || string(got) != string(payload) {
 		t.Fatalf("unexpected state after double publish: err=%v got=%q", err, got)
 	}
+	oldTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(target, oldTime, oldTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	if err := p.PublishPin(ctx, pin, store); err != nil {
+		t.Fatalf("third PublishPin: %v", err)
+	}
+	statInfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if !statInfo.ModTime().Equal(oldTime) {
+		t.Fatalf("idempotent publish should not rewrite target: got %v want %v", statInfo.ModTime(), oldTime)
+	}
 }
 
 func TestPublishPinOmitsRemoteRepositoriesMarkerWithoutRepositoryID(t *testing.T) {
@@ -262,7 +278,7 @@ func TestPublishAndReadRoundTrip(t *testing.T) {
 	}
 }
 
-// assertSidecar verifies that <target>.sha1 and <target>.md5 exist and
+// assertSidecar verifies that <target>.sha1, <target>.md5, and <target>.sha256 exist and
 // contain the expected hex digests of data.
 func assertSidecar(t *testing.T, target string, data []byte) {
 	t.Helper()
@@ -285,5 +301,15 @@ func assertSidecar(t *testing.T, target string, data []byte) {
 	}
 	if string(gotMd5) != wantMd5 {
 		t.Fatalf("md5 mismatch: got %s want %s", gotMd5, wantMd5)
+	}
+
+	sha := sha256.Sum256(data)
+	wantSha256 := hex.EncodeToString(sha[:])
+	gotSha256, err := os.ReadFile(target + ".sha256")
+	if err != nil {
+		t.Fatalf("sha256 sidecar: %v", err)
+	}
+	if string(gotSha256) != wantSha256 {
+		t.Fatalf("sha256 mismatch: got %s want %s", gotSha256, wantSha256)
 	}
 }
