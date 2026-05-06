@@ -21,7 +21,7 @@ The Signal-Android worktree was dirty before this pass, including tracked source
 | --- | ---: | ---: | --- |
 | `inspect --repo Signal-Android` | 0.13s | n/a | parsed repository, modules, variants, repositories, and action graph |
 | `projects --repo Signal-Android` | 0.08s | n/a | listed 27 modules |
-| `tasks --module :app` | 0.06s | n/a | reported 174 app tasks: 92 supported, 82 unsupported after applying Signal's enabled-variant filter and custom build types |
+| `tasks --module :app` | 0.06s | n/a | reported 438 app tasks: 92 supported, 346 unsupported after applying Signal's enabled-variant filter, custom build types, and quality-task families |
 | `doctor --repo Signal-Android` | 0.04s | n/a | now succeeds without `kotlinc` on `PATH` by using the project Kotlin compiler jar from Gradle cache |
 | `:core-util-jvm` `compile`, first grit run | 16.45s | 13.29s | grit includes first-run compiler/cache setup; Gradle used `:core-util-jvm:compileKotlin --no-daemon` after prior root task exploration |
 | `:core-util-jvm` `compile`, warm grit run | 0.09s | 2.84s | Gradle reused configuration cache and reported `compileKotlin UP-TO-DATE` |
@@ -43,10 +43,11 @@ The Signal-Android worktree was dirty before this pass, including tracked source
 - JVM compile planning now includes the `compile` command, not only Android-style compile aliases.
 - Signal-style `androidComponents.beforeVariants` filters that assign `variant.enable = variant.name in selectableVariants` are now parsed for local `listOf(...)` string allowlists, so disabled app variants such as `websiteStagingDebug` are no longer advertised or planned.
 - Signal-style `buildTypes.create(...)` blocks are now parsed alongside `getByName(...)`, including `initWith(getByName(...))` and single-string `matchingFallbacks += "..."`, so selectable `spinner`, `perf`, `benchmark`, `canary`, and `instrumentation` variants appear with their task aliases.
+- ktlint and Detekt task families are now visible when their plugins are present, including aggregate, source-set, variant, unit-test, and baseline task names. They remain unsupported until native executors and incremental cache keys are designed.
 
 ## Needs improvement
 
-- Root `qa`, module `qa`, `buildQa`, `format`, ktlint, Detekt, and dependency-analysis tasks are not modeled as first-class grit tasks.
+- Root `qa`, module `qa`, `buildQa`, `format`, and dependency-analysis tasks are not modeled as first-class grit tasks.
 - Lint tasks remain unsupported. Signal's lint setup includes custom `lintChecks(project(":lintchecks"))`, baselines, SARIF/HTML outputs, and generated lint model metadata, so a lint executor needs incremental inputs for source, resources, lint checks, baselines, and report outputs.
 - Standalone android-test APK assemble tasks remain unsupported even though debug-like android-test compile/install paths exist.
 - Release unit-test and release android-test compile/test aliases remain unsupported.
@@ -54,5 +55,4 @@ The Signal-Android worktree was dirty before this pass, including tracked source
 
 ## Next component candidates
 
-1. Add first-class ktlint/Detekt task reporting as unsupported or partially supported instead of hiding those task families behind generic Gradle output.
-2. Start the lint executor design with cache keys for lint checks, baselines, source/resource roots, generated lint models, and report outputs.
+1. Start the lint executor design with cache keys for lint checks, baselines, source/resource roots, generated lint models, and report outputs.
