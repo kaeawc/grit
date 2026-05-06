@@ -44,15 +44,16 @@ The Signal-Android worktree was dirty before this pass, including tracked source
 - Signal-style `androidComponents.beforeVariants` filters that assign `variant.enable = variant.name in selectableVariants` are now parsed for local `listOf(...)` string allowlists, so disabled app variants such as `websiteStagingDebug` are no longer advertised or planned.
 - Signal-style `buildTypes.create(...)` blocks are now parsed alongside `getByName(...)`, including `initWith(getByName(...))` and single-string `matchingFallbacks += "..."`, so selectable `spinner`, `perf`, `benchmark`, `canary`, and `instrumentation` variants appear with their task aliases.
 - ktlint and Detekt task families are now visible when their plugins are present, including aggregate, source-set, variant, unit-test, and baseline task names. They remain unsupported until native executors and incremental cache keys are designed.
+- The lint executor design is captured in [lint-executor-design.md](lint-executor-design.md), including incremental input groups, cache boundaries, and Signal-specific validation scenarios.
 
 ## Needs improvement
 
 - Root `qa`, module `qa`, `buildQa`, `format`, and dependency-analysis tasks are not modeled as first-class grit tasks.
-- Lint tasks remain unsupported. Signal's lint setup includes custom `lintChecks(project(":lintchecks"))`, baselines, SARIF/HTML outputs, and generated lint model metadata, so a lint executor needs incremental inputs for source, resources, lint checks, baselines, and report outputs.
+- Lint tasks remain unsupported. Signal's lint setup includes custom `lintChecks(project(":lintchecks"))`, baselines, SARIF/HTML outputs, and generated lint model metadata.
 - Standalone android-test APK assemble tasks remain unsupported even though debug-like android-test compile/install paths exist.
 - Release unit-test and release android-test compile/test aliases remain unsupported.
 - App package plans need validation on real Signal variants after custom build types and variant filtering are parsed. `assemblePlayProdDebug` currently plans as a single package action over transitive source roots, which is too coarse to trust for incremental compile/package boundaries without execution tests.
 
 ## Next component candidates
 
-1. Start the lint executor design with cache keys for lint checks, baselines, source/resource roots, generated lint models, and report outputs.
+1. Implement the first native lint executor slice from [lint-executor-design.md](lint-executor-design.md), starting with one debug-like Signal variant and source-only cache invalidation.
