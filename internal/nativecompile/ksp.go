@@ -264,11 +264,17 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 	fallbacks := []importFallback{
 		{needle: "androidx.compose.remote.", groups: []string{"androidx.compose.remote", "androidx.wear.compose.remote"}},
 		{needle: "co.touchlab.kermit.", groups: []string{"co.touchlab"}},
+		{needle: "okio.", groups: []string{"com.squareup.okio"}},
 	}
 	var out []string
 	for _, fallback := range fallbacks {
 		if !moduleSourcesContain(mod, fallback.needle) {
 			continue
+		}
+		if fallback.needle == "okio." {
+			if jar := latestMaterializedJar(prj, "com.squareup.okio", "okio-jvm"); jar != "" {
+				out = append(out, jar)
+			}
 		}
 		for _, lib := range cat.Libraries {
 			if !stringInList(lib.Group, fallback.groups) {
@@ -294,10 +300,16 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 			}
 			if strings.HasSuffix(lib.Name, "-jvm") {
 				out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
+			} else {
+				jvmCoord := lib.Group + ":" + lib.Name + "-jvm:" + lib.Version
+				if jar := fetchMavenJar(prj, jvmCoord); jar != "" {
+					out = append(out, jar)
+				}
+				out = append(out, fetchMavenPOMDependencyJars(prj, jvmCoord)...)
 			}
 		}
 	}
-	return mergePaths(out)
+	return mergePaths(out, transitiveJarsForMaterialized(prj, out), companionCoreJVMJars(prj, out))
 }
 
 func stringInList(value string, list []string) bool {
@@ -376,6 +388,31 @@ func latestMaterializedAARVersion(prj *project.Project, group, module string) st
 		}
 	}
 	return best
+}
+
+func latestMaterializedJar(prj *project.Project, group, module string) string {
+	if prj == nil || group == "" || module == "" {
+		return ""
+	}
+	root := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", filepath.Join(strings.Split(group, ".")...), module)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	var bestVersion string
+	var bestJar string
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() < bestVersion {
+			continue
+		}
+		jar := filepath.Join(root, entry.Name(), module+"-"+entry.Name()+".jar")
+		if !pathIsFile(jar) {
+			continue
+		}
+		bestVersion = entry.Name()
+		bestJar = jar
+	}
+	return bestJar
 }
 
 func jvmFallbackRefs(prj *project.Project, refs []modulebuild.Ref) []modulebuild.Ref {
