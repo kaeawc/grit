@@ -102,6 +102,90 @@ func TestModuleVariantsExpandFlavorDimensions(t *testing.T) {
 	}
 }
 
+func TestModuleVariantsApplyEnabledVariantAllowlist(t *testing.T) {
+	mod := Module{
+		Path:             ":app",
+		Type:             "android-application",
+		FlavorDimensions: []string{"distribution", "environment"},
+		ProductFlavors: map[string]ProductFlavor{
+			"play":    {Name: "play", Dimension: "distribution"},
+			"website": {Name: "website", Dimension: "distribution"},
+			"prod":    {Name: "prod", Dimension: "environment"},
+			"staging": {Name: "staging", Dimension: "environment"},
+		},
+		BuildTypes: map[string]BuildType{
+			"debug":   {Name: "debug"},
+			"release": {Name: "release"},
+		},
+		EnabledVariants: []string{
+			"playProdDebug",
+			"playStagingRelease",
+			"websiteProdRelease",
+		},
+	}
+
+	variants := mod.Variants()
+	var names []string
+	for _, variant := range variants {
+		names = append(names, variant.Name)
+	}
+	if got, want := names, []string{"playProdDebug", "playStagingRelease", "websiteProdRelease"}; !sameStrings(got, want) {
+		t.Fatalf("unexpected enabled variants: got %#v want %#v", got, want)
+	}
+	for _, name := range names {
+		if name == "websiteStagingDebug" {
+			t.Fatalf("disabled variant leaked into variant list: %#v", names)
+		}
+	}
+}
+
+func TestResolveVariantsPreservesDisabledVariantRequest(t *testing.T) {
+	mod := Module{
+		Path:             ":app",
+		Type:             "android-application",
+		FlavorDimensions: []string{"distribution", "environment"},
+		ProductFlavors: map[string]ProductFlavor{
+			"play":    {Name: "play", Dimension: "distribution"},
+			"website": {Name: "website", Dimension: "distribution"},
+			"prod":    {Name: "prod", Dimension: "environment"},
+			"staging": {Name: "staging", Dimension: "environment"},
+		},
+		BuildTypes: map[string]BuildType{
+			"debug":   {Name: "debug"},
+			"release": {Name: "release"},
+		},
+		EnabledVariants: []string{"playProdDebug"},
+	}
+
+	resolved := mod.ResolveVariants([]string{"websiteStagingDebug"})
+	if len(resolved) != 1 || resolved[0].Name != "websiteStagingDebug" {
+		t.Fatalf("expected disabled variant request to stay explicit, got %#v", resolved)
+	}
+}
+
+func TestParseEnabledVariantsFromBeforeVariantsAllowlist(t *testing.T) {
+	body := `
+val selectableVariants = listOf(
+  "playProdDebug",
+  "playProdRelease",
+  "websiteProdRelease",
+)
+
+android {
+  androidComponents {
+    beforeVariants { variant ->
+      variant.enable = variant.name in selectableVariants
+    }
+  }
+}
+`
+	got := parseEnabledVariants(body)
+	want := []string{"playProdDebug", "playProdRelease", "websiteProdRelease"}
+	if !sameStrings(got, want) {
+		t.Fatalf("parseEnabledVariants = %#v want %#v", got, want)
+	}
+}
+
 func TestLoadModuleParsesFlavorMetadata(t *testing.T) {
 	root := t.TempDir()
 	prj := &Project{RootDir: root}

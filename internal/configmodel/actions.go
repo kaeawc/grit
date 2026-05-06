@@ -734,8 +734,12 @@ func (m *Model) actionsForVariants(g *graph.Graph, modulePath string, requestedV
 	if !ok {
 		return nil
 	}
+	variantNames := m.requestedVariants(modulePath, requestedVariants)
+	if len(requestedVariants) > 0 && len(variantNames) == 0 {
+		return nil
+	}
 	variantSet := map[string]struct{}{}
-	for _, variant := range m.requestedVariants(modulePath, requestedVariants) {
+	for _, variant := range variantNames {
 		variantSet[variant] = struct{}{}
 	}
 	var out []graph.Action
@@ -770,6 +774,12 @@ func (m *Model) requestedVariants(modulePath string, requested []string) []strin
 		if _, ok := available[name]; ok {
 			out = append(out, name)
 		}
+	}
+	if len(requested) > 0 {
+		if len(out) == 0 && len(names) == 1 && names[0] == "main" {
+			return names
+		}
+		return out
 	}
 	if len(out) > 0 {
 		return out

@@ -70,6 +70,7 @@ func loadModule(prj *Project, modulePath string) (*Module, error) {
 		FlavorDimensions:          parseFlavorDimensions(body),
 		ProductFlavors:            parseProductFlavors(body),
 		BuildTypes:                mergeBuildTypeMaps(parseBuildTypes(body, modDir), parseCustomVariants(body, modDir)),
+		EnabledVariants:           parseEnabledVariants(body),
 	}
 	mod.CompilerPlugins = buildCompilerPluginRegistry(mod, body)
 	if mod.UsesWire {

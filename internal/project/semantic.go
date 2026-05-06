@@ -1259,6 +1259,12 @@ func semanticRequestedVariants(mod *Module, requested []string) []string {
 			out = append(out, name)
 		}
 	}
+	if len(requested) > 0 {
+		if len(out) == 0 && mod.IsJVM() {
+			return []string{mod.DefaultVariantName()}
+		}
+		return out
+	}
 	if len(out) > 0 {
 		return out
 	}

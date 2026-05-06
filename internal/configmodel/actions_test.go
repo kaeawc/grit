@@ -72,6 +72,34 @@ dependencies {}
 	if len(ordered) != 1 || ordered[0].ID != schedule.Steps[0].Action.ID {
 		t.Fatalf("unexpected ordered actions: %#v", ordered)
 	}
+	actions, err = model.ActionsForCommand(":app", "android-application", "assemble", []string{"stagingDebug"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 0 {
+		t.Fatalf("expected unknown variant to plan no actions, got %#v", actions)
+	}
+}
+
+func TestRequestedVariantsDoesNotFallbackForUnknownRequest(t *testing.T) {
+	model := &Model{
+		Summary: project.SemanticGraphSummary{
+			Modules: []project.SemanticModuleSummary{{
+				Path: ":app",
+				Variants: []project.SemanticVariantSummary{
+					{Name: "debug"},
+					{Name: "release"},
+				},
+			}},
+		},
+	}
+
+	if got := model.requestedVariants(":app", []string{"stagingDebug"}); len(got) != 0 {
+		t.Fatalf("expected unknown requested variant to return no variants, got %#v", got)
+	}
+	if got, want := model.requestedVariants(":app", nil), []string{"debug", "release"}; !slices.Equal(got, want) {
+		t.Fatalf("expected nil requested variants to return all variants, got %#v want %#v", got, want)
+	}
 }
 
 func TestScheduleActionsCopiesScheduledActionMetadata(t *testing.T) {

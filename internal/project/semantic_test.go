@@ -57,6 +57,24 @@ func TestSemanticGraphSummaryBuildsSemanticNodes(t *testing.T) {
 	}
 }
 
+func TestSemanticRequestedVariantsDoesNotFallbackForUnknownRequest(t *testing.T) {
+	mod := &Module{
+		Path: ":app",
+		Type: "android-application",
+		BuildTypes: map[string]BuildType{
+			"debug":   {Name: "debug"},
+			"release": {Name: "release"},
+		},
+	}
+
+	if got := semanticRequestedVariants(mod, []string{"stagingDebug"}); len(got) != 0 {
+		t.Fatalf("expected unknown requested variant to return no variants, got %#v", got)
+	}
+	if got, want := semanticRequestedVariants(mod, nil), []string{"debug", "release"}; !sameStrings(got, want) {
+		t.Fatalf("expected nil requested variants to return all variants, got %#v want %#v", got, want)
+	}
+}
+
 func TestSemanticDependentModulesUsesGraphTraversal(t *testing.T) {
 	root := t.TempDir()
 	prj := &Project{
