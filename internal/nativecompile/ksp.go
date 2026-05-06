@@ -262,14 +262,23 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 		groups []string
 	}
 	fallbacks := []importFallback{
+		{needle: "androidx.compose.ui.platform.LocalResources", groups: []string{"androidx.compose.ui"}},
+		{needle: "app.cash.sqldelight.", groups: []string{"app.cash.sqldelight"}},
 		{needle: "androidx.compose.remote.", groups: []string{"androidx.compose.remote", "androidx.wear.compose.remote"}},
 		{needle: "co.touchlab.kermit.", groups: []string{"co.touchlab"}},
+		{needle: "io.ktor.client.engine.android.", groups: []string{"io.ktor"}},
 		{needle: "okio.", groups: []string{"com.squareup.okio"}},
+		{needle: "org.koin.", groups: []string{"io.insert-koin"}},
 	}
 	var out []string
 	for _, fallback := range fallbacks {
 		if !moduleSourcesContain(mod, fallback.needle) {
 			continue
+		}
+		if fallback.needle == "androidx.compose.ui.platform.LocalResources" {
+			if jar := latestMaterializedAARClasses(prj, "androidx.compose.ui", "ui-android"); jar != "" {
+				out = append(out, jar)
+			}
 		}
 		if fallback.needle == "okio." {
 			if jar := latestMaterializedJar(prj, "com.squareup.okio", "okio-jvm"); jar != "" {
@@ -388,6 +397,18 @@ func latestMaterializedAARVersion(prj *project.Project, group, module string) st
 		}
 	}
 	return best
+}
+
+func latestMaterializedAARClasses(prj *project.Project, group, module string) string {
+	version := latestMaterializedAARVersion(prj, group, module)
+	if version == "" {
+		return ""
+	}
+	jar := filepath.Join(prj.RootDir, ".grit", "worktree", "aar", group, module, version, "classes.jar")
+	if !pathIsFile(jar) {
+		return ""
+	}
+	return jar
 }
 
 func latestMaterializedJar(prj *project.Project, group, module string) string {
