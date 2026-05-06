@@ -438,10 +438,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "build")
 	case "buildNeeded":
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "buildNeeded")
-	case "buildDependents":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "buildDependents")
-	case "compile":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compile")
+	case "buildDependents", "compile":
+		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, command)
 	case "test":
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "test")
 	case "assembleDebug":
