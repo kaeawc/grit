@@ -557,7 +557,8 @@ func (m Module) Tasks() []Task {
 			{Name: "uninstallDebugAndroidTest", Category: "install", Description: "Uninstall the debug androidTest build.", Supported: true},
 			{Name: "uninstallRelease", Category: "install", Description: "Uninstall the release build.", Supported: true},
 		}
-		return append(tasks, m.androidVariantTasks(true)...)
+		tasks = append(tasks, m.androidVariantTasks(true)...)
+		return append(tasks, m.qualityTasks()...)
 	case "android-library":
 		tasks := []Task{
 			{Name: "assemble", Category: "build", Description: "Assemble outputs for all variants.", Supported: true},
@@ -581,9 +582,10 @@ func (m Module) Tasks() []Task {
 			{Name: "buildNeeded", Category: "build", Description: "Build dependent project requirements.", Supported: true},
 			{Name: "lint", Category: "verification", Description: "Run lint.", Supported: false},
 		}
-		return append(tasks, m.androidVariantTasks(false)...)
+		tasks = append(tasks, m.androidVariantTasks(false)...)
+		return append(tasks, m.qualityTasks()...)
 	case "jvm-library":
-		return []Task{
+		tasks := []Task{
 			{Name: "assemble", Category: "build", Description: "Compile the main JVM outputs.", Supported: true},
 			{Name: "build", Category: "build", Description: "Compile the main JVM outputs and run supported tests.", Supported: true},
 			{Name: "clean", Category: "build", Description: "Delete grit build outputs.", Supported: true},
@@ -604,6 +606,7 @@ func (m Module) Tasks() []Task {
 			{Name: "buildDependents", Category: "build", Description: "Build projects depending on this module.", Supported: true},
 			{Name: "buildNeeded", Category: "build", Description: "Build dependent project requirements.", Supported: true},
 		}
+		return append(tasks, m.qualityTasks()...)
 	default:
 		return nil
 	}
