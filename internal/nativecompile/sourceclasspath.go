@@ -245,6 +245,17 @@ func mergePaths(parts ...[]string) []string {
 	return out
 }
 
+func existingClasspathEntries(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path == "" || !pathIsFile(path) {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
+}
+
 func resolveLocalDependencyRefs(prj *project.Project, mod *project.Module, refs []modulebuild.Ref) []string {
 	var out []string
 	for _, ref := range refs {

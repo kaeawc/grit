@@ -252,6 +252,63 @@ func fallbackAndroidCompileJars(prj *project.Project, refs []modulebuild.Ref) []
 	return mergePaths(out)
 }
 
+func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []string {
+	cat, err := dependencywiring.LoadCatalog(prj)
+	if err != nil || cat == nil || mod == nil {
+		return nil
+	}
+	type importFallback struct {
+		needle string
+		groups []string
+	}
+	fallbacks := []importFallback{
+		{needle: "androidx.compose.remote.", groups: []string{"androidx.compose.remote", "androidx.wear.compose.remote"}},
+		{needle: "co.touchlab.kermit.", groups: []string{"co.touchlab"}},
+	}
+	var out []string
+	for _, fallback := range fallbacks {
+		if !moduleSourcesContain(mod, fallback.needle) {
+			continue
+		}
+		for _, lib := range cat.Libraries {
+			if !stringInList(lib.Group, fallback.groups) {
+				continue
+			}
+			if lib.Version == "" && lib.VersionRef != "" {
+				lib.Version = cat.Versions[lib.VersionRef]
+			}
+			if lib.Group == "" || lib.Name == "" || lib.Version == "" {
+				continue
+			}
+			coord := lib.Group + ":" + lib.Name + ":" + lib.Version
+			if jar := fetchMavenJar(prj, coord); jar != "" {
+				out = append(out, jar)
+			}
+			if jar := fetchMavenAARClasses(prj, coord); jar != "" {
+				out = append(out, jar)
+			}
+			if !strings.HasSuffix(lib.Name, "-android") {
+				if jar := fetchMavenAARClasses(prj, lib.Group+":"+lib.Name+"-android:"+lib.Version); jar != "" {
+					out = append(out, jar)
+				}
+			}
+			if strings.HasSuffix(lib.Name, "-jvm") {
+				out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
+			}
+		}
+	}
+	return mergePaths(out)
+}
+
+func stringInList(value string, list []string) bool {
+	for _, item := range list {
+		if value == item {
+			return true
+		}
+	}
+	return false
+}
+
 func catalogCoordinates(prj *project.Project, refs []modulebuild.Ref) []string {
 	cat, err := dependencywiring.LoadCatalog(prj)
 	if err != nil || cat == nil {
@@ -352,7 +409,8 @@ func fetchMavenJar(prj *project.Project, raw string) string {
 		return ""
 	}
 	group, module, version := parts[0], parts[1], parts[2]
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + version + ".jar"
+	artifactVersion := mavenArtifactVersion(prj, group, module, version, "jar")
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + artifactVersion + ".jar"
 	out := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", rel)
 	if pathIsFile(out) {
 		return out
@@ -405,7 +463,8 @@ func fetchMavenAARClasses(prj *project.Project, raw string) string {
 	if pathIsFile(out) {
 		return out
 	}
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + version + ".aar"
+	artifactVersion := mavenArtifactVersion(prj, group, module, version, "aar")
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + artifactVersion + ".aar"
 	aarPath := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", rel)
 	if !pathIsFile(aarPath) {
 		var urls []string
@@ -495,6 +554,19 @@ type mavenDependency struct {
 	Version    string `xml:"version"`
 	Scope      string `xml:"scope"`
 	Optional   string `xml:"optional"`
+}
+
+type snapshotMetadata struct {
+	Versioning struct {
+		SnapshotVersions []struct {
+			Extension string `xml:"extension"`
+			Value     string `xml:"value"`
+		} `xml:"snapshotVersions>snapshotVersion"`
+		Snapshot struct {
+			Timestamp   string `xml:"timestamp"`
+			BuildNumber string `xml:"buildNumber"`
+		} `xml:"snapshot"`
+	} `xml:"versioning"`
 }
 
 func fetchMavenPOMDependencyJars(prj *project.Project, raw string) []string {
@@ -587,7 +659,8 @@ func fetchMavenPOM(prj *project.Project, raw string) []byte {
 		return nil
 	}
 	group, module, version := parts[0], parts[1], parts[2]
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + version + ".pom"
+	artifactVersion := mavenArtifactVersion(prj, group, module, version, "pom")
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + artifactVersion + ".pom"
 	var urls []string
 	for _, repo := range prj.Repositories {
 		base := strings.TrimSpace(repo.URL)
@@ -613,6 +686,56 @@ func fetchMavenPOM(prj *project.Project, raw string) []byte {
 		}
 	}
 	return nil
+}
+
+func mavenArtifactVersion(prj *project.Project, group, module, version, ext string) string {
+	if !strings.HasSuffix(version, "-SNAPSHOT") {
+		return version
+	}
+	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/maven-metadata.xml"
+	for _, url := range remoteMavenURLs(prj, rel) {
+		resp, err := http.Get(url)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
+			continue
+		}
+		data, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		var metadata snapshotMetadata
+		if xml.Unmarshal(data, &metadata) != nil {
+			continue
+		}
+		for _, candidate := range metadata.Versioning.SnapshotVersions {
+			if candidate.Extension == ext && candidate.Value != "" {
+				return candidate.Value
+			}
+		}
+		if metadata.Versioning.Snapshot.Timestamp != "" && metadata.Versioning.Snapshot.BuildNumber != "" {
+			return strings.TrimSuffix(version, "-SNAPSHOT") + "-" + metadata.Versioning.Snapshot.Timestamp + "-" + metadata.Versioning.Snapshot.BuildNumber
+		}
+	}
+	return version
+}
+
+func remoteMavenURLs(prj *project.Project, rel string) []string {
+	var urls []string
+	if prj != nil {
+		for _, repo := range prj.Repositories {
+			base := strings.TrimSpace(repo.URL)
+			if base == "" || strings.HasPrefix(base, "file:") {
+				continue
+			}
+			urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
+		}
+	}
+	urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
+	return urls
 }
 
 // kspLanguageVersion derives the KSP -language-version flag from the

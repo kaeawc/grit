@@ -132,6 +132,8 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		out.compileCP = mergePaths(deps.projectCompileCP, collapseVersions(deps.resolved.CompileJars), deps.localCompileRefs)
 		out.compileCP = mergePaths(out.compileCP, fallbackJVMCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
 		out.compileCP = mergePaths(out.compileCP, fallbackAndroidCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
+		out.compileCP = mergePaths(out.compileCP, fallbackImportedCatalogJars(prj, mod))
+		out.compileCP = existingClasspathEntries(out.compileCP)
 		out.androidResources = out.resourceDeps
 		return nil
 	})
@@ -150,6 +152,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		}
 		if artifact.SymbolJar != "" {
 			out.compileCP = mergePaths(out.compileCP, []string{artifact.SymbolJar})
+			out.compileCP = existingClasspathEntries(out.compileCP)
 		}
 		if artifact.ManifestPath != "" {
 			out.androidResources = appendResourceArtifacts(out.androidResources, artifact)
