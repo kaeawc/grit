@@ -13,13 +13,16 @@ func parseBuildTypes(body string, modDir string) map[string]BuildType {
 		return nil
 	}
 	out := map[string]BuildType{}
-	re := regexp.MustCompile(`(?m)^\s*([A-Za-z0-9_]+)\s*\{`)
+	re := regexp.MustCompile(`(?m)^\s*(?:([A-Za-z0-9_]+)|(?:create|getByName|named|register)\("([^"]+)"\))\s*\{`)
 	indexes := re.FindAllStringSubmatchIndex(block, -1)
 	for _, idx := range indexes {
 		if braceDepth(block[:idx[0]]) != 0 {
 			continue
 		}
-		name := captureSubmatch(block, idx, 2)
+		name := firstNonEmpty(
+			captureSubmatch(block, idx, 2),
+			captureSubmatch(block, idx, 4),
+		)
 		if name == "" {
 			continue
 		}
@@ -48,8 +51,14 @@ func parseBuildTypeBody(name, body, modDir string) BuildType {
 		TargetSDK:           parseAssignment(body, `targetSdk\s*=\s*(\d+)`),
 		MatchingFallbacks:   parseMatchingFallbacks(body),
 	}
+	if initWith := parseAssignment(body, `initWith\s*\(\s*getByName\("([^"]+)"\)\s*\)`); initWith != "" && !containsString(buildType.MatchingFallbacks, initWith) {
+		buildType.MatchingFallbacks = append(buildType.MatchingFallbacks, initWith)
+	}
 	if buildType.SigningConfig == "" {
 		buildType.SigningConfig = parseAssignment(body, `signingConfig\s*=\s*signingConfigs\.named\("([^"]+)"\)`)
+	}
+	if buildType.SigningConfig == "" {
+		buildType.SigningConfig = parseAssignment(body, `signingConfig\s*=\s*signingConfigs\["([^"]+)"\]`)
 	}
 	if buildType.SigningConfig == "" {
 		if release := parseAssignment(body, `if\s*\([^)]+\)\s*\{\s*signingConfigs\.getByName\("([^"]+)"\)`); release != "" {
