@@ -202,7 +202,7 @@ func moduleSourcesContain(mod *project.Module, needle string) bool {
 		if !strings.HasSuffix(path, ".kt") && !strings.HasSuffix(path, ".java") {
 			return nil
 		}
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G122 -- root WalkDir traversal is bounded to trusted project source tree
 		if err == nil && strings.Contains(string(data), needle) {
 			found = true
 		}
