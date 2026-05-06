@@ -1,6 +1,31 @@
 package catalog
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+
+	"github.com/kaeawc/grit/internal/testutil"
+)
+
+func TestLoadParsesStringNotationLibrary(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "libs.versions.toml")
+	testutil.WriteFile(t, root, "libs.versions.toml", `
+[libraries]
+splash-screen = "androidx.core:core-splashscreen:1.2.0"
+`)
+	cat, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, err := cat.ResolveLibrary("splash.screen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lib.Group != "androidx.core" || lib.Name != "core-splashscreen" || lib.Version != "1.2.0" {
+		t.Fatalf("unexpected library: %#v", lib)
+	}
+}
 
 func TestResolveBundleReturnsCopy(t *testing.T) {
 	cat := &Catalog{

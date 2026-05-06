@@ -2,7 +2,9 @@ package modulebuild
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode"
@@ -309,23 +311,30 @@ func ParseDependencies(buildFile string) (*Dependencies, error) {
 	}
 	body := string(data)
 
-	block, err := extractDependenciesBlock(body)
+	deps := &Dependencies{}
+	blocks, err := extractDependencyBlocks(body)
 	if err != nil {
-		if strings.Contains(err.Error(), "dependencies block not found") {
-			return &Dependencies{}, nil
-		}
 		return nil, err
 	}
+	if len(blocks) == 0 {
+		return deps, nil
+	}
+	for _, block := range blocks {
+		if err := parseDependencyBlockInto(deps, block); err != nil {
+			return nil, err
+		}
+	}
+	return deps, nil
+}
 
-	deps := &Dependencies{}
-	re := regexp.MustCompile(`(?m)^\s*([A-Za-z][A-Za-z0-9_]*)\((.+?)\)\s*(?:\{.*\})?\s*$`)
+func parseDependencyBlockInto(deps *Dependencies, block string) error {
 	cleanBlock := stripDependencyComments(block)
 	expandedBlock := expandDependencyBindings(cleanBlock)
-	for _, match := range re.FindAllStringSubmatch(expandedBlock, -1) {
+	for _, match := range dependencyCallRefs(expandedBlock) {
 		scope := match[1]
 		ref := parseRef(match[2])
 		if ref.Kind == "raw" && isBareIdentifier(ref.Value) {
-			return nil, fmt.Errorf("unbound reference %q in dependencies block — only top-level vals and let/also/apply/run/with bindings are tracked", ref.Value)
+			return fmt.Errorf("unbound reference %q in dependencies block — only top-level vals and let/also/apply/run/with bindings are tracked", ref.Value)
 		}
 		if deps.Scoped == nil {
 			deps.Scoped = map[string][]Ref{}
@@ -333,7 +342,91 @@ func ParseDependencies(buildFile string) (*Dependencies, error) {
 		deps.Scoped[scope] = append(deps.Scoped[scope], ref)
 		addRefByScope(deps, scope, ref)
 	}
+	return nil
+}
+
+func ParseDependenciesForModule(buildFile, rootDir string, pluginIDs []string) (*Dependencies, error) {
+	deps, err := ParseDependencies(buildFile)
+	if err != nil {
+		return nil, err
+	}
+	for _, pluginFile := range conventionPluginDependencyFiles(rootDir, pluginIDs) {
+		pluginDeps, pluginErr := ParseDependencies(pluginFile)
+		if pluginErr != nil {
+			return nil, pluginErr
+		}
+		mergeDependencies(deps, pluginDeps)
+	}
 	return deps, nil
+}
+
+func conventionPluginDependencyFiles(rootDir string, pluginIDs []string) []string {
+	if strings.TrimSpace(rootDir) == "" || len(pluginIDs) == 0 {
+		return nil
+	}
+	pluginSet := map[string]struct{}{}
+	for _, id := range pluginIDs {
+		id = strings.TrimSpace(id)
+		if id != "" {
+			pluginSet[id] = struct{}{}
+		}
+	}
+	if len(pluginSet) == 0 {
+		return nil
+	}
+	root := filepath.Join(rootDir, "build-logic")
+	var out []string
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".gradle.kts") && !strings.HasSuffix(name, ".gradle") {
+			return nil
+		}
+		if !strings.Contains(filepath.ToSlash(path), "/src/main/") {
+			return nil
+		}
+		id := strings.TrimSuffix(name, ".gradle.kts")
+		id = strings.TrimSuffix(id, ".gradle")
+		if _, ok := pluginSet[id]; ok {
+			out = append(out, path)
+		}
+		return nil
+	})
+	return out
+}
+
+func mergeDependencies(dst, src *Dependencies) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.Main = append(dst.Main, src.Main...)
+	dst.Debug = append(dst.Debug, src.Debug...)
+	dst.Test = append(dst.Test, src.Test...)
+	dst.AndroidTest = append(dst.AndroidTest, src.AndroidTest...)
+	dst.CompileOnly = append(dst.CompileOnly, src.CompileOnly...)
+	dst.RuntimeOnly = append(dst.RuntimeOnly, src.RuntimeOnly...)
+	dst.TestCompileOnly = append(dst.TestCompileOnly, src.TestCompileOnly...)
+	dst.TestRuntimeOnly = append(dst.TestRuntimeOnly, src.TestRuntimeOnly...)
+	dst.AndroidTestCompileOnly = append(dst.AndroidTestCompileOnly, src.AndroidTestCompileOnly...)
+	dst.AndroidTestRuntimeOnly = append(dst.AndroidTestRuntimeOnly, src.AndroidTestRuntimeOnly...)
+	dst.CoreLibraryDesugaring = append(dst.CoreLibraryDesugaring, src.CoreLibraryDesugaring...)
+	if len(src.Scoped) > 0 && dst.Scoped == nil {
+		dst.Scoped = map[string][]Ref{}
+	}
+	for scope, refs := range src.Scoped {
+		dst.Scoped[scope] = append(dst.Scoped[scope], refs...)
+	}
+}
+
+func dependencyCallRefs(block string) [][]string {
+	var out [][]string
+	kotlinCall := regexp.MustCompile(`(?m)^\s*([A-Za-z][A-Za-z0-9_]*)\((.+?)\)\s*(?:\{.*\})?\s*$`)
+	out = append(out, kotlinCall.FindAllStringSubmatch(block, -1)...)
+	groovyCall := regexp.MustCompile(`(?m)^\s*([A-Za-z][A-Za-z0-9_]*)\s+(.+?)\s*(?:\{.*\})?\s*$`)
+	out = append(out, groovyCall.FindAllStringSubmatch(block, -1)...)
+	return out
 }
 
 func addRefByScope(deps *Dependencies, scope string, ref Ref) {
@@ -374,12 +467,48 @@ func stripDependencyComments(block string) string {
 	return strings.Join(lines, "\n")
 }
 
-func extractDependenciesBlock(body string) (string, error) {
-	start := strings.Index(body, "dependencies {")
-	if start < 0 {
-		return "", fmt.Errorf("dependencies block not found")
+func extractDependencyBlocks(body string) ([]string, error) {
+	var blocks []string
+	searchFrom := 0
+	for {
+		idx := strings.Index(body[searchFrom:], "dependencies {")
+		if idx < 0 {
+			break
+		}
+		start := searchFrom + idx
+		searchFrom = start + len("dependencies {")
+		if !includeDependencyBlock(body, start) {
+			continue
+		}
+		block, end, ok := dependencyBlockAt(body[start:])
+		if !ok {
+			return nil, fmt.Errorf("unterminated dependencies block")
+		}
+		blocks = append(blocks, block)
+		searchFrom = start + end
 	}
-	rest := body[start:]
+	return blocks, nil
+}
+
+func includeDependencyBlock(body string, start int) bool {
+	prefix := strings.TrimRight(body[:start], " \t\r\n")
+	if !strings.HasSuffix(prefix, ".") {
+		return true
+	}
+	prefix = strings.TrimSuffix(prefix, ".")
+	i := len(prefix) - 1
+	for i >= 0 {
+		r := rune(prefix[i])
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			break
+		}
+		i--
+	}
+	receiver := prefix[i+1:]
+	return receiver == "commonMain" || receiver == "androidMain"
+}
+
+func dependencyBlockAt(rest string) (string, int, bool) {
 	depth := 0
 	for i, r := range rest {
 		switch r {
@@ -388,11 +517,11 @@ func extractDependenciesBlock(body string) (string, error) {
 		case '}':
 			depth--
 			if depth == 0 {
-				return rest[:i+1], nil
+				return rest[:i+1], i + 1, true
 			}
 		}
 	}
-	return "", fmt.Errorf("unterminated dependencies block")
+	return "", 0, false
 }
 
 // ParseRef parses a single Gradle dependency expression into a Ref.
@@ -424,6 +553,8 @@ func parseRef(expr string) Ref {
 		return Ref{Kind: "library", Value: strings.TrimPrefix(expr, "libs.")}
 	case strings.HasPrefix(expr, "project(\"") && strings.HasSuffix(expr, "\")"):
 		return Ref{Kind: "project", Value: strings.TrimSuffix(strings.TrimPrefix(expr, "project(\""), "\")")}
+	case strings.HasPrefix(expr, "project('") && strings.HasSuffix(expr, "')"):
+		return Ref{Kind: "project", Value: strings.TrimSuffix(strings.TrimPrefix(expr, "project('"), "')")}
 	case strings.HasPrefix(expr, "projects."):
 		parts := strings.Split(strings.TrimPrefix(expr, "projects."), ".")
 		for i, part := range parts {
@@ -431,7 +562,7 @@ func parseRef(expr string) Ref {
 		}
 		return Ref{Kind: "project", Value: ":" + strings.Join(parts, ":")}
 	case isQuotedString(expr):
-		return Ref{Kind: "raw", Value: strings.Trim(expr, `"`)}
+		return Ref{Kind: "raw", Value: strings.Trim(expr, `"'`)}
 	default:
 		return Ref{Kind: "raw", Value: expr}
 	}
@@ -470,7 +601,7 @@ func unwrapCall(expr, name string) (string, bool) {
 }
 
 func isQuotedString(expr string) bool {
-	return len(expr) >= 2 && strings.HasPrefix(expr, `"`) && strings.HasSuffix(expr, `"`)
+	return len(expr) >= 2 && ((strings.HasPrefix(expr, `"`) && strings.HasSuffix(expr, `"`)) || (strings.HasPrefix(expr, `'`) && strings.HasSuffix(expr, `'`)))
 }
 
 func camelToKebab(s string) string {

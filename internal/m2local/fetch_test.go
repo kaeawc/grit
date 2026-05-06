@@ -257,3 +257,24 @@ func TestExpandRefsSupportsRawCoordinates(t *testing.T) {
 		t.Fatalf("unexpected raw coordinate %#v", got)
 	}
 }
+
+func TestExpandRefsSupportsComposeAccessors(t *testing.T) {
+	t.Parallel()
+
+	resolver := New(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1"), t.TempDir(), nil, &catalog.Catalog{
+		Versions:  map[string]string{"compose-multiplatform": "1.10.0"},
+		Libraries: map[string]catalog.Library{},
+		Bundles:   map[string][]string{},
+	})
+	coords, err := resolver.expandRefs([]modulebuild.Ref{{Kind: "raw", Value: "compose.components.resources"}}, resolver.seedPlatforms())
+	if err != nil {
+		t.Fatalf("expandRefs compose accessor: %v", err)
+	}
+	if len(coords) != 1 {
+		t.Fatalf("expected one coordinate, got %#v", coords)
+	}
+	got := coords[0]
+	if got.Group != "org.jetbrains.compose.components" || got.Module != "components-resources" || got.Version != "1.10.0" {
+		t.Fatalf("unexpected compose coordinate %#v", got)
+	}
+}

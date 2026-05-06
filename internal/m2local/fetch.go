@@ -1,6 +1,7 @@
 package m2local
 
 import (
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,13 +16,15 @@ import (
 )
 
 func (r *Resolver) fetchPOM(coord Coordinate) (string, error) {
-	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + coord.Version + ".pom"
+	artifactVersion := r.snapshotArtifactVersion(coord, "pom")
+	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + artifactVersion + ".pom"
 	outPath := filepath.Join(r.WorkRoot, ".grit", "metadata", coord.Group, coord.Module, coord.Version, coord.Module+"-"+coord.Version+".pom")
 	return r.fetchRemoteFile(coord, relPath, outPath, "pom")
 }
 
 func (r *Resolver) fetchModuleMetadata(coord Coordinate) (string, error) {
-	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + coord.Version + ".module"
+	artifactVersion := r.snapshotArtifactVersion(coord, "module")
+	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + artifactVersion + ".module"
 	outPath := filepath.Join(r.WorkRoot, ".grit", "metadata", coord.Group, coord.Module, coord.Version, coord.Module+"-"+coord.Version+".module")
 	return r.fetchRemoteFile(coord, relPath, outPath, "module metadata")
 }
@@ -30,9 +33,59 @@ func (r *Resolver) fetchArtifact(coord Coordinate, ext string) (string, error) {
 	if ext != ".jar" && ext != ".aar" {
 		return "", griterr.Newf(griterr.ErrUnsupported, "artifact extension %q", ext)
 	}
-	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + coord.Version + ext
+	artifactVersion := r.snapshotArtifactVersion(coord, strings.TrimPrefix(ext, "."))
+	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/" + coord.Module + "-" + artifactVersion + ext
 	outPath := filepath.Join(r.moduleBasePath(coord), "downloaded", coord.Module+"-"+coord.Version+ext)
 	return r.fetchRemoteFile(coord, relPath, outPath, ext[1:])
+}
+
+type snapshotMetadata struct {
+	Versioning struct {
+		SnapshotVersions []struct {
+			Extension string `xml:"extension"`
+			Value     string `xml:"value"`
+		} `xml:"snapshotVersions>snapshotVersion"`
+		Snapshot struct {
+			Timestamp   string `xml:"timestamp"`
+			BuildNumber string `xml:"buildNumber"`
+		} `xml:"snapshot"`
+	} `xml:"versioning"`
+}
+
+func (r *Resolver) snapshotArtifactVersion(coord Coordinate, ext string) string {
+	if !strings.HasSuffix(coord.Version, "-SNAPSHOT") {
+		return coord.Version
+	}
+	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/maven-metadata.xml"
+	for _, baseURL := range r.remoteRepositoryURLs(coord) {
+		resp, err := http.Get(baseURL + relPath)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil || len(body) == 0 {
+			continue
+		}
+		var metadata snapshotMetadata
+		if xml.Unmarshal(body, &metadata) != nil {
+			continue
+		}
+		for _, version := range metadata.Versioning.SnapshotVersions {
+			if version.Extension == ext && version.Value != "" {
+				return version.Value
+			}
+		}
+		if metadata.Versioning.Snapshot.Timestamp != "" && metadata.Versioning.Snapshot.BuildNumber != "" {
+			base := strings.TrimSuffix(coord.Version, "-SNAPSHOT")
+			return base + "-" + metadata.Versioning.Snapshot.Timestamp + "-" + metadata.Versioning.Snapshot.BuildNumber
+		}
+	}
+	return coord.Version
 }
 
 func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label string) (string, error) {

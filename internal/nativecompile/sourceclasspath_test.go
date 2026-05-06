@@ -70,6 +70,14 @@ func TestArtifactFamilyKeyNormalizesLifecycleLiveDataCoreKtx(t *testing.T) {
 	}
 }
 
+func TestArtifactFamilyKeyNormalizesCollectionKtx(t *testing.T) {
+	t.Parallel()
+
+	if got := artifactFamilyKey("androidx.collection", "collection-ktx"); got != "androidx.collection:collection" {
+		t.Fatalf("unexpected collection family key: %s", got)
+	}
+}
+
 func TestArtifactFamilyKeyNormalizesComposeDesktopAndJvmStubs(t *testing.T) {
 	t.Parallel()
 

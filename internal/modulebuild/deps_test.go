@@ -60,6 +60,115 @@ dependencies {
 	}
 }
 
+func TestParseDependenciesCapturesGroovyProjectDependency(t *testing.T) {
+	root := t.TempDir()
+	buildFile := filepath.Join(root, "build.gradle")
+	body := `
+dependencies {
+    implementation project(':core-util')
+    testImplementation 'junit:junit:4.13.2'
+}
+`
+	if err := os.WriteFile(buildFile, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := ParseDependencies(buildFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(deps.Main), 1; got != want {
+		t.Fatalf("unexpected main dep count: got %d want %d", got, want)
+	}
+	if deps.Main[0].Kind != "project" || deps.Main[0].Value != ":core-util" {
+		t.Fatalf("unexpected main dep: %#v", deps.Main[0])
+	}
+	if got, want := len(deps.Test), 1; got != want {
+		t.Fatalf("unexpected test dep count: got %d want %d", got, want)
+	}
+	if deps.Test[0].Kind != "raw" || deps.Test[0].Value != "junit:junit:4.13.2" {
+		t.Fatalf("unexpected test dep: %#v", deps.Test[0])
+	}
+}
+
+func TestParseDependenciesForModuleIncludesConventionPluginDependencies(t *testing.T) {
+	root := t.TempDir()
+	buildFile := filepath.Join(root, "feature", "build.gradle.kts")
+	pluginDir := filepath.Join(root, "build-logic", "plugins", "src", "main", "kotlin")
+	if err := os.MkdirAll(filepath.Dir(buildFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(buildFile, []byte(`
+plugins {
+  id("signal-library")
+}
+
+dependencies {
+  implementation(project(":local"))
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "signal-library.gradle.kts"), []byte(`
+dependencies {
+  implementation(libs.androidx.core.ktx)
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := ParseDependenciesForModule(buildFile, root, []string{"signal-library"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := len(deps.Main), 2; got != want {
+		t.Fatalf("unexpected main dep count: got %d want %d (%#v)", got, want, deps.Main)
+	}
+	if deps.Main[0].Kind != "project" || deps.Main[0].Value != ":local" {
+		t.Fatalf("unexpected module dep: %#v", deps.Main[0])
+	}
+	if deps.Main[1].Kind != "library" || deps.Main[1].Value != "androidx.core.ktx" {
+		t.Fatalf("unexpected convention dep: %#v", deps.Main[1])
+	}
+}
+
+func TestParseDependenciesIncludesAndroidMultiplatformSourceSetDependencies(t *testing.T) {
+	root := t.TempDir()
+	buildFile := filepath.Join(root, "build.gradle.kts")
+	body := `
+kotlin {
+  sourceSets {
+    commonMain.dependencies {
+      implementation(libs.common)
+    }
+    androidMain.dependencies {
+      implementation(libs.android)
+    }
+    jvmTest.dependencies {
+      implementation(compose.desktop.currentOs)
+    }
+  }
+}
+`
+	if err := os.WriteFile(buildFile, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := ParseDependencies(buildFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsRef(deps.Main, Ref{Kind: "library", Value: "common"}) {
+		t.Fatalf("missing commonMain dependency: %#v", deps.Main)
+	}
+	if !containsRef(deps.Main, Ref{Kind: "library", Value: "android"}) {
+		t.Fatalf("missing androidMain dependency: %#v", deps.Main)
+	}
+	if containsRef(deps.Main, Ref{Kind: "raw", Value: "compose.desktop.currentOs"}) {
+		t.Fatalf("unexpected jvmTest dependency in main deps: %#v", deps.Main)
+	}
+}
+
 func TestParseDependenciesCapturesVariantScopedConfigurations(t *testing.T) {
 	root := t.TempDir()
 	buildFile := filepath.Join(root, "build.gradle.kts")
@@ -388,4 +497,13 @@ dependencies {
 	if !strings.Contains(err.Error(), "unbound reference") || !strings.Contains(err.Error(), "composeBom") {
 		t.Fatalf("unexpected error message: %v", err)
 	}
+}
+
+func containsRef(refs []Ref, want Ref) bool {
+	for _, ref := range refs {
+		if ref == want {
+			return true
+		}
+	}
+	return false
 }

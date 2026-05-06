@@ -52,6 +52,11 @@ func Load(root string) (*Project, error) {
 		if err != nil {
 			return nil, err
 		}
+		prj.PluginAliases, err = loadVersionCatalogPluginAliases(prj.VersionCatalogs)
+		if err != nil {
+			return nil, err
+		}
+		prj.RootPlugins = expandPluginAliases(prj.RootPlugins, prj.PluginAliases)
 	}
 
 	for _, modulePath := range settingsModel.Includes {
@@ -60,6 +65,7 @@ func Load(root string) (*Project, error) {
 			return nil, err
 		}
 		if len(mod.Plugins) > 0 {
+			mod.Plugins = expandPluginAliases(mod.Plugins, prj.PluginAliases)
 			mod.Plugins = expandPlugins(mod.Plugins, conventions)
 		}
 		if fileExists(mod.BuildFile) {
@@ -67,6 +73,7 @@ func Load(root string) (*Project, error) {
 			if err != nil {
 				return nil, err
 			}
+			refreshDerivedCompilerPluginState(mod, string(data))
 			prj.Repositories = append(prj.Repositories, collectProjectRepositoriesWithOrigin(string(data), prj.GradleProperties, "module-build")...)
 		}
 		if mod.Type != "" {

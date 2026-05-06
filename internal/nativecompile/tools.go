@@ -22,6 +22,12 @@ func runKotlinc(ctx context.Context, toolchain *kotlinToolchain, sources []strin
 	classpath = compilerRuntimeClasspath(toolchain, classpath)
 	args := kotlincArgs(androidJar, sources, outDir, classpath, plugins, pluginOptions, appMain, extraArgs)
 	if strings.TrimSpace(os.Getenv("GRIT_TRACE_KOTLINC")) != "" {
+		if toolchain != nil && len(toolchain.CompilerClasspath) > 0 {
+			_, _ = fmt.Fprintln(stderr, "TRACE kotlinc compiler classpath:")
+			for i, entry := range append([]string{}, toolchain.CompilerClasspath...) {
+				_, _ = fmt.Fprintf(stderr, "  compilerCp[%d]=%s\n", i, entry)
+			}
+		}
 		_, _ = fmt.Fprintln(stderr, "TRACE kotlinc classpath:")
 		for i, entry := range append([]string{}, classpath...) {
 			_, _ = fmt.Fprintf(stderr, "  cp[%d]=%s\n", i, entry)
@@ -163,6 +169,7 @@ func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) e
 
 func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
 	r8ProgramCP := filterR8ProgramClasspath(collapseVersions(runtimeCP))
+	traceD8Inputs("r8", r8ProgramCP, stderr)
 	inputs := append([]string{classesJar, androidJarPath()}, r8ProgramCP...)
 	if outputsNewerThanInputs(dexDir, inputs) {
 		return nil

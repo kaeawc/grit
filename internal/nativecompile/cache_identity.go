@@ -89,6 +89,8 @@ func sharedNativeCacheRoot() string {
 
 func moduleCompileCacheDir(modulePath, variantName, configHash string, inputs []string) string {
 	sum := sha256.New()
+	sum.Write([]byte("module-compile-v2"))
+	sum.Write([]byte{0})
 	sum.Write([]byte(modulePath))
 	sum.Write([]byte{0})
 	sum.Write([]byte(variantName))

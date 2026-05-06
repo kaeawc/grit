@@ -267,11 +267,19 @@ func (s *Service) ResolveBuildPlan(mod *project.Module, command string, requeste
 		}
 	}
 	targetVariants := []string{targetVariant}
+	if commandUsesReleaseVariant(command) && !variantExplicit {
+		releaseVariants := moduleVariantNamesForBuildType(mod, "release")
+		if len(releaseVariants) > 0 {
+			targetVariants = releaseVariants
+			targetVariant = releaseVariants[0]
+		}
+	}
 	if commandUsesAllModuleVariants(command) && !variantExplicit {
 		targetVariants = moduleVariantNames(mod)
 		if len(targetVariants) == 0 {
 			targetVariants = []string{"debug"}
 		}
+		targetVariant = targetVariants[0]
 	}
 	targetResolved := mod.ResolveVariant(targetVariant)
 	resolvedTargets := mod.ResolveVariants(targetVariants)
@@ -823,6 +831,23 @@ func commandUsesAllModuleVariants(command string) bool {
 	default:
 		return false
 	}
+}
+
+func moduleVariantNamesForBuildType(mod *project.Module, buildType string) []string {
+	if mod == nil {
+		return nil
+	}
+	buildType = strings.TrimSpace(buildType)
+	if buildType == "" {
+		return nil
+	}
+	var out []string
+	for _, variant := range mod.ResolvedVariants() {
+		if strings.TrimSpace(variant.Coordinate.BuildType) == buildType {
+			out = append(out, variant.Name)
+		}
+	}
+	return out
 }
 
 func resolvedVariantNames(variants []project.ResolvedVariant) []string {

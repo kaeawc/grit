@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -244,10 +245,24 @@ func mergePaths(parts ...[]string) []string {
 	return out
 }
 
+func existingClasspathEntries(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path == "" || !pathIsFile(path) {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
+}
+
 func resolveLocalDependencyRefs(prj *project.Project, mod *project.Module, refs []modulebuild.Ref) []string {
 	var out []string
 	for _, ref := range refs {
 		if ref.Kind != "raw" {
+			continue
+		}
+		if _, _, ok := m2local.ComposeAccessorModule(ref.Value); ok {
 			continue
 		}
 		out = append(out, resolveRawDependencyRef(prj, mod, ref.Value)...)
@@ -540,6 +555,8 @@ func artifactFamilyKey(group, module string) string {
 	switch group + ":" + module {
 	case "androidx.activity:activity-ktx":
 		module = "activity"
+	case "androidx.collection:collection-ktx":
+		module = "collection"
 	case "androidx.lifecycle:lifecycle-livedata-core-ktx":
 		module = "lifecycle-livedata-core"
 	case "com.sun.mail:android-activation":

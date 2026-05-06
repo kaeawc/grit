@@ -12,6 +12,8 @@ import (
 	"github.com/kaeawc/grit/internal/project"
 )
 
+const moduleSnapshotCacheVersion = "module-snapshot-v3"
+
 func loadModuleSnapshot(prj *project.Project, mod *project.Module, variantName string) (moduleSnapshot, bool) {
 	snapshotPath := moduleSnapshotPath(prj, mod, variantName)
 	compileStampPath := filepath.Join(filepath.Dir(filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName, "classes")), "compile.stamp")
@@ -34,6 +36,9 @@ func loadModuleSnapshot(prj *project.Project, mod *project.Module, variantName s
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		return moduleSnapshot{}, false
 	}
+	if snapshot.CacheVersion != moduleSnapshotCacheVersion {
+		return moduleSnapshot{}, false
+	}
 	for depPath, expected := range snapshot.DirectDepStamps {
 		depStampPath := moduleCompileStampPath(prj, depPath, variantName)
 		if !stampMatches(depStampPath, expected) {
@@ -45,6 +50,7 @@ func loadModuleSnapshot(prj *project.Project, mod *project.Module, variantName s
 
 func saveModuleSnapshot(prj *project.Project, mod *project.Module, variantName string, deps *modulebuild.Dependencies, out compiledModule) error {
 	snapshot := moduleSnapshot{
+		CacheVersion:     moduleSnapshotCacheVersion,
 		RuntimeInputs:    append([]string{}, out.runtimeInputs...),
 		AndroidResources: append([]androidResourceArtifact{}, out.androidResources...),
 		DirectDepStamps:  map[string]string{},
@@ -90,7 +96,7 @@ func moduleSnapshotPath(prj *project.Project, mod *project.Module, variantName s
 
 func sharedModuleSnapshotPath(prj *project.Project, mod *project.Module, variantName string, localInputs []string) string {
 	sum := sha256.New()
-	sum.Write([]byte("module-snapshot-v1"))
+	sum.Write([]byte(moduleSnapshotCacheVersion))
 	sum.Write([]byte{0})
 	sum.Write([]byte(prj.RootDir))
 	sum.Write([]byte{0})

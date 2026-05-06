@@ -3,6 +3,7 @@ package nativecompile
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/kaeawc/grit/internal/modulebuild"
@@ -125,6 +126,29 @@ func TestVariantSourceRootsIncludeFlavoredMainAndUnitTestRoots(t *testing.T) {
 	}
 	if len(androidTestSources) != 1 || filepath.Base(androidTestSources[0]) != "FlavorAndroidTest.kt" {
 		t.Fatalf("expected flavored androidTest sources, got %#v", androidTestSources)
+	}
+}
+
+func TestMainSourceRootsIncludesAndroidMultiplatformSourceSets(t *testing.T) {
+	root := t.TempDir()
+	mod := &project.Module{
+		Dir:     root,
+		Plugins: []string{"kotlinMultiplatform"},
+		BuildTypes: map[string]project.BuildType{
+			"debug": {Name: "debug"},
+		},
+	}
+	got := mainSourceRoots(mod, "debug")
+	want := []string{
+		filepath.Join(root, "src", "main"),
+		filepath.Join(root, "src", "commonMain"),
+		filepath.Join(root, "src", "androidMain"),
+		filepath.Join(root, "src", "debug"),
+	}
+	for _, path := range want {
+		if !slices.Contains(got, path) {
+			t.Fatalf("missing source root %q in %#v", path, got)
+		}
 	}
 }
 

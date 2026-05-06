@@ -27,35 +27,39 @@ func detectKSPApplied(body string) bool {
 // build scripts apply KSP at the top level of the dependencies block and the
 // regex anchors to lines starting with `ksp(`.
 var kspDepRE = regexp.MustCompile(`(?m)^\s*ksp\(([^()]*(?:\([^()]*\))?[^()]*)\)\s*$`)
+var kspAddDepRE = regexp.MustCompile(`(?m)^\s*add\s*\(\s*"ksp[A-Za-z0-9_]*"\s*,\s*([^()]*(?:\([^()]*\))?[^()]*)\)\s*$`)
 
 // parseKSPProcessors extracts processor refs declared as `ksp(...)` lines.
 // Each ref is parsed via modulebuild.ParseRef so library aliases, project
 // refs, and raw "group:artifact:version" strings all flow through the same
 // resolver later.
 func parseKSPProcessors(body string) []modulebuild.Ref {
-	matches := kspDepRE.FindAllStringSubmatch(body, -1)
-	if len(matches) == 0 {
-		return nil
-	}
 	seen := map[string]struct{}{}
 	var out []modulebuild.Ref
-	for _, m := range matches {
-		expr := strings.TrimSpace(m[1])
-		if expr == "" {
-			continue
-		}
-		ref := modulebuild.ParseRef(expr)
-		if ref.Value == "" {
-			continue
-		}
-		key := ref.Kind + "|" + ref.Value
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, ref)
+	for _, m := range kspDepRE.FindAllStringSubmatch(body, -1) {
+		addKSPProcessorRef(&out, seen, m[1])
+	}
+	for _, m := range kspAddDepRE.FindAllStringSubmatch(body, -1) {
+		addKSPProcessorRef(&out, seen, m[1])
 	}
 	return out
+}
+
+func addKSPProcessorRef(out *[]modulebuild.Ref, seen map[string]struct{}, expr string) {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return
+	}
+	ref := modulebuild.ParseRef(expr)
+	if ref.Value == "" {
+		return
+	}
+	key := ref.Kind + "|" + ref.Value
+	if _, ok := seen[key]; ok {
+		return
+	}
+	seen[key] = struct{}{}
+	*out = append(*out, ref)
 }
 
 var kspArgRE = regexp.MustCompile(`(?m)arg\s*\(\s*"([^"]+)"\s*,\s*"([^"]*)"\s*\)`)

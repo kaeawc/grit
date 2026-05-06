@@ -2,6 +2,7 @@ package project
 
 import (
 	"regexp"
+	"slices"
 
 	"github.com/kaeawc/grit/internal/modulebuild"
 )
@@ -18,6 +19,27 @@ func buildCompilerPluginRegistry(mod *Module, body string) *modulebuild.PluginRe
 		reg.Register(plugin)
 	}
 	return reg
+}
+
+func refreshDerivedCompilerPluginState(mod *Module, body string) {
+	if mod == nil {
+		return
+	}
+	mod.UsesCompose = mod.UsesCompose || slices.Contains(mod.Plugins, "org.jetbrains.kotlin.plugin.compose")
+	mod.UsesKotlinSerialization = mod.UsesKotlinSerialization || slices.Contains(mod.Plugins, "org.jetbrains.kotlin.plugin.serialization")
+	mod.UsesMetro = mod.UsesMetro || slices.Contains(mod.Plugins, "dev.zacsweers.metro")
+	mod.UsesKSP = mod.UsesKSP || slices.Contains(mod.Plugins, "com.google.devtools.ksp")
+	if mod.Type == "" {
+		switch {
+		case slices.Contains(mod.Plugins, "com.android.application"), slices.Contains(mod.Plugins, "com.android.test"):
+			mod.Type = "android-application"
+		case slices.Contains(mod.Plugins, "com.android.library"):
+			mod.Type = "android-library"
+		case slices.Contains(mod.Plugins, "org.jetbrains.kotlin.jvm"), slices.Contains(mod.Plugins, "java-library"):
+			mod.Type = "jvm-library"
+		}
+	}
+	mod.CompilerPlugins = buildCompilerPluginRegistry(mod, body)
 }
 
 // ActiveCompilerPlugins returns the compiler plugins applicable to the named

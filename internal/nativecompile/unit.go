@@ -122,7 +122,7 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 	var deps *modulebuild.Dependencies
 	err = c.track("parseDependencies", func() error {
 		var innerErr error
-		deps, innerErr = modulebuild.ParseDependencies(mod.BuildFile)
+		deps, innerErr = modulebuild.ParseDependenciesForModule(mod.BuildFile, prj.RootDir, mod.Plugins)
 		if innerErr == nil {
 			deps = dependenciesForVariant(deps, mod, variantName)
 		}
@@ -515,8 +515,17 @@ func mainSourceRoots(mod *project.Module, variantName string) []string {
 	buildType := firstNonEmpty(strings.TrimSpace(variant.Coordinate.BuildType), strings.TrimSpace(variant.Config.BaseBuildType))
 	var roots []string
 	roots = append(roots, filepath.Join(mod.Dir, "src", "main"))
+	if moduleUsesKotlinMultiplatform(mod) {
+		roots = append(roots,
+			filepath.Join(mod.Dir, "src", "commonMain"),
+			filepath.Join(mod.Dir, "src", "androidMain"),
+		)
+	}
 	for _, flavor := range variant.Coordinate.Flavors {
 		roots = append(roots, filepath.Join(mod.Dir, "src", flavor))
+		if moduleUsesKotlinMultiplatform(mod) {
+			roots = append(roots, filepath.Join(mod.Dir, "src", flavor+"Main"))
+		}
 	}
 	if buildType != "" {
 		roots = append(roots, filepath.Join(mod.Dir, "src", buildType))
@@ -525,6 +534,19 @@ func mainSourceRoots(mod *project.Module, variantName string) []string {
 		roots = append(roots, filepath.Join(mod.Dir, "src", variant.Name))
 	}
 	return uniqueStringPaths(roots)
+}
+
+func moduleUsesKotlinMultiplatform(mod *project.Module) bool {
+	if mod == nil {
+		return false
+	}
+	for _, plugin := range mod.Plugins {
+		switch strings.TrimSpace(plugin) {
+		case "org.jetbrains.kotlin.multiplatform", "kotlinMultiplatform":
+			return true
+		}
+	}
+	return false
 }
 
 func unitTestSourceRoots(mod *project.Module, variantName string) []string {

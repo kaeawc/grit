@@ -77,3 +77,27 @@ func expandPlugins(pluginIDs []string, conventions map[string][]string) []string
 	sortStrings(out)
 	return out
 }
+
+func expandPluginAliases(pluginIDs []string, aliases map[string]string) []string {
+	if len(pluginIDs) == 0 || len(aliases) == 0 {
+		return pluginIDs
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	for _, id := range pluginIDs {
+		add(id)
+		if canonical := aliases[normalizePluginAlias(id)]; canonical != "" {
+			add(canonical)
+		}
+	}
+	sortStrings(out)
+	return out
+}
