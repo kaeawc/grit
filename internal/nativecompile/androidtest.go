@@ -21,7 +21,7 @@ type androidTestCompileOutputs struct {
 }
 
 func (c *Compiler) compileAndroidTest(ctx context.Context, prj *project.Project, mod *project.Module, variantName string, stdout, stderr *os.File) error {
-	outputs, err := c.compileAndroidTestOutputs(ctx, prj, mod, variantName, stdout, stderr)
+	outputs, err := c.compileAndroidTestOutputs(ctx, prj, mod, variantName, false, stdout, stderr)
 	if err != nil {
 		return err
 	}
@@ -33,7 +33,7 @@ func (c *Compiler) compileAndroidTest(ctx context.Context, prj *project.Project,
 	return nil
 }
 
-func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.Project, mod *project.Module, variantName string, stdout, stderr *os.File) (androidTestCompileOutputs, error) {
+func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.Project, mod *project.Module, variantName string, needRuntime bool, stdout, stderr *os.File) (androidTestCompileOutputs, error) {
 	if variantName == "" {
 		variantName = mod.DefaultVariantName()
 	}
@@ -64,6 +64,18 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 		return outputs, err
 	}
 	if len(testSources) == 0 {
+		return outputs, nil
+	}
+
+	testOut := filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName+"AndroidTest", "classes")
+	if err := os.MkdirAll(testOut, 0o755); err != nil {
+		return outputs, err
+	}
+	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
+	testSourceFingerprintPath := filepath.Join(filepath.Dir(testOut), "source-fingerprints.json")
+	if !needRuntime && pathIsFile(testCompileStampPath) && hasOutputFiles(testOut) && semanticSourceFingerprintsMatch(testSourceFingerprintPath, testSources) {
+		recordCacheProbe(c.tracker, "compileAndroidTests", true, "local-up-to-date", "androidTest source changes did not affect semantic compile inputs")
+		outputs.testClassesDir = testOut
 		return outputs, nil
 	}
 
@@ -123,10 +135,6 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 		return outputs, err
 	}
 
-	testOut := filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName+"AndroidTest", "classes")
-	if err := os.MkdirAll(testOut, 0o755); err != nil {
-		return outputs, err
-	}
 	testCP := append([]string{}, resolved.TestJars...)
 	testCP = append(testCP, toolchain.TestRuntimeJars...)
 	testCP = append(testCP, projectTestCP...)
@@ -141,7 +149,6 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 	testCompileInputs = append(testCompileInputs, toolchain.CompilerClasspath...)
 	testSharedCompileDir := moduleCompileCacheDir(mod.Path+"#androidTest", variantName, mod.ResolveVariant(variantName).ConfigHash(), testCompileInputs)
 	testJarPath := filepath.Join(filepath.Dir(testOut), "android-test-classes.jar")
-	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
 	endCompileTests := c.beginSerial("compileAndroidTests")
 	err = c.track("restoreCompileAndroidTestsCache", func() error {
 		if stampMatches(testCompileStampPath, testSharedCompileDir) && hasOutputFiles(testOut) {
@@ -150,11 +157,13 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 		}
 		if outputsNewerThanInputs(testOut, testCompileInputs) {
 			_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+			_ = writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
 			recordCacheProbe(c.tracker, "compileAndroidTests", true, "local-up-to-date", "compiled androidTest outputs newer than inputs")
 			return nil
 		}
 		if restoreSharedCompileCache(testOut, testJarPath, testSharedCompileDir) {
 			_ = writeStamp(testCompileStampPath, testSharedCompileDir)
+			_ = writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
 			recordCacheProbe(c.tracker, "compileAndroidTests", true, "shared-cache-hit", "restored compiled androidTests from shared cache")
 		}
 		return nil
@@ -174,7 +183,10 @@ func (c *Compiler) compileAndroidTestOutputs(ctx context.Context, prj *project.P
 				if innerErr := saveSharedCompileCache(testOut, testJar, testSharedCompileDir); innerErr != nil {
 					return innerErr
 				}
-				return writeStamp(testCompileStampPath, testSharedCompileDir)
+				if innerErr := writeStamp(testCompileStampPath, testSharedCompileDir); innerErr != nil {
+					return innerErr
+				}
+				return writeSemanticSourceFingerprints(testSourceFingerprintPath, testSources)
 			})
 		}
 	}
@@ -223,7 +235,7 @@ func (c *Compiler) UninstallAndroidTestVariant(ctx context.Context, prj *project
 }
 
 func (c *Compiler) assembleAndroidTestAPK(ctx context.Context, prj *project.Project, mod *project.Module, variantName string, stdout, stderr *os.File) (string, error) {
-	outputs, err := c.compileAndroidTestOutputs(ctx, prj, mod, variantName, stdout, stderr)
+	outputs, err := c.compileAndroidTestOutputs(ctx, prj, mod, variantName, true, stdout, stderr)
 	if err != nil || outputs.testClassesDir == "" {
 		return "", err
 	}

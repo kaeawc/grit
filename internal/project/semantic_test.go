@@ -444,8 +444,8 @@ func TestAndroidModuleDefaultsExposeFlavorAwareTaskSurface(t *testing.T) {
 	if !hasTask(tasks, "installFreeDebugAndroidTest") || !hasTask(tasks, "uninstallFreeDebugAndroidTest") {
 		t.Fatalf("expected flavor-aware androidTest install tasks, got %#v", tasks)
 	}
-	if !taskSupported(tasks, "lint") || !taskSupported(tasks, "lintDebug") || !taskSupported(tasks, "lintRelease") {
-		t.Fatalf("expected lint tasks to be marked supported, got %#v", tasks)
+	if taskSupported(tasks, "lint") || taskSupported(tasks, "lintDebug") || taskSupported(tasks, "lintRelease") {
+		t.Fatalf("expected lint tasks to be marked unsupported until execution is implemented, got %#v", tasks)
 	}
 	if hasTask(tasks, "installDebug") || hasTask(tasks, "assembleDebug") {
 		t.Fatalf("expected task surface to prefer flavor-qualified variants, got %#v", tasks)

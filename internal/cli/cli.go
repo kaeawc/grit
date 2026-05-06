@@ -111,6 +111,7 @@ const usageText = `grit is a constrained Android/JVM build runner aimed at event
 	  - compileReleaseSources
 	  - compileDebugUnitTestSources
 	  - assembleUnitTest
+	  - compileDebugAndroidTestSources
 	  - installDebug
 	  - installRelease
 	  - installDebugAndroidTest
@@ -214,6 +215,7 @@ Examples:
 	  grit assembleDebug --repo ~/path/to/android-repo --module :app
 	  grit compileDebugSources --repo ~/path/to/android-repo --module :app
 	  grit assembleUnitTest --repo ~/path/to/android-repo --module :app
+	  grit compileDebugAndroidTestSources --repo ~/path/to/android-repo --module :app
 	  grit installRelease --repo ~/path/to/android-repo --module :app
 	  grit installDebugAndroidTest --repo ~/path/to/android-repo --module :app
 	  grit testDebugUnitTest --repo ~/path/to/android-repo --module :app
@@ -450,6 +452,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compileDebugUnitTestSources")
 	case "assembleUnitTest":
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assembleUnitTest")
+	case "compileDebugAndroidTestSources":
+		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compileDebugAndroidTestSources")
 	case "installDebug":
 		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "installDebug")
 	case "installRelease":
