@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -57,6 +58,26 @@ func TestFilterKotlinCompilerClasspathVersion(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected filtered classpath: got %#v want %#v", got, want)
+	}
+}
+
+func TestKotlinToolDependencySetDeclaresWholeToolchain(t *testing.T) {
+	got := kotlinToolDependencySet("2.3.3")
+	want := []dependencywiring.ToolDependency{
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-compiler-embeddable", Version: "2.3.3", Role: "compiler"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-stdlib", Version: "2.3.3", Role: "runtime"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-stdlib-jdk7", Version: "2.3.3", Role: "runtime-jdk7"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-stdlib-jdk8", Version: "2.3.3", Role: "runtime-jdk8"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-test", Version: "2.3.3", Role: "test-runtime"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-test-junit", Version: "2.3.3", Role: "test-junit"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-test-junit5", Version: "2.3.3", Role: "test-junit5"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-reflect", Version: "2.3.3", Role: "reflect"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-script-runtime", Version: "2.3.3", Role: "script-runtime"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-compose-compiler-plugin-embeddable", Version: "2.3.3", Role: "compose-plugin", Optional: true},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-serialization-compiler-plugin-embeddable", Version: "2.3.3", Role: "serialization-plugin", Optional: true},
+	}
+	if !reflect.DeepEqual(got.Dependencies, want) {
+		t.Fatalf("unexpected Kotlin tool dependencies: got %#v want %#v", got.Dependencies, want)
 	}
 }
 

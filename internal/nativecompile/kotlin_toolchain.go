@@ -38,39 +38,24 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	if err != nil {
 		return nil, err
 	}
-	compilerResolved, err := resolver.Resolve(&modulebuild.Dependencies{
-		Main: []modulebuild.Ref{{Kind: "raw", Value: "org.jetbrains.kotlin:kotlin-compiler-embeddable:" + version}},
-	})
+	resolvedSet, err := dependencywiring.ResolveToolDependencySet(resolver, kotlinToolDependencySet(version))
 	if err != nil {
 		return nil, err
 	}
 	toolchain := &kotlinToolchain{
-		Version: version,
-		RuntimeJars: mergePaths(
-			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib", version),
-			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk7", version),
-			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk8", version),
-		),
-		TestRuntimeJars: mergePaths(
-			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-test", version),
-			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-test-junit", version),
-			findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-test-junit5", version),
-		),
+		Version:             version,
+		RuntimeJars:         mergePaths(resolvedSet.Jars("runtime"), resolvedSet.Jars("runtime-jdk7"), resolvedSet.Jars("runtime-jdk8")),
+		TestRuntimeJars:     mergePaths(resolvedSet.Jars("test-runtime"), resolvedSet.Jars("test-junit"), resolvedSet.Jars("test-junit5")),
+		ComposePlugin:       resolvedSet.FirstJar("compose-plugin"),
+		SerializationPlugin: resolvedSet.FirstJar("serialization-plugin"),
 	}
 	toolchain.CompilerClasspath = filterKotlinCompilerClasspathVersion(version, mergePaths(
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version),
-		compilerResolved.RuntimeJars,
+		singlePath(resolvedSet.FirstJar("compiler")),
+		resolvedSet.Resolved.RuntimeJars,
 		toolchain.RuntimeJars,
-		findGradleArtifactJars("org.jetbrains", "annotations", latestCachedVersionFor("org.jetbrains", "annotations")),
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-reflect", version),
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-script-runtime", version),
+		resolvedSet.Jars("reflect"),
+		resolvedSet.Jars("script-runtime"),
 	))
-	if paths := findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", version); len(paths) > 0 {
-		toolchain.ComposePlugin = paths[0]
-	}
-	if paths := findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-serialization-compiler-plugin-embeddable", version); len(paths) > 0 {
-		toolchain.SerializationPlugin = paths[0]
-	}
 	if metroPlugin := dependencywiring.ResolveMetroCompilerPlugin(prj, resolver); metroPlugin != "" {
 		toolchain.MetroPlugin = metroPlugin
 	}
@@ -84,6 +69,30 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 		toolchain.TestRuntimeJars = fallbackKotlinToolchain().TestRuntimeJars
 	}
 	return toolchain, nil
+}
+
+func singlePath(path string) []string {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	return []string{path}
+}
+
+func kotlinToolDependencySet(version string) dependencywiring.ToolDependencySet {
+	deps := []dependencywiring.ToolDependency{
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-compiler-embeddable", Version: version, Role: "compiler"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-stdlib", Version: version, Role: "runtime"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-stdlib-jdk7", Version: version, Role: "runtime-jdk7"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-stdlib-jdk8", Version: version, Role: "runtime-jdk8"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-test", Version: version, Role: "test-runtime"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-test-junit", Version: version, Role: "test-junit"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-test-junit5", Version: version, Role: "test-junit5"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-reflect", Version: version, Role: "reflect"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-script-runtime", Version: version, Role: "script-runtime"},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-compose-compiler-plugin-embeddable", Version: version, Role: "compose-plugin", Optional: true},
+		{Group: "org.jetbrains.kotlin", Module: "kotlin-serialization-compiler-plugin-embeddable", Version: version, Role: "serialization-plugin", Optional: true},
+	}
+	return dependencywiring.ToolDependencySet{Name: "kotlin-toolchain", Dependencies: deps}
 }
 
 func filterKotlinCompilerClasspathVersion(version string, paths []string) []string {
