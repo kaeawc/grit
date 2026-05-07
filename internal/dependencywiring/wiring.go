@@ -18,6 +18,7 @@ import (
 	mavenread "github.com/kaeawc/grit/internal/downloader/mavenlocal"
 	"github.com/kaeawc/grit/internal/downloader/mavenremote"
 	"github.com/kaeawc/grit/internal/downloader/retry"
+	artifactcache "github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/lockfile"
 	"github.com/kaeawc/grit/internal/lockfile/produce"
 	"github.com/kaeawc/grit/internal/m2local"
@@ -122,6 +123,13 @@ type DependencyResolver interface {
 	Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error)
 	SetTracker(perf.Tracker)
 	Topology() m2local.CacheTopology
+}
+
+// ArtifactResolver is the reusable dependency resolution surface for resolving
+// individual toolchain artifacts through the same resolver path as production
+// compilation.
+type ArtifactResolver interface {
+	Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error)
 }
 
 type legacyResolver interface {
@@ -262,6 +270,62 @@ func CacheTopology(prj *project.Project) (m2local.CacheTopology, error) {
 		return m2local.CacheTopology{}, os.ErrInvalid
 	}
 	return cacheTopology(prj), nil
+}
+
+// ProjectMetroVersion returns the Metro plugin version requested by the
+// project's version catalog data or catalog plugin aliases.
+func ProjectMetroVersion(prj *project.Project) string {
+	if prj == nil {
+		return ""
+	}
+	if prj.VersionCatalogData != nil {
+		for _, key := range []string{"metro", "build-metro", "metro-version"} {
+			if v := strings.TrimSpace(prj.VersionCatalogData[key]); v != "" {
+				return v
+			}
+		}
+	}
+	cat, err := LoadCatalog(prj)
+	if err == nil && cat != nil {
+		for _, key := range []string{"metro", "dev.zacsweers.metro"} {
+			if plugin, err := cat.ResolvePlugin(key); err == nil && plugin.Version != "" {
+				return plugin.Version
+			}
+		}
+	}
+	return ""
+}
+
+// ResolveMetroCompilerPlugin resolves the Metro compiler plugin through the
+// supplied dependency resolver, falling back to the legacy Gradle cache lookup
+// only after the resolver path cannot provide an artifact.
+func ResolveMetroCompilerPlugin(prj *project.Project, resolver ArtifactResolver) string {
+	version := ProjectMetroVersion(prj)
+	if strings.TrimSpace(version) == "" {
+		return ""
+	}
+	if resolver != nil {
+		resolved, err := resolver.Resolve(&modulebuild.Dependencies{
+			Main: []modulebuild.Ref{{Kind: "raw", Value: "dev.zacsweers.metro:compiler:" + version}},
+		})
+		if err == nil && resolved != nil {
+			for _, path := range append(append([]string{}, resolved.CompileJars...), resolved.RuntimeJars...) {
+				base := filepath.Base(path)
+				if strings.HasPrefix(base, "compiler-") && strings.HasSuffix(base, ".jar") && isMetroArtifactPath(path) {
+					return path
+				}
+			}
+		}
+	}
+	if paths := artifactcache.FindArtifactJars("dev.zacsweers.metro", "compiler", version); len(paths) > 0 {
+		return paths[0]
+	}
+	return ""
+}
+
+func isMetroArtifactPath(path string) bool {
+	clean := filepath.ToSlash(filepath.Clean(path))
+	return strings.Contains(clean, "dev.zacsweers.metro") || strings.Contains(clean, "dev/zacsweers/metro")
 }
 
 func emptyCatalog() *catalog.Catalog {

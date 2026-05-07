@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/project"
 )
 
@@ -25,7 +26,7 @@ func Check(prj *project.Project) Report {
 		checkAndroidJar(),
 		checkComposeCompilerPlugin(),
 		checkSerializationCompilerPlugin(),
-		checkMetroCompilerPlugin(),
+		checkMetroCompilerPlugin(prj),
 	}
 	return Report{Items: items}
 }
@@ -73,11 +74,26 @@ func checkSerializationCompilerPlugin() Item {
 	return Item{Name: "kotlin-serialization-compiler-plugin", Detail: path, OK: true}
 }
 
-func checkMetroCompilerPlugin() Item {
-	path := filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar")
-	_, err := os.Stat(path) // #nosec
+func checkMetroCompilerPlugin(prj *project.Project) Item {
+	version := dependencywiring.ProjectMetroVersion(prj)
+	if version == "" {
+		return Item{Name: "metro-compiler-plugin", Detail: "no Metro version declared", OK: false}
+	}
+	resolver, err := dependencywiring.Resolver(prj, nil)
 	if err != nil {
-		return Item{Name: "metro-compiler-plugin", Detail: path, OK: false}
+		return Item{Name: "metro-compiler-plugin", Detail: err.Error(), OK: false}
+	}
+	return checkMetroCompilerPluginWithResolver(prj, resolver)
+}
+
+func checkMetroCompilerPluginWithResolver(prj *project.Project, resolver dependencywiring.ArtifactResolver) Item {
+	version := dependencywiring.ProjectMetroVersion(prj)
+	if version == "" {
+		return Item{Name: "metro-compiler-plugin", Detail: "no Metro version declared", OK: false}
+	}
+	path := dependencywiring.ResolveMetroCompilerPlugin(prj, resolver)
+	if path == "" {
+		return Item{Name: "metro-compiler-plugin", Detail: "dev.zacsweers.metro:compiler:" + version + " could not be resolved", OK: false}
 	}
 	return Item{Name: "metro-compiler-plugin", Detail: path, OK: true}
 }
