@@ -60,8 +60,9 @@ type EntityRelationResult struct {
 	ClasspathSnapshotConsumers *integration.ClasspathSnapshotConsumersByIDResult `json:"classpathSnapshotConsumers,omitempty"`
 }
 
-// EntityByID returns the requested entity. Use this for new callers; the
-// kind-specific XByID methods are kept as thin wrappers for backwards-compat.
+// EntityByID returns the requested entity in a unified, kind-discriminated
+// envelope. The kind-specific XByID methods provide the same data via their
+// own dedicated result types.
 func (s *Service) EntityByID(ctx context.Context, prj *project.Project, ref EntityRef) (EntityResult, error) {
 	view, err := s.IntegrationView(ctx, prj)
 	if err != nil {

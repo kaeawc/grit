@@ -13,10 +13,8 @@ import (
 	"github.com/kaeawc/grit/internal/service"
 )
 
-// runEntityByIDLookup is the shared body for verbs that take --repo and a
-// single id-shaped flag, dispatch to a service method, and emit the JSON
-// result. It folds the eight cookie-cutter ByID/ConsumersByID handlers into
-// one place.
+// runEntityByIDLookup handles verbs that take --repo and a single id-shaped
+// flag, dispatch to a service method, and emit the JSON result.
 func runEntityByIDLookup[R any](
 	ctx context.Context,
 	args []string,
@@ -48,7 +46,7 @@ func runEntityByIDLookup[R any](
 	return cmd.success(resultJSON(result))
 }
 
-// runModuleVariantLookup folds verbs that take --repo --module --variant
+// runModuleVariantLookup handles verbs that take --repo --module --variant
 // (with the conventional :app / debug defaults) and dispatch to a service
 // method.
 func runModuleVariantLookup[R any](
@@ -80,7 +78,7 @@ func runModuleVariantLookup[R any](
 	return cmd.success(resultJSON(result))
 }
 
-// runModuleLookup folds verbs that take --repo --module (with the conventional
+// runModuleLookup handles verbs that take --repo --module (with the conventional
 // :app default) and dispatch to a service method.
 func runModuleLookup[R any](
 	ctx context.Context,
@@ -110,11 +108,11 @@ func runModuleLookup[R any](
 	return cmd.success(resultJSON(result))
 }
 
-// runRequireModuleLookup folds verbs that take --repo --module (default :app)
+// runRequireModuleLookup handles verbs that take --repo --module (default :app)
 // and dispatch to a service method whose signature is `(mod, prj) (R, error)`.
-// It validates the module up front via cmd.requireModule before calling the
-// service. For service methods that don't return an error, wrap them in a
-// closure: `func(svc *service.Service, mod *project.Module, prj *project.Project) (R, error) { return svc.X(mod, prj), nil }`.
+// The module is validated up front via cmd.requireModule before the service
+// call. Service methods that don't return an error wrap with a one-liner
+// adapter at the call site.
 func runRequireModuleLookup[R any](
 	args []string,
 	stdout, stderr io.Writer,
