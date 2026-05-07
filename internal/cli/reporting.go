@@ -252,95 +252,27 @@ func runClasspathSnapshot(ctx context.Context, args []string, stdout, stderr io.
 }
 
 func runClasspathSnapshotByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("classpathSnapshotByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("classpathSnapshotByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	snapshotID := fs.String("snapshot", "", "Classpath snapshot ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*snapshotID) == "" {
-		return cmd.fail(2, fmt.Errorf("snapshot is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ClasspathSnapshotByID(ctx, prj, *snapshotID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(classpathSnapshotByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"classpathSnapshotByID", "snapshot", "Classpath snapshot ID",
+		(*service.Service).ClasspathSnapshotByID)
 }
 
 func runClasspathSnapshotProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("classpathSnapshotProvenance", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("classpathSnapshotProvenance", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	snapshotID := fs.String("snapshot", "", "Classpath snapshot ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*snapshotID) == "" {
-		return cmd.fail(2, fmt.Errorf("snapshot is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ClasspathSnapshotProvenance(ctx, prj, *snapshotID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(classpathSnapshotProvenanceResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"classpathSnapshotProvenance", "snapshot", "Classpath snapshot ID",
+		(*service.Service).ClasspathSnapshotProvenance)
 }
 
 func runClasspathSnapshotConsumersByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("classpathSnapshotConsumersByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("classpathSnapshotConsumersByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	snapshotID := fs.String("snapshot", "", "Classpath snapshot ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*snapshotID) == "" {
-		return cmd.fail(2, fmt.Errorf("snapshot is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ClasspathSnapshotConsumersByID(ctx, prj, *snapshotID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(classpathSnapshotConsumersByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"classpathSnapshotConsumersByID", "snapshot", "Classpath snapshot ID",
+		(*service.Service).ClasspathSnapshotConsumersByID)
 }
 
 func runClasspathSnapshotConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("classpathSnapshotConsumers", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("classpathSnapshotConsumers", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	snapshotID := fs.String("snapshot", "", "Classpath snapshot ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*snapshotID) == "" {
-		return cmd.fail(2, fmt.Errorf("snapshot is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ClasspathSnapshotConsumers(ctx, prj, *snapshotID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(classpathSnapshotConsumersResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"classpathSnapshotConsumers", "snapshot", "Classpath snapshot ID",
+		(*service.Service).ClasspathSnapshotConsumers)
 }
 
 func runClasspathEntryLookup(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -369,26 +301,9 @@ func runClasspathEntryLookup(ctx context.Context, args []string, stdout, stderr 
 }
 
 func runClasspathPathConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("classpathPathConsumers", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("classpathPathConsumers", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	path := fs.String("path", "", "Path to inspect on derived classpaths")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*path) == "" {
-		return cmd.fail(2, fmt.Errorf("path is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ClasspathPathConsumers(ctx, prj, *path)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(classpathPathConsumersResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"classpathPathConsumers", "path", "Path to inspect on derived classpaths",
+		(*service.Service).ClasspathPathConsumers)
 }
 
 func runArtifactOnClasspath(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -417,279 +332,75 @@ func runArtifactOnClasspath(ctx context.Context, args []string, stdout, stderr i
 }
 
 func runArtifactClasspathConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("artifactClasspathConsumers", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("artifactClasspathConsumers", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	artifactID := fs.String("artifact", "", "Artifact ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*artifactID) == "" {
-		return cmd.fail(2, fmt.Errorf("artifact is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ArtifactClasspathConsumers(ctx, prj, *artifactID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(artifactClasspathConsumersResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"artifactClasspathConsumers", "artifact", "Artifact ID",
+		(*service.Service).ArtifactClasspathConsumers)
 }
 
 func runFileOwners(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("fileOwners", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("fileOwners", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	path := fs.String("path", "", "File path to inspect")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*path) == "" {
-		return cmd.fail(2, fmt.Errorf("path is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.FileOwners(ctx, prj, *path)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(fileOwnersResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"fileOwners", "path", "File path to inspect",
+		(*service.Service).FileOwners)
 }
 
 func runModuleByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("moduleByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("moduleByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	moduleID := fs.String("id", "", "Logical module ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*moduleID) == "" {
-		return cmd.fail(2, fmt.Errorf("id is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ModuleByID(ctx, prj, *moduleID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(moduleByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"moduleByID", "id", "Logical module ID",
+		(*service.Service).ModuleByID)
 }
 
 func runVariantByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("variantByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("variantByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	variantID := fs.String("id", "", "Variant ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*variantID) == "" {
-		return cmd.fail(2, fmt.Errorf("id is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.VariantByID(ctx, prj, *variantID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(variantByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"variantByID", "id", "Variant ID",
+		(*service.Service).VariantByID)
 }
 
 func runActionByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("actionByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("actionByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	actionID := fs.String("id", "", "Action ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*actionID) == "" {
-		return cmd.fail(2, fmt.Errorf("id is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ActionByID(ctx, prj, *actionID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(actionByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"actionByID", "id", "Action ID",
+		(*service.Service).ActionByID)
 }
 
 func runArtifactByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("artifactByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("artifactByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	artifactID := fs.String("id", "", "Artifact ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*artifactID) == "" {
-		return cmd.fail(2, fmt.Errorf("id is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ArtifactByID(ctx, prj, *artifactID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(artifactByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"artifactByID", "id", "Artifact ID",
+		(*service.Service).ArtifactByID)
 }
 
 func runMaterializationByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("materializationByID", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("materializationByID", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	materializationID := fs.String("id", "", "Materialization ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*materializationID) == "" {
-		return cmd.fail(2, fmt.Errorf("id is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.MaterializationByID(ctx, prj, *materializationID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(materializationByIDResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"materializationByID", "id", "Materialization ID",
+		(*service.Service).MaterializationByID)
 }
 
 func runMaterializationConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("materializationConsumers", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("materializationConsumers", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	materializationID := fs.String("id", "", "Materialization ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*materializationID) == "" {
-		return cmd.fail(2, fmt.Errorf("id is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.MaterializationConsumers(ctx, prj, *materializationID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(materializationConsumersResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"materializationConsumers", "id", "Materialization ID",
+		(*service.Service).MaterializationConsumers)
 }
 
 func runActionInputs(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("actionInputs", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("actionInputs", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	actionID := fs.String("action", "", "Action ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*actionID) == "" {
-		return cmd.fail(2, fmt.Errorf("action is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ActionInputs(ctx, prj, *actionID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(actionInputsResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"actionInputs", "action", "Action ID",
+		(*service.Service).ActionInputs)
 }
 
 func runActionOutputs(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("actionOutputs", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("actionOutputs", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	actionID := fs.String("action", "", "Action ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*actionID) == "" {
-		return cmd.fail(2, fmt.Errorf("action is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ActionOutputs(ctx, prj, *actionID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(actionOutputsResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"actionOutputs", "action", "Action ID",
+		(*service.Service).ActionOutputs)
 }
 
 func runActionDependencies(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("actionDependencies", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("actionDependencies", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	actionID := fs.String("action", "", "Action ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*actionID) == "" {
-		return cmd.fail(2, fmt.Errorf("action is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ActionDependencies(ctx, prj, *actionID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(actionDependenciesResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"actionDependencies", "action", "Action ID",
+		(*service.Service).ActionDependencies)
 }
 
 func runActionDependents(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("actionDependents", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("actionDependents", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	actionID := fs.String("action", "", "Action ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*actionID) == "" {
-		return cmd.fail(2, fmt.Errorf("action is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ActionDependents(ctx, prj, *actionID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(actionDependentsResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"actionDependents", "action", "Action ID",
+		(*service.Service).ActionDependents)
 }
 
 func runActionsForModule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -935,26 +646,9 @@ func runPlannedActionPolicies(ctx context.Context, args []string, stdout, stderr
 }
 
 func runMaterializationProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("materializationProvenance", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("materializationProvenance", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	materializationID := fs.String("materialization", "", "Materialization ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*materializationID) == "" {
-		return cmd.fail(2, fmt.Errorf("materialization is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.MaterializationProvenance(ctx, prj, *materializationID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(materializationProvenanceResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"materializationProvenance", "materialization", "Materialization ID",
+		(*service.Service).MaterializationProvenance)
 }
 
 func runVariantCompatibility(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1108,26 +802,9 @@ func runArtifactSnapshotProvenance(ctx context.Context, args []string, stdout, s
 }
 
 func runArtifactSnapshotConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("artifactSnapshotConsumers", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("artifactSnapshotConsumers", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	snapshotID := fs.String("snapshot", "", "Artifact snapshot ID")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	if strings.TrimSpace(*snapshotID) == "" {
-		return cmd.fail(2, fmt.Errorf("snapshot is required"))
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ArtifactSnapshotConsumers(ctx, prj, *snapshotID)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(artifactSnapshotConsumersResult(result)))
+	return runEntityByIDLookup(ctx, args, stdout, stderr, tracker, start,
+		"artifactSnapshotConsumers", "snapshot", "Artifact snapshot ID",
+		(*service.Service).ArtifactSnapshotConsumers)
 }
 
 func runArtifactProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
