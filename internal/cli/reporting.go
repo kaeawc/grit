@@ -481,106 +481,28 @@ func runVariantMaterialization(ctx context.Context, args []string, stdout, stder
 }
 
 func runVariantSourceSetModel(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("variantSourceSetModel", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("variantSourceSetModel", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	variant := fs.String("variant", "debug", "Variant name")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.VariantSourceSetModel(ctx, prj, *modulePath, *variant)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleVariantLookup(ctx, args, stdout, stderr, tracker, start,
+		"variantSourceSetModel", (*service.Service).VariantSourceSetModel)
 }
 
 func runDependencyBindingsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("dependencyBindingsForVariant", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("dependencyBindingsForVariant", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	variant := fs.String("variant", "debug", "Variant name")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.DependencyBindingsForVariant(ctx, prj, *modulePath, *variant)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleVariantLookup(ctx, args, stdout, stderr, tracker, start,
+		"dependencyBindingsForVariant", (*service.Service).DependencyBindingsForVariant)
 }
 
 func runDependencyBindingsForModule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("dependencyBindingsForModule", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("dependencyBindingsForModule", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.DependencyBindingsForModule(ctx, prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleLookup(ctx, args, stdout, stderr, tracker, start,
+		"dependencyBindingsForModule", (*service.Service).DependencyBindingsForModule)
 }
 
 func runDependencyRealizationsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("dependencyRealizationsForVariant", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("dependencyRealizationsForVariant", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	variant := fs.String("variant", "debug", "Variant name")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.DependencyRealizationsForVariant(ctx, prj, *modulePath, *variant)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleVariantLookup(ctx, args, stdout, stderr, tracker, start,
+		"dependencyRealizationsForVariant", (*service.Service).DependencyRealizationsForVariant)
 }
 
 func runDependencyRealizationsForModule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("dependencyRealizationsForModule", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("dependencyRealizationsForModule", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.DependencyRealizationsForModule(ctx, prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleLookup(ctx, args, stdout, stderr, tracker, start,
+		"dependencyRealizationsForModule", (*service.Service).DependencyRealizationsForModule)
 }
 
 func runPlannedActionPolicy(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -652,24 +574,8 @@ func runMaterializationProvenance(ctx context.Context, args []string, stdout, st
 }
 
 func runVariantCompatibility(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("variantCompatibility", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("variantCompatibility", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	variant := fs.String("variant", "debug", "Variant name")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.VariantCompatibility(ctx, prj, *modulePath, *variant)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleVariantLookup(ctx, args, stdout, stderr, tracker, start,
+		"variantCompatibility", (*service.Service).VariantCompatibility)
 }
 
 func runArtifactsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -702,23 +608,8 @@ func runArtifactsForVariant(ctx context.Context, args []string, stdout, stderr i
 }
 
 func runArtifactsForModule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("artifactsForModule", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("artifactsForModule", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	result, err := cmd.svc.ArtifactsForModule(ctx, prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(result))
+	return runModuleLookup(ctx, args, stdout, stderr, tracker, start,
+		"artifactsForModule", (*service.Service).ArtifactsForModule)
 }
 
 func runModuleManifest(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
