@@ -141,6 +141,10 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return err
 	}
 	resolver.SetTracker(c.tracker)
+	cat, err := dependencywiring.LoadCatalog(prj)
+	if err != nil {
+		return err
+	}
 	compileDeps := *deps
 	compileDeps.Main = append(append([]modulebuild.Ref{}, deps.Main...), deps.CompileOnly...)
 	var resolved *m2local.Resolved
@@ -207,7 +211,13 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 	testCP := append([]string{}, resolved.TestJars...)
 	testCP = append(testCP, toolchain.TestRuntimeJars...)
 	testCP = append(testCP, kotlinTestShimJar())
-	testCP = append(testCP, junitJupiterApiJar())
+	junitSupportCP := junitRuntimeSupportJarsForDependencies(deps, cat)
+	for _, jar := range junitSupportCP {
+		if strings.Contains(filepath.Base(jar), "junit-jupiter-api-") {
+			testCP = append(testCP, jar)
+			break
+		}
+	}
 	testCP = append(testCP, projectTestCP...)
 	testCP = append(testCP, projectTestRuntimeInputs...)
 	testCP = append(testCP, mainOut)
@@ -305,7 +315,6 @@ func (c *Compiler) compileAndMaybeRunDebugUnit(ctx context.Context, prj *project
 		return nil
 	}
 	runtimeSupportCP := runtimeSupportJars()
-	junitSupportCP := junitRuntimeSupportJars()
 	runSupportCP := mergePaths(junitSupportCP, runtimeSupportCP)
 	testRunCachePath, ok := unitTestRunCachePathFromCompileStamp(prj.RootDir, mod.Path, variantName, testClasses, testCompileStampPath, runSupportCP)
 	if !ok {

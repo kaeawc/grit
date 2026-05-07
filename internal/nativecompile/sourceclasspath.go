@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
@@ -367,10 +368,27 @@ func junitRuntimeClasspath(classpath []string) []string {
 
 func junitRuntimeSupportJars() []string {
 	versions := alignedJUnitRuntimeVersions()
+	return junitRuntimeSupportJarsForVersions(versions)
+}
+
+func junitRuntimeSupportJarsForDependencies(deps *modulebuild.Dependencies, cat *catalog.Catalog) []string {
+	versions := alignedJUnitRuntimeVersionsFor(deps, cat)
+	if versions.platform == "" && versions.jupiter == "" {
+		versions = alignedJUnitRuntimeVersions()
+	}
+	return junitRuntimeSupportJarsForVersions(versions)
+}
+
+func junitRuntimeSupportJarsForVersions(versions junitRuntimeVersions) []string {
 	candidates := []string{}
-	candidates = append(candidates, junitPlatformSupportJars()...)
-	candidates = append(candidates, junitJupiterApiJar())
-	candidates = append(candidates, junitJupiterEngineJar())
+	candidates = append(candidates, junitPlatformSupportJarsForVersions(versions)...)
+	if versions.jupiter != "" {
+		candidates = append(candidates, cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-api", versions.jupiter))
+		candidates = append(candidates, cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-engine", versions.jupiter))
+	} else {
+		candidates = append(candidates, junitJupiterApiJar())
+		candidates = append(candidates, junitJupiterEngineJar())
+	}
 	if versions.jupiter != "" {
 		candidates = append(candidates, cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-params", versions.jupiter))
 		candidates = append(candidates, cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter", versions.jupiter))
