@@ -104,12 +104,23 @@ func TestRemoteRepositoryURLsFallsBackToDefaults(t *testing.T) {
 	t.Parallel()
 
 	resolver := newTestResolver(project.Repository{Kind: "maven", Scope: "compile", URL: "https://example.invalid/ignored"})
+	resolver.AllowRepositoryFallback = true
 	got := resolver.remoteRepositoryURLs(Coordinate{Group: "com.example", Module: "lib"})
 	if len(got) != 2 {
 		t.Fatalf("unexpected fallback urls: %#v", got)
 	}
 	if got[0] != "https://dl.google.com/dl/android/maven2/" || got[1] != "https://repo1.maven.org/maven2/" {
 		t.Fatalf("unexpected fallback urls: %#v", got)
+	}
+}
+
+func TestRemoteRepositoryURLsDoesNotFallbackByDefault(t *testing.T) {
+	t.Parallel()
+
+	resolver := newTestResolver(project.Repository{Kind: "maven", Scope: "compile", URL: "https://example.invalid/ignored"})
+	got := resolver.remoteRepositoryURLs(Coordinate{Group: "com.example", Module: "lib"})
+	if len(got) != 0 {
+		t.Fatalf("unexpected implicit fallback urls: %#v", got)
 	}
 }
 

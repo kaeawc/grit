@@ -2,6 +2,7 @@ package nativecompile
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,6 +197,9 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		return out, err
 	}
 	out.pluginPaths, out.pluginOptions = compilerPluginsForModule(mod, variantName, toolchain)
+	if mod.UsesMetro && (toolchain == nil || strings.TrimSpace(toolchain.MetroPlugin) == "") {
+		return out, fmt.Errorf("metro compiler plugin is required by %s but dev.zacsweers.metro:compiler could not be resolved from declared repositories", mod.Path)
+	}
 	kspResult, err := c.runKSP2ForModule(ctx, state, prj, mod, variantName, out.mainOut, out.compileCP, stdout, stderr)
 	if err != nil {
 		return out, err
@@ -212,6 +216,11 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 		return out, err
 	}
 	out.mainSources = append(out.mainSources, generatedFallbacks.Sources...)
+	modeledGeneratedSources, modeledGeneratedInputs, err := collectModeledGeneratedSources(mod, variantName)
+	if err != nil {
+		return out, err
+	}
+	out.mainSources = append(out.mainSources, modeledGeneratedSources...)
 	if moduleUsesKotlinMultiplatform(mod) {
 		out.commonSources, err = collectSourcesFromRoots([]string{filepath.Join(mod.Dir, "src", "commonMain")})
 		if err != nil {
@@ -243,6 +252,7 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	if len(kspResult.ProcessorCP) > 0 {
 		out.compileInputs = append(out.compileInputs, kspResult.ProcessorCP...)
 	}
+	out.compileInputs = append(out.compileInputs, modeledGeneratedInputs...)
 	out.sharedCompileDir = moduleCompileCacheDir(mod.Path, variantName, mod.ResolveVariant(variantName).ConfigHash(), out.compileInputs)
 	out.moduleJarPath = filepath.Join(filepath.Dir(out.mainOut), "module-classes.jar")
 	out.compileStampPath = filepath.Join(filepath.Dir(out.mainOut), "compile.stamp")

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/mavenlocalroot"
 	"github.com/kaeawc/grit/internal/pathutil"
 )
@@ -42,6 +43,26 @@ func collectVersionCatalogs(dir string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func collectDeclaredVersionCatalogs(rootDir, settingsBody string) []string {
+	if strings.TrimSpace(rootDir) == "" || strings.TrimSpace(settingsBody) == "" {
+		return nil
+	}
+	re := regexp.MustCompile(`from\s*\(\s*files\s*\(\s*"([^"]+\.toml)"\s*\)\s*\)`)
+	var out []string
+	for _, match := range re.FindAllStringSubmatch(settingsBody, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		path := match[1]
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(rootDir, path)
+		}
+		out = append(out, filepath.Clean(path))
+	}
+	sort.Strings(out)
+	return mergeStrings(nil, out)
 }
 
 func pickPrimaryCatalog(paths []string) string {
@@ -303,34 +324,13 @@ func mergeStrings(a, b []string) []string {
 }
 
 func loadVersionCatalogs(paths []string) (map[string]string, error) {
+	cat, err := catalog.LoadAll(paths)
+	if err != nil {
+		return nil, err
+	}
 	out := map[string]string{}
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-
-		inVersions := false
-		for _, raw := range strings.Split(string(data), "\n") {
-			line := strings.TrimSpace(raw)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-				inVersions = line == "[versions]"
-				continue
-			}
-			if !inVersions {
-				continue
-			}
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			key := strings.TrimSpace(parts[0])
-			value := stripInlineComment(strings.TrimSpace(parts[1]))
-			out[key] = value
-		}
+	for key, value := range cat.Versions {
+		out[key] = value
 	}
 	return out, nil
 }

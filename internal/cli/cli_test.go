@@ -3364,9 +3364,12 @@ dependencies {}
 
 	deps := &modulebuild.Dependencies{}
 	cachePath, err := m2local.ResolvedCachePath(filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1"), root, nil, &catalog.Catalog{
-		Versions:  map[string]string{},
-		Libraries: map[string]catalog.Library{},
-		Bundles:   map[string][]string{},
+		Versions:     map[string]string{},
+		RichVersions: map[string]catalog.RichVersion{},
+		Libraries:    map[string]catalog.Library{},
+		Bundles:      map[string][]string{},
+		Plugins:      map[string]catalog.Plugin{},
+		Provenance:   map[string]catalog.Provenance{},
 	}, deps)
 	if err != nil {
 		t.Fatal(err)
@@ -3500,7 +3503,7 @@ dependencies {}
 	if resp.Result.Summary.CompileJarCount != 1 || resp.Result.Summary.SelectionCount != 1 || resp.Result.Summary.PinCount != 1 {
 		t.Fatalf("unexpected resolverReport summary: %#v", resp.Result.Summary)
 	}
-	if resp.Result.Inputs.CacheStatus != "hit" || resp.Result.Inputs.CacheVersion != "16" || resp.Result.Inputs.CacheKey == "" {
+	if resp.Result.Inputs.CacheStatus != "hit" || resp.Result.Inputs.CacheVersion != "17" || resp.Result.Inputs.CacheKey == "" {
 		t.Fatalf("unexpected resolverReport inputs: %#v", resp.Result.Inputs)
 	}
 	if len(resp.Result.Report.Selections) != 1 || resp.Result.Report.Selections[0].Chosen != "releaseRuntimeElements" {

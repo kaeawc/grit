@@ -1,7 +1,11 @@
 package m2local
 
 import (
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,11 +13,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kaeawc/grit/internal/griterr"
 	"github.com/kaeawc/grit/internal/pathutil"
 	"github.com/kaeawc/grit/internal/project"
 )
+
+var ErrOffline = errors.New("m2local: offline mode")
 
 func (r *Resolver) fetchPOM(coord Coordinate) (string, error) {
 	artifactVersion := r.snapshotArtifactVersion(coord, "pom")
@@ -54,6 +61,9 @@ type snapshotMetadata struct {
 
 func (r *Resolver) snapshotArtifactVersion(coord Coordinate, ext string) string {
 	if !strings.HasSuffix(coord.Version, "-SNAPSHOT") {
+		return coord.Version
+	}
+	if r.Offline {
 		return coord.Version
 	}
 	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/maven-metadata.xml"
@@ -97,6 +107,12 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 		})
 		return outPath, nil
 	}
+	if r.Offline {
+		return "", fmt.Errorf("%w: cannot fetch %s for %s", ErrOffline, label, coordinateID(coord))
+	}
+	if r.negativeCacheHit(coord, relPath, label) {
+		return "", fmt.Errorf("%s not found for %s (cached negative repository lookup)", label, coordinateID(coord))
+	}
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return "", err
 	}
@@ -112,6 +128,9 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 		body, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if err != nil {
+			return "", err
+		}
+		if err := verifyChecksumIfAvailable(baseURL+relPath, body); err != nil {
 			return "", err
 		}
 		tmpPath := outPath + ".tmp"
@@ -132,6 +151,7 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 		})
 		return outPath, nil
 	}
+	_ = r.recordNegativeCache(coord, relPath, label)
 	return "", fmt.Errorf("%s not found for %s", label, coordinateID(coord))
 }
 
@@ -194,10 +214,67 @@ func (r *Resolver) remoteRepositoryURLs(coord Coordinate) []string {
 		}
 		urls = append(urls, pathutil.EnsureTrailingSlash(repo.URL))
 	}
-	if len(urls) == 0 {
+	if len(urls) == 0 && r.AllowRepositoryFallback {
 		urls = append(urls, "https://dl.google.com/dl/android/maven2/", "https://repo1.maven.org/maven2/")
 	}
 	return mergeUnique(nil, urls)
+}
+
+func (r *Resolver) negativeCachePath(coord Coordinate, relPath, label string) string {
+	key := strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(coordinateID(coord) + "_" + label + "_" + relPath)
+	return filepath.Join(r.WorkRoot, ".grit", "metadata", "missing", key+".missing")
+}
+
+func (r *Resolver) negativeCacheHit(coord Coordinate, relPath, label string) bool {
+	path := r.negativeCachePath(coord, relPath, label)
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return time.Since(info.ModTime()) < 24*time.Hour
+}
+
+func (r *Resolver) recordNegativeCache(coord Coordinate, relPath, label string) error {
+	path := r.negativeCachePath(coord, relPath, label)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(coordinateID(coord)+" "+label+"\n"), 0o644)
+}
+
+func verifyChecksumIfAvailable(url string, body []byte) error {
+	if len(body) == 0 {
+		return nil
+	}
+	for _, suffix := range []string{".sha256", ".sha1"} {
+		resp, err := http.Get(url + suffix)
+		if err != nil {
+			continue
+		}
+		checksum, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			continue
+		}
+		fields := strings.Fields(string(checksum))
+		if len(fields) == 0 {
+			continue
+		}
+		switch suffix {
+		case ".sha256":
+			sum := sha256.Sum256(body)
+			if !strings.EqualFold(hex.EncodeToString(sum[:]), fields[0]) {
+				return fmt.Errorf("checksum mismatch for %s", url)
+			}
+		case ".sha1":
+			sum := sha1.Sum(body)
+			if !strings.EqualFold(hex.EncodeToString(sum[:]), fields[0]) {
+				return fmt.Errorf("checksum mismatch for %s", url)
+			}
+		}
+		return nil
+	}
+	return nil
 }
 
 func repoAllowsCoordinate(repo project.Repository, coord Coordinate) bool {

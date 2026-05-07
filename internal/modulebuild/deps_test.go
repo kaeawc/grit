@@ -499,6 +499,33 @@ dependencies {
 	}
 }
 
+func TestParseDependenciesPreservesEnforcedPlatformRequest(t *testing.T) {
+	root := t.TempDir()
+	buildFile := filepath.Join(root, "build.gradle.kts")
+	body := `
+dependencies {
+    implementation(enforcedPlatform(libs.compose.bom))
+}
+`
+	if err := os.WriteFile(buildFile, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := ParseDependencies(buildFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := deps.Main[0], (Ref{Kind: "enforced-platform-library", Value: "compose.bom"}); got != want {
+		t.Fatalf("unexpected ref: got %#v want %#v", got, want)
+	}
+	if got, want := len(deps.Requests), 1; got != want {
+		t.Fatalf("request count = %d, want %d", got, want)
+	}
+	req := deps.Requests[0]
+	if !req.Platform || !req.Enforced || req.CatalogAlias != "compose.bom" || req.Scope != "implementation" {
+		t.Fatalf("unexpected request: %#v", req)
+	}
+}
+
 func containsRef(refs []Ref, want Ref) bool {
 	for _, ref := range refs {
 		if ref == want {

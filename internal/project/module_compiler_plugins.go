@@ -29,6 +29,7 @@ func refreshDerivedCompilerPluginState(mod *Module, body string) {
 	mod.UsesKotlinSerialization = mod.UsesKotlinSerialization || slices.Contains(mod.Plugins, "org.jetbrains.kotlin.plugin.serialization")
 	mod.UsesMetro = mod.UsesMetro || slices.Contains(mod.Plugins, "dev.zacsweers.metro")
 	mod.UsesKSP = mod.UsesKSP || slices.Contains(mod.Plugins, "com.google.devtools.ksp")
+	applyPluginDescriptors(mod)
 	if mod.Type == "" {
 		switch {
 		case slices.Contains(mod.Plugins, "com.android.application"), slices.Contains(mod.Plugins, "com.android.test"):

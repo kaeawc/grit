@@ -6,7 +6,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/gradlecache"
+	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -18,6 +20,7 @@ type kotlinToolchain struct {
 	TestRuntimeJars     []string
 	ComposePlugin       string
 	SerializationPlugin string
+	MetroPlugin         string
 }
 
 func (s *compileState) kotlinToolchainForProject(prj *project.Project) (*kotlinToolchain, error) {
@@ -69,6 +72,9 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	if paths := findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-serialization-compiler-plugin-embeddable", version); len(paths) > 0 {
 		toolchain.SerializationPlugin = paths[0]
 	}
+	if metroPlugin := resolveMetroCompilerPlugin(prj, resolver); metroPlugin != "" {
+		toolchain.MetroPlugin = metroPlugin
+	}
 	if len(toolchain.CompilerClasspath) == 0 {
 		return fallbackKotlinToolchain(), nil
 	}
@@ -116,6 +122,58 @@ func projectKotlinVersion(prj *project.Project) string {
 		}
 	}
 	return latestCachedKotlinVersion("kotlin-compiler-embeddable")
+}
+
+func projectMetroVersion(prj *project.Project) string {
+	if prj == nil {
+		return ""
+	}
+	if prj.VersionCatalogData != nil {
+		for _, key := range []string{"metro", "build-metro", "metro-version"} {
+			if v := strings.TrimSpace(prj.VersionCatalogData[key]); v != "" {
+				return v
+			}
+		}
+	}
+	cat, err := dependencywiring.LoadCatalog(prj)
+	if err == nil && cat != nil {
+		for _, key := range []string{"metro", "dev.zacsweers.metro"} {
+			if plugin, err := cat.ResolvePlugin(key); err == nil && plugin.Version != "" {
+				return plugin.Version
+			}
+		}
+	}
+	return ""
+}
+
+func resolveMetroCompilerPlugin(prj *project.Project, resolver dependencyResolverForToolchain) string {
+	version := projectMetroVersion(prj)
+	if strings.TrimSpace(version) == "" || resolver == nil {
+		return ""
+	}
+	resolved, err := resolver.Resolve(&modulebuild.Dependencies{
+		Main: []modulebuild.Ref{{Kind: "raw", Value: "dev.zacsweers.metro:compiler:" + version}},
+	})
+	if err != nil || resolved == nil {
+		if paths := findGradleArtifactJars("dev.zacsweers.metro", "compiler", version); len(paths) > 0 {
+			return paths[0]
+		}
+		return ""
+	}
+	for _, path := range append(append([]string{}, resolved.CompileJars...), resolved.RuntimeJars...) {
+		base := filepath.Base(path)
+		if strings.HasPrefix(base, "compiler-") && strings.HasSuffix(base, ".jar") && strings.Contains(path, "dev.zacsweers.metro") {
+			return path
+		}
+	}
+	if paths := findGradleArtifactJars("dev.zacsweers.metro", "compiler", version); len(paths) > 0 {
+		return paths[0]
+	}
+	return ""
+}
+
+type dependencyResolverForToolchain interface {
+	Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error)
 }
 
 func findGradleArtifactJars(group, module, version string) []string {
@@ -175,7 +233,9 @@ func compilerPluginsForModule(mod *project.Module, variantName string, toolchain
 					plugins = append(plugins, toolchain.SerializationPlugin)
 				}
 			case modulebuild.MetroCompilerPluginID:
-				plugins = append(plugins, filepath.Join(gradlecache.Root(), "dev.zacsweers.metro", "compiler", "0.12.0", "898e83c86c03300a76d55f83815ce13a1d1fc005", "compiler-0.12.0.jar"))
+				if toolchain != nil && strings.TrimSpace(toolchain.MetroPlugin) != "" {
+					plugins = append(plugins, toolchain.MetroPlugin)
+				}
 			}
 		}
 		if len(plugin.Options) == 0 {
