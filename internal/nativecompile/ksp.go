@@ -38,8 +38,7 @@ type kspCompilation struct {
 }
 
 // projectKSPVersion resolves the KSP version pinned by the project's
-// version catalog. Falls back to the most recent KSP2 runtime visible
-// in the local Gradle cache.
+// version catalog.
 func projectKSPVersion(prj *project.Project) string {
 	if prj != nil {
 		for _, key := range []string{"ksp", "build-kotlin-ksp", "kotlin-ksp", "ksp-version", "kotlin-symbol-processing"} {
@@ -58,9 +57,6 @@ func projectKSPVersion(prj *project.Project) string {
 				}
 			}
 		}
-	}
-	if v := latestCachedVersionFor("com.google.devtools.ksp", "symbol-processing-aa-embeddable"); v != "" {
-		return v
 	}
 	return ""
 }
@@ -81,10 +77,9 @@ func kspOutputRoots(prj *project.Project, mod *project.Module, variantName, clas
 }
 
 // resolveKSP2Runtime resolves the KSP2 driver jars (aa-embeddable + api
-// + common-deps). All three are required: aa-embeddable hosts the
-// engine, api carries the contract types, common-deps carries the CLI
-// arg parser. Falls back to the local Gradle cache if the resolver
-// returns empty (typical when offline).
+// + common-deps) through the normal dependency resolver. All three are
+// required: aa-embeddable hosts the engine, api carries the contract
+// types, common-deps carries the CLI arg parser.
 func resolveKSP2Runtime(state *compileState, prj *project.Project, version string) ([]string, error) {
 	if strings.TrimSpace(version) == "" {
 		return nil, fmt.Errorf("ksp version unknown for project %q (set it under [versions] in libs.versions.toml)", prj.Name)
@@ -107,24 +102,7 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
 	jars = filterKSPRuntimeClasspathVersion(version, jars)
 	if len(jars) == 0 {
-		jars = mergePaths(
-			findGradleArtifactJars("com.google.devtools.ksp", "symbol-processing-aa-embeddable", version),
-			findGradleArtifactJars("com.google.devtools.ksp", "symbol-processing-api", version),
-			findGradleArtifactJars("com.google.devtools.ksp", "symbol-processing-common-deps", version),
-		)
-	}
-	if len(jars) == 0 {
-		jars = resolveRawCoordinates(resolver, []string{
-			"com.google.devtools.ksp:symbol-processing-aa-embeddable:" + version,
-			"com.google.devtools.ksp:symbol-processing-api:" + version,
-			"com.google.devtools.ksp:symbol-processing-common-deps:" + version,
-		}, true)
-	}
-	if len(jars) == 0 {
-		return nil, fmt.Errorf("ksp2 runtime jars not found for version %s; bump KSP to a release that ships symbol-processing-aa-embeddable", version)
-	}
-	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
-		jars = mergePaths(jars, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
+		return nil, fmt.Errorf("ksp2 runtime jars not resolved for version %s; ensure dependency repositories and lock/provenance include the KSP runtime", version)
 	}
 	return jars, nil
 }
@@ -450,10 +428,6 @@ func rawCoordinateRefs(coords []string) []modulebuild.Ref {
 	return refs
 }
 
-func resolveRawCoordinates(resolver dependencywiring.DependencyResolver, coords []string, includeAndroid bool) []string {
-	return resolveClasspathRefs(resolver, rawCoordinateRefs(coords), includeAndroid)
-}
-
 func resolveClasspathRefs(resolver dependencywiring.DependencyResolver, refs []modulebuild.Ref, includeAndroid bool) []string {
 	if resolver == nil || len(refs) == 0 {
 		return nil
@@ -619,9 +593,6 @@ func (c *Compiler) runKSP2ForModule(ctx context.Context, state *compileState, pr
 	processorCP, err := resolveKSPProcessors(state, prj, mod.KSP.Processors)
 	if err != nil {
 		return out, err
-	}
-	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
-		processorCP = mergePaths(processorCP, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
 	}
 	resolver, err := state.resolverForProject(prj)
 	if err != nil {

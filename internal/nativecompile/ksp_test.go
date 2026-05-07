@@ -32,6 +32,98 @@ func TestProjectKSPVersionFallsBackThroughKnownKeys(t *testing.T) {
 	}
 }
 
+func TestProjectKSPVersionDoesNotGuessFromGradleCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cached := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", "com.google.devtools.ksp", "symbol-processing-aa-embeddable", "2.1.20-1.0.32", "sha")
+	if err := os.MkdirAll(cached, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := projectKSPVersion(&project.Project{}); got != "" {
+		t.Fatalf("projectKSPVersion should require catalog version, got cached %q", got)
+	}
+}
+
+func TestResolveKSP2RuntimeUsesOnlyResolverRequests(t *testing.T) {
+	resolver := &kspResolverFake{
+		results: []*m2local.Resolved{{
+			CompileJars: []string{
+				"/repo/com/google/devtools/ksp/symbol-processing-aa-embeddable/2.1.20-1.0.32/symbol-processing-aa-embeddable-2.1.20-1.0.32.jar",
+			},
+			RuntimeJars: []string{"/repo/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.jar"},
+		}},
+	}
+	state := compileStateWithResolver(resolver)
+	got, err := resolveKSP2Runtime(state, &project.Project{Name: "app"}, "2.1.20-1.0.32")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected resolver classpath only, got %v", got)
+	}
+	calls := resolver.callsSnapshot()
+	if len(calls) != 1 {
+		t.Fatalf("expected one resolver call, got %d", len(calls))
+	}
+	want := []string{
+		"com.google.devtools.ksp:symbol-processing-aa-embeddable:2.1.20-1.0.32",
+		"com.google.devtools.ksp:symbol-processing-api:2.1.20-1.0.32",
+		"com.google.devtools.ksp:symbol-processing-common-deps:2.1.20-1.0.32",
+	}
+	assertMainRefs(t, calls[0], want)
+}
+
+func TestResolveKSP2RuntimeDoesNotFallBackToGradleCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cached := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", "com.google.devtools.ksp", "symbol-processing-aa-embeddable", "2.1.20-1.0.32", "sha")
+	if err := os.MkdirAll(cached, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cached, "symbol-processing-aa-embeddable-2.1.20-1.0.32.jar"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state := compileStateWithResolver(&kspResolverFake{results: []*m2local.Resolved{{}}})
+	if got, err := resolveKSP2Runtime(state, &project.Project{Name: "app"}, "2.1.20-1.0.32"); err == nil {
+		t.Fatalf("expected empty resolver result to fail instead of using Gradle cache, got %v", got)
+	}
+}
+
+func TestResolveKSPProcessorsUsesResolverJVMFallback(t *testing.T) {
+	resolver := &kspResolverFake{
+		results: []*m2local.Resolved{
+			{},
+			{RuntimeJars: []string{"/repo/com/example/proc-jvm/1.0/proc-jvm-1.0.jar"}},
+		},
+	}
+	dir := t.TempDir()
+	catalogPath := filepath.Join(dir, "libs.versions.toml")
+	if err := os.WriteFile(catalogPath, []byte(`
+[versions]
+proc = "1.0"
+
+[libraries]
+processor = { module = "com.example:proc", version.ref = "proc" }
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prj := &project.Project{
+		VersionCatalogs: []string{catalogPath},
+	}
+	got, err := resolveKSPProcessors(compileStateWithResolver(resolver), prj, []modulebuild.Ref{{Kind: "library", Value: "processor"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "/repo/com/example/proc-jvm/1.0/proc-jvm-1.0.jar" {
+		t.Fatalf("unexpected processor jars: %v", got)
+	}
+	calls := resolver.callsSnapshot()
+	if len(calls) != 2 {
+		t.Fatalf("expected direct and JVM fallback resolver calls, got %d", len(calls))
+	}
+	assertMainRefs(t, calls[1], []string{"com.example:proc-jvm:1.0"})
+}
+
 func TestKSPLanguageVersionDropsPatch(t *testing.T) {
 	cases := map[string]string{
 		"2.1.20":  "2.1",
@@ -270,20 +362,64 @@ func TestFallbackJVMCompileJarsRoutesRawCoordinatesThroughResolver(t *testing.T)
 }
 
 type kspResolverFake struct {
-	calls  []modulebuild.Dependencies
-	result *m2local.Resolved
-	err    error
+	calls   []modulebuild.Dependencies
+	result  *m2local.Resolved
+	results []*m2local.Resolved
+	err     error
+	tracker perf.Tracker
 }
 
 func (f *kspResolverFake) Resolve(deps *modulebuild.Dependencies) (*m2local.Resolved, error) {
 	if deps != nil {
 		f.calls = append(f.calls, modulebuild.Dependencies{Main: append([]modulebuild.Ref{}, deps.Main...)})
 	}
-	return f.result, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(f.results) > 0 {
+		out := f.results[0]
+		f.results = f.results[1:]
+		if out == nil {
+			return &m2local.Resolved{}, nil
+		}
+		return out, nil
+	}
+	if f.result == nil {
+		return &m2local.Resolved{}, nil
+	}
+	return f.result, nil
 }
 
-func (f *kspResolverFake) SetTracker(perf.Tracker) {}
+func (f *kspResolverFake) SetTracker(tracker perf.Tracker) {
+	f.tracker = tracker
+}
 
 func (f *kspResolverFake) Topology() m2local.CacheTopology {
 	return m2local.CacheTopology{}
+}
+
+func (f *kspResolverFake) callsSnapshot() []modulebuild.Dependencies {
+	out := make([]modulebuild.Dependencies, len(f.calls))
+	copy(out, f.calls)
+	return out
+}
+
+func compileStateWithResolver(resolver *kspResolverFake) *compileState {
+	state := newCompileState()
+	state.resolverOnce.Do(func() {
+		state.resolver = resolver
+	})
+	return state
+}
+
+func assertMainRefs(t *testing.T, deps modulebuild.Dependencies, want []string) {
+	t.Helper()
+	if len(deps.Main) != len(want) {
+		t.Fatalf("main refs length: got %d (%v), want %d (%v)", len(deps.Main), deps.Main, len(want), want)
+	}
+	for i, ref := range deps.Main {
+		if ref.Kind != "raw" || ref.Value != want[i] {
+			t.Fatalf("main ref %d: got %#v want raw %q", i, ref, want[i])
+		}
+	}
 }
