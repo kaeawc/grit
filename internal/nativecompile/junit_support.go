@@ -5,11 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 
+	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/gradlecache"
+	"github.com/kaeawc/grit/internal/modulebuild"
 )
 
 var (
@@ -115,23 +116,27 @@ public final class PlatformRunner {
 
 func junitPlatformSupportJars() []string {
 	versions := alignedJUnitRuntimeVersions()
+	return junitPlatformSupportJarsForVersions(versions)
+}
+
+func junitPlatformSupportJarsForVersions(versions junitRuntimeVersions) []string {
 	if versions.platform != "" {
 		return []string{
 			cachedGradleArtifactJar("org.junit.platform", "junit-platform-launcher", versions.platform),
 			cachedGradleArtifactJar("org.junit.platform", "junit-platform-engine", versions.platform),
 			cachedGradleArtifactJar("org.junit.platform", "junit-platform-commons", versions.platform),
-			findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.apiguardian", "apiguardian-api", "*", "*", "apiguardian-api-*.jar")),
-			findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.opentest4j", "opentest4j", "*", "*", "opentest4j-*.jar")),
-			findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.jspecify", "jspecify", "*", "*", "jspecify-*.jar")),
+			junitSupportDependencyJar(versions, "org.apiguardian", "apiguardian-api"),
+			junitSupportDependencyJar(versions, "org.opentest4j", "opentest4j"),
+			junitSupportDependencyJar(versions, "org.jspecify", "jspecify"),
 		}
 	}
 	return []string{
-		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-launcher", "*", "*", "junit-platform-launcher-*.jar")),
-		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-engine", "*", "*", "junit-platform-engine-*.jar")),
-		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.junit.platform", "junit-platform-commons", "*", "*", "junit-platform-commons-*.jar")),
-		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.apiguardian", "apiguardian-api", "*", "*", "apiguardian-api-*.jar")),
-		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.opentest4j", "opentest4j", "*", "*", "opentest4j-*.jar")),
-		findLatestCachedJar(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1", "org.jspecify", "jspecify", "*", "*", "jspecify-*.jar")),
+		latestCachedArtifactJar("org.junit.platform", "junit-platform-launcher"),
+		latestCachedArtifactJar("org.junit.platform", "junit-platform-engine"),
+		latestCachedArtifactJar("org.junit.platform", "junit-platform-commons"),
+		latestCachedArtifactJar("org.apiguardian", "apiguardian-api"),
+		latestCachedArtifactJar("org.opentest4j", "opentest4j"),
+		latestCachedArtifactJar("org.jspecify", "jspecify"),
 	}
 }
 
@@ -152,31 +157,175 @@ func junitJupiterApiJar() string {
 type junitRuntimeVersions struct {
 	platform string
 	jupiter  string
+	deps     map[string]string
 }
 
 func alignedJUnitRuntimeVersions() junitRuntimeVersions {
-	versions := cachedGradleArtifactVersions("org.junit.platform", "junit-platform-launcher")
+	return alignedJUnitRuntimeVersionsWith(gradleJUnitArtifactCache{}, nil, nil)
+}
+
+type junitArtifactCache interface {
+	Versions(group, module string) []string
+	Jar(group, module, version string) string
+	Dependencies(group, module, version string) []gradlecache.Dependency
+}
+
+type gradleJUnitArtifactCache struct{}
+
+func (gradleJUnitArtifactCache) Versions(group, module string) []string {
+	return gradlecache.ArtifactVersions(group, module, compareVersion)
+}
+
+func (gradleJUnitArtifactCache) Jar(group, module, version string) string {
+	return cachedGradleArtifactJar(group, module, version)
+}
+
+func (gradleJUnitArtifactCache) Dependencies(group, module, version string) []gradlecache.Dependency {
+	return gradlecache.ArtifactDependencies(group, module, version)
+}
+
+func alignedJUnitRuntimeVersionsFor(deps *modulebuild.Dependencies, cat *catalog.Catalog) junitRuntimeVersions {
+	return alignedJUnitRuntimeVersionsWith(gradleJUnitArtifactCache{}, deps, cat)
+}
+
+func alignedJUnitRuntimeVersionsWith(cache junitArtifactCache, deps *modulebuild.Dependencies, cat *catalog.Catalog) junitRuntimeVersions {
+	if versions := junitRuntimeVersionsFromDependencies(cache, deps, cat); versions.platform != "" || versions.jupiter != "" {
+		return versions
+	}
+	versions := cache.Versions("org.junit.platform", "junit-platform-launcher")
 	for i := len(versions) - 1; i >= 0; i-- {
 		platformVersion := versions[i]
 		jupiterVersion := junitJupiterVersionForPlatform(platformVersion)
 		if jupiterVersion == "" {
 			continue
 		}
-		if cachedGradleArtifactJar("org.junit.platform", "junit-platform-engine", platformVersion) == "" {
+		if cache.Jar("org.junit.platform", "junit-platform-engine", platformVersion) == "" {
 			continue
 		}
-		if cachedGradleArtifactJar("org.junit.platform", "junit-platform-commons", platformVersion) == "" {
+		if cache.Jar("org.junit.platform", "junit-platform-commons", platformVersion) == "" {
 			continue
 		}
-		if cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-api", jupiterVersion) == "" {
+		if cache.Jar("org.junit.jupiter", "junit-jupiter-api", jupiterVersion) == "" {
 			continue
 		}
-		if cachedGradleArtifactJar("org.junit.jupiter", "junit-jupiter-engine", jupiterVersion) == "" {
+		if cache.Jar("org.junit.jupiter", "junit-jupiter-engine", jupiterVersion) == "" {
 			continue
 		}
-		return junitRuntimeVersions{platform: platformVersion, jupiter: jupiterVersion}
+		return withJUnitRuntimeDependencyVersions(cache, junitRuntimeVersions{platform: platformVersion, jupiter: jupiterVersion})
 	}
 	return junitRuntimeVersions{}
+}
+
+func junitRuntimeVersionsFromDependencies(cache junitArtifactCache, deps *modulebuild.Dependencies, cat *catalog.Catalog) junitRuntimeVersions {
+	requested := junitRequestedVersions(deps, cat)
+	versions := junitRuntimeVersions{
+		platform: requested["org.junit.platform:junit-platform-launcher"],
+		jupiter:  firstNonEmptyString(requested["org.junit.jupiter:junit-jupiter-engine"], requested["org.junit.jupiter:junit-jupiter-api"], requested["org.junit.jupiter:junit-jupiter"]),
+		deps:     map[string]string{},
+	}
+	for key, version := range requested {
+		switch key {
+		case "org.junit.platform:junit-platform-engine", "org.junit.platform:junit-platform-commons", "org.junit.platform:junit-platform-suite-api":
+			if versions.platform == "" {
+				versions.platform = version
+			}
+		case "org.junit.jupiter:junit-jupiter-params":
+			if versions.jupiter == "" {
+				versions.jupiter = version
+			}
+		case "org.apiguardian:apiguardian-api", "org.opentest4j:opentest4j", "org.jspecify:jspecify":
+			versions.deps[key] = version
+		}
+	}
+	if versions.platform == "" && versions.jupiter != "" {
+		versions.platform = junitPlatformVersionForJupiter(versions.jupiter)
+	}
+	if versions.jupiter == "" && versions.platform != "" {
+		versions.jupiter = junitJupiterVersionForPlatform(versions.platform)
+	}
+	if versions.platform == "" && versions.jupiter == "" {
+		return junitRuntimeVersions{}
+	}
+	return withJUnitRuntimeDependencyVersions(cache, versions)
+}
+
+func junitRequestedVersions(deps *modulebuild.Dependencies, cat *catalog.Catalog) map[string]string {
+	out := map[string]string{}
+	if deps == nil {
+		return out
+	}
+	refs := append([]modulebuild.Ref{}, deps.Test...)
+	refs = append(refs, deps.TestCompileOnly...)
+	refs = append(refs, deps.TestRuntimeOnly...)
+	for _, ref := range refs {
+		group, module, version := junitCoordinateFromRef(ref, cat)
+		if group == "" || module == "" || version == "" {
+			continue
+		}
+		key := group + ":" + module
+		if isJUnitRuntimeCoordinate(key) {
+			out[key] = version
+		}
+	}
+	return out
+}
+
+func junitCoordinateFromRef(ref modulebuild.Ref, cat *catalog.Catalog) (string, string, string) {
+	switch ref.Kind {
+	case "library":
+		if cat == nil {
+			return "", "", ""
+		}
+		lib, err := cat.ResolveLibrary(ref.Value)
+		if err != nil {
+			return "", "", ""
+		}
+		return lib.Group, lib.Name, lib.Version
+	case "raw":
+		parts := strings.Split(ref.Value, ":")
+		if len(parts) == 3 {
+			return parts[0], parts[1], parts[2]
+		}
+	}
+	return "", "", ""
+}
+
+func withJUnitRuntimeDependencyVersions(cache junitArtifactCache, versions junitRuntimeVersions) junitRuntimeVersions {
+	if versions.deps == nil {
+		versions.deps = map[string]string{}
+	}
+	for _, dep := range cache.Dependencies("org.junit.platform", "junit-platform-launcher", versions.platform) {
+		key := dep.Group + ":" + dep.Module
+		if isJUnitRuntimeCoordinate(key) && versions.deps[key] == "" {
+			versions.deps[key] = dep.Version
+		}
+	}
+	for _, dep := range cache.Dependencies("org.junit.jupiter", "junit-jupiter-engine", versions.jupiter) {
+		key := dep.Group + ":" + dep.Module
+		if isJUnitRuntimeCoordinate(key) && versions.deps[key] == "" {
+			versions.deps[key] = dep.Version
+		}
+	}
+	return versions
+}
+
+func isJUnitRuntimeCoordinate(key string) bool {
+	switch key {
+	case "org.junit.platform:junit-platform-launcher",
+		"org.junit.platform:junit-platform-engine",
+		"org.junit.platform:junit-platform-commons",
+		"org.junit.platform:junit-platform-suite-api",
+		"org.junit.jupiter:junit-jupiter",
+		"org.junit.jupiter:junit-jupiter-api",
+		"org.junit.jupiter:junit-jupiter-engine",
+		"org.junit.jupiter:junit-jupiter-params",
+		"org.apiguardian:apiguardian-api",
+		"org.opentest4j:opentest4j",
+		"org.jspecify:jspecify":
+		return true
+	default:
+		return false
+	}
 }
 
 func junitJupiterVersionForPlatform(platformVersion string) string {
@@ -190,22 +339,32 @@ func junitJupiterVersionForPlatform(platformVersion string) string {
 	return platformVersion
 }
 
-func cachedGradleArtifactVersions(group, module string) []string {
-	root := filepath.Join(gradlecache.Root(), group, module)
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
+func junitPlatformVersionForJupiter(jupiterVersion string) string {
+	parts := strings.Split(jupiterVersion, ".")
+	if len(parts) < 3 {
+		return ""
 	}
-	var versions []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			versions = append(versions, entry.Name())
+	if parts[0] == "5" {
+		return "1." + strings.Join(parts[1:], ".")
+	}
+	return jupiterVersion
+}
+
+func junitSupportDependencyJar(versions junitRuntimeVersions, group, module string) string {
+	if versions.deps != nil {
+		if version := versions.deps[group+":"+module]; version != "" {
+			return cachedGradleArtifactJar(group, module, version)
 		}
 	}
-	sort.Slice(versions, func(i, j int) bool {
-		return compareVersion(versions[i], versions[j]) < 0
-	})
-	return versions
+	return latestCachedArtifactJar(group, module)
+}
+
+func latestCachedArtifactJar(group, module string) string {
+	version := gradlecache.LatestVersion(group, module)
+	if version == "" {
+		return ""
+	}
+	return cachedGradleArtifactJar(group, module, version)
 }
 
 func cachedGradleArtifactJar(group, module, version string) string {
