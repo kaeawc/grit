@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
@@ -138,21 +139,16 @@ type mavenToolArtifact struct {
 	JarBaseNames []string
 }
 
-func resolveMavenToolJar(resolver dependencyResolverForToolArtifact, artifact mavenToolArtifact) (string, error) {
+func resolveMavenToolJar(resolver dependencywiring.ArtifactResolver, artifact mavenToolArtifact) (string, error) {
 	if resolver == nil {
 		return "", fmt.Errorf("tool artifact resolver is nil")
 	}
 	coord := artifact.Group + ":" + artifact.Artifact + ":" + artifact.Version
-	resolved, err := resolver.Resolve(&modulebuild.Dependencies{
-		Main: []modulebuild.Ref{{Kind: "raw", Value: coord}},
-	})
+	classpath, err := dependencywiring.ResolveRawClasspath(resolver, coord)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s: %w", coord, err)
 	}
-	if resolved == nil {
-		return "", fmt.Errorf("resolve %s: empty result", coord)
-	}
-	for _, path := range mergePaths(resolved.CompileJars, resolved.RuntimeJars) {
+	for _, path := range classpath {
 		if toolArtifactJarMatches(path, artifact) && pathIsFile(path) {
 			return path, nil
 		}

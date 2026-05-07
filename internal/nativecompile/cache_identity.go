@@ -25,12 +25,13 @@ func cloneAncestry(ancestry map[string]bool) map[string]bool {
 	return cloned
 }
 
-func sharedExternalDexDir(jars []string) string {
+func sharedExternalDexDir(tc *androidDexToolchain, jars []string) string {
 	sum := sha256.New()
-	sum.Write([]byte("external-dex-v2"))
+	sum.Write([]byte("external-dex-v3"))
 	sum.Write([]byte{0})
 	sum.Write([]byte(androidJarPath()))
 	sum.Write([]byte{0})
+	writeDexToolchainIdentity(sum, tc)
 	for _, jar := range jars {
 		sum.Write([]byte(filepath.Clean(jar)))
 		sum.Write([]byte{0})
@@ -38,12 +39,13 @@ func sharedExternalDexDir(jars []string) string {
 	return filepath.Join(sharedNativeCacheRoot(), "dex", "external", hex.EncodeToString(sum.Sum(nil)))
 }
 
-func sharedProjectDexDir(jars []string) string {
+func sharedProjectDexDir(tc *androidDexToolchain, jars []string) string {
 	sum := sha256.New()
-	sum.Write([]byte("project-dex-v1"))
+	sum.Write([]byte("project-dex-v2"))
 	sum.Write([]byte{0})
 	sum.Write([]byte(cacheIdentityForInput(androidJarPath())))
 	sum.Write([]byte{0})
+	writeDexToolchainIdentity(sum, tc)
 	for _, jar := range jars {
 		sum.Write([]byte(filepath.Clean(jar)))
 		sum.Write([]byte{0})
@@ -53,12 +55,13 @@ func sharedProjectDexDir(jars []string) string {
 	return filepath.Join(sharedNativeCacheRoot(), "dex", "project", hex.EncodeToString(sum.Sum(nil)))
 }
 
-func sharedAppDexDir(classesJar string, runtimeCP []string) string {
+func sharedAppDexDir(tc *androidDexToolchain, classesJar string, runtimeCP []string) string {
 	sum := sha256.New()
-	sum.Write([]byte("app-dex-v2"))
+	sum.Write([]byte("app-dex-v3"))
 	sum.Write([]byte{0})
 	sum.Write([]byte(cacheIdentityForInput(androidJarPath())))
 	sum.Write([]byte{0})
+	writeDexToolchainIdentity(sum, tc)
 	sum.Write([]byte(cacheIdentityForInput(classesJar)))
 	sum.Write([]byte{0})
 	for _, jar := range runtimeCP {
@@ -68,6 +71,24 @@ func sharedAppDexDir(classesJar string, runtimeCP []string) string {
 		sum.Write([]byte{0})
 	}
 	return filepath.Join(sharedNativeCacheRoot(), "dex", "app", hex.EncodeToString(sum.Sum(nil)))
+}
+
+func writeDexToolchainIdentity(sum hashWriter, tc *androidDexToolchain) {
+	if tc == nil {
+		_, _ = sum.Write([]byte("no-dex-toolchain"))
+		_, _ = sum.Write([]byte{0})
+		return
+	}
+	_, _ = sum.Write([]byte(tc.Source))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(tc.Version))
+	_, _ = sum.Write([]byte{0})
+	_, _ = sum.Write([]byte(cacheIdentityForInput(tc.JarPath)))
+	_, _ = sum.Write([]byte{0})
+}
+
+type hashWriter interface {
+	Write([]byte) (int, error)
 }
 
 func isSharedDexCacheReady(dexDir string) bool {

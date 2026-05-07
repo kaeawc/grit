@@ -2,7 +2,6 @@ package nativecompile
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/kaeawc/grit/internal/project"
@@ -109,9 +108,9 @@ func d8ReleaseAppArgs(androidJar string, minAPI string, classesJar string, runti
 	return append(args, classesJar)
 }
 
-func r8Args(androidJar string, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, extraRules string) []string {
+func r8Args(tc *androidDexToolchain, androidJar string, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, extraRules string) []string {
 	args := []string{
-		"-cp", filepath.Join(os.Getenv("HOME"), "Library", "Android", "sdk", "build-tools", "36.0.0", "lib", "d8.jar"),
+		"-cp", tc.JarPath,
 		"com.android.tools.r8.R8",
 		"--release",
 		"--lib", androidJar,
