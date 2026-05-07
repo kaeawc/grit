@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/project"
+	"github.com/kaeawc/grit/internal/testsupport"
 )
 
 func TestDiscoverProtoFiles(t *testing.T) {
@@ -93,12 +95,50 @@ func TestWireConfigFingerprintStable(t *testing.T) {
 	}
 }
 
+func TestWirePluginVersionResolvesCatalogAlias(t *testing.T) {
+	root := t.TempDir()
+	catalogPath := filepath.Join(root, "gradle", "libs.versions.toml")
+	mustWrite(t, catalogPath, `
+[versions]
+wire = "5.2.0"
+
+[plugins]
+square-wire = { id = "com.squareup.wire", version.ref = "wire" }
+`)
+	got, err := wirePluginVersion(&project.Project{RootDir: root, VersionCatalogs: []string{catalogPath}})
+	if err != nil {
+		t.Fatalf("wirePluginVersion: %v", err)
+	}
+	if got != "5.2.0" {
+		t.Fatalf("wirePluginVersion = %q, want 5.2.0", got)
+	}
+}
+
+func TestResolveWireClasspathsUseDependencyResolver(t *testing.T) {
+	resolver := testsupport.NewWiringResolverRecorder()
+	resolver.Result = &m2local.Resolved{
+		CompileJars: []string{"/deps/wire-compiler-5.2.0.jar"},
+		RuntimeJars: []string{"/deps/wire-runtime-jvm-5.2.0.jar"},
+	}
+	cp, err := resolveWireCompilerClasspath(resolver, "5.2.0")
+	if err != nil {
+		t.Fatalf("resolveWireCompilerClasspath: %v", err)
+	}
+	if strings.Join(cp, ",") != "/deps/wire-compiler-5.2.0.jar,/deps/wire-runtime-jvm-5.2.0.jar" {
+		t.Fatalf("unexpected compiler classpath: %#v", cp)
+	}
+	calls := resolver.CallsSnapshot()
+	if len(calls) != 1 || len(calls[0].Main) != 1 || calls[0].Main[0].Value != "com.squareup.wire:wire-compiler:5.2.0" {
+		t.Fatalf("unexpected resolver calls: %#v", calls)
+	}
+}
+
 // runWireCodegen should be a no-op when the module does not apply Wire.
 func TestRunWireCodegenSkipsWhenPluginAbsent(t *testing.T) {
 	c := &Compiler{}
 	mod := &project.Module{Path: ":x", Dir: t.TempDir()}
 	prj := &project.Project{RootDir: t.TempDir()}
-	out, err := c.runWireCodegen(t.Context(), prj, mod, "debug", os.Stderr, os.Stderr)
+	out, err := c.runWireCodegen(t.Context(), prj, mod, "debug", nil, os.Stderr, os.Stderr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,7 +162,7 @@ func TestRunWireCodegenNoProtos(t *testing.T) {
 		},
 	}
 	prj := &project.Project{RootDir: t.TempDir()}
-	out, err := c.runWireCodegen(t.Context(), prj, mod, "debug", os.Stderr, os.Stderr)
+	out, err := c.runWireCodegen(t.Context(), prj, mod, "debug", nil, os.Stderr, os.Stderr)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

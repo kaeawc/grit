@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kaeawc/grit/internal/dependencywiring"
 	"github.com/kaeawc/grit/internal/project"
 )
 
@@ -33,56 +34,51 @@ type wireCodegenResult struct {
 // sources plus the runtime jars that must join the kotlinc classpath.
 //
 // When the plugin is applied but no .proto files exist (or wire artifacts
-// are missing from the local Gradle cache) this returns a zero-valued
+// cannot be resolved through dependency wiring) this returns a zero-valued
 // result with no error; the caller can still proceed with the regular
 // compile step.
-func (c *Compiler) runWireCodegen(ctx context.Context, prj *project.Project, mod *project.Module, variantName string, stdout, stderr *os.File) (wireCodegenResult, error) {
+func (c *Compiler) runWireCodegen(ctx context.Context, prj *project.Project, mod *project.Module, variantName string, resolver dependencywiring.DependencyResolver, stdout, stderr *os.File) (wireCodegenResult, error) {
 	var out wireCodegenResult
 	if mod == nil || !mod.UsesWire {
 		return out, nil
 	}
 
 	cfg := mod.WireConfig
-	wireRuntimeVersion := latestCachedVersionFor("com.squareup.wire", "wire-runtime-jvm")
-	if wireRuntimeVersion == "" {
-		wireRuntimeVersion = latestCachedVersionFor("com.squareup.wire", "wire-runtime")
+	wireVersion, err := wirePluginVersion(prj)
+	if err != nil {
+		return out, fmt.Errorf("resolve wire plugin version: %w", err)
+	}
+	if wireVersion == "" {
+		if stderr != nil {
+			_, _ = fmt.Fprintf(stderr, "grit: wire plugin applied on %s but com.squareup.wire plugin version could not be resolved from the version catalog — skipping codegen\n", mod.Path)
+		}
+		return out, nil
 	}
 	// Always surface the runtime classpath when the plugin is applied — the
 	// module may consume wire types from another generator without producing
 	// any of its own (a JVM utility module is the canonical example).
-	if wireRuntimeVersion != "" {
-		out.RuntimeClasspath = wireRuntimeClasspath(wireRuntimeVersion)
+	runtimeCP, err := resolveWireRuntimeClasspath(resolver, wireVersion)
+	if err != nil {
+		return out, fmt.Errorf("resolve wire runtime classpath: %w", err)
 	}
+	out.RuntimeClasspath = runtimeCP
 
 	protoFiles := discoverProtoFiles(cfg.SourcePaths)
 	if len(protoFiles) == 0 {
 		return out, nil
 	}
 
-	wireVersion := latestCachedVersionFor("com.squareup.wire", "wire-compiler")
-	if wireVersion == "" {
-		// No wire compiler in the local cache — surface a soft warning via
-		// stderr so the user can prime the cache, and skip codegen.
-		if stderr != nil {
-			_, _ = fmt.Fprintf(stderr, "grit: wire plugin applied on %s but com.squareup.wire:wire-compiler is not in the gradle cache — skipping codegen\n", mod.Path)
-		}
-		return out, nil
+	compilerCP, err := resolveWireCompilerClasspath(resolver, wireVersion)
+	if err != nil {
+		return out, fmt.Errorf("resolve wire compiler classpath: %w", err)
 	}
-
-	compilerJar := firstWireCompilerJar(wireVersion)
-	if compilerJar == "" {
-		if stderr != nil {
-			_, _ = fmt.Fprintf(stderr, "grit: wire-compiler-%s.jar not found in the gradle cache — skipping codegen\n", wireVersion)
-		}
-		return out, nil
-	}
-	compilerCP := wireCompilerClasspath(wireVersion)
 	if len(compilerCP) == 0 {
 		if stderr != nil {
-			_, _ = fmt.Fprintf(stderr, "grit: wire-compiler classpath could not be assembled from the gradle cache — skipping codegen\n")
+			_, _ = fmt.Fprintf(stderr, "grit: wire-compiler classpath could not be resolved through dependency wiring — skipping codegen\n")
 		}
 		return out, nil
 	}
+	compilerJar := firstPathContaining(compilerCP, "com.squareup.wire", "wire-compiler")
 
 	generatedDir := wireGeneratedSourceDir(prj, mod, variantName)
 	if err := os.RemoveAll(generatedDir); err != nil && !os.IsNotExist(err) {
@@ -107,7 +103,7 @@ func (c *Compiler) runWireCodegen(ctx context.Context, prj *project.Project, mod
 	out.WireVersion = wireVersion
 	out.CompilerJar = compilerJar
 	out.CompilerCP = compilerCP
-	out.RuntimeClasspath = wireRuntimeClasspath(wireVersion)
+	out.RuntimeClasspath = runtimeCP
 	return out, nil
 }
 
@@ -190,64 +186,43 @@ func wireGeneratedSourceDir(prj *project.Project, mod *project.Module, variantNa
 	return filepath.Join(prj.RootDir, "build", "grit", "generated", "wire", moduleSegment, variantName)
 }
 
-func firstWireCompilerJar(version string) string {
-	jars := findGradleArtifactJars("com.squareup.wire", "wire-compiler", version)
-	if len(jars) == 0 {
-		return ""
+func wirePluginVersion(prj *project.Project) (string, error) {
+	version, err := dependencywiring.ResolvePluginVersion(prj, "wire", "square.wire", "square-wire", "com.squareup.wire")
+	if err != nil || version != "" {
+		return version, err
 	}
-	return jars[0]
+	if prj != nil && prj.VersionCatalogData != nil {
+		for _, key := range []string{"wire", "square-wire", "square.wire"} {
+			if v := strings.TrimSpace(prj.VersionCatalogData[key]); v != "" {
+				return v, nil
+			}
+		}
+	}
+	return "", nil
 }
 
-// wireCompilerClasspath returns the runtime jars needed to invoke
-// `com.squareup.wire.WireCompiler`. Wire compiler depends on a constellation
-// of wire-* sub-modules, kotlinpoet, javapoet, okio, and guava; rather than
-// hardcoding versions, we glob the gradle cache for the matching wire
-// version (compiler/schema/generators are all released together) and fall
-// back to the latest cached versions for transitive deps that are versioned
-// independently.
-func wireCompilerClasspath(version string) []string {
-	parts := mergePaths(
-		findGradleArtifactJars("com.squareup.wire", "wire-compiler", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-schema", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-schema-jvm", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-runtime", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-runtime-jvm", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-kotlin-generator", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-java-generator", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-swift-generator", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-grpc-server-generator", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-grpc-client", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-grpc-client-jvm", version),
-	)
-	parts = mergePaths(parts, latestArtifactJars("com.squareup.okio", "okio"))
-	parts = mergePaths(parts, latestArtifactJars("com.squareup.okio", "okio-jvm"))
-	parts = mergePaths(parts, latestArtifactJars("com.squareup", "kotlinpoet"))
-	parts = mergePaths(parts, latestArtifactJars("com.squareup", "kotlinpoet-jvm"))
-	parts = mergePaths(parts, latestArtifactJars("com.squareup", "javapoet"))
-	parts = mergePaths(parts, latestArtifactJars("com.google.guava", "guava"))
-	parts = mergePaths(parts, latestArtifactJars("com.google.guava", "failureaccess"))
-	parts = mergePaths(parts, latestArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib"))
-	parts = mergePaths(parts, latestArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk8"))
-	parts = mergePaths(parts, latestArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk7"))
-	parts = mergePaths(parts, latestArtifactJars("org.jetbrains.kotlin", "kotlin-reflect"))
-	return parts
+func resolveWireCompilerClasspath(resolver dependencywiring.DependencyResolver, version string) ([]string, error) {
+	return dependencywiring.ResolveRawClasspath(resolver, "com.squareup.wire:wire-compiler:"+version)
 }
 
-// wireRuntimeClasspath returns the jars needed at compile time by code that
-// uses Wire-generated types. wire-runtime is a Kotlin-multiplatform module
-// whose JVM artifact is published as wire-runtime-jvm; we add both forms so
-// projects on either coordinate convention still work. okio is wire's
-// runtime serialization dependency.
-func wireRuntimeClasspath(version string) []string {
-	jars := mergePaths(
-		findGradleArtifactJars("com.squareup.wire", "wire-runtime", version),
-		findGradleArtifactJars("com.squareup.wire", "wire-runtime-jvm", version),
-	)
-	jars = mergePaths(jars,
-		latestArtifactJars("com.squareup.okio", "okio-jvm"),
-		latestArtifactJars("com.squareup.okio", "okio"),
-	)
-	return jars
+func resolveWireRuntimeClasspath(resolver dependencywiring.DependencyResolver, version string) ([]string, error) {
+	return dependencywiring.ResolveRawClasspath(resolver, "com.squareup.wire:wire-runtime-jvm:"+version)
+}
+
+func firstPathContaining(paths []string, parts ...string) string {
+	for _, path := range paths {
+		match := true
+		for _, part := range parts {
+			if !strings.Contains(path, part) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return path
+		}
+	}
+	return ""
 }
 
 func latestArtifactJars(group, module string) []string {
