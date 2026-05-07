@@ -16,6 +16,7 @@ import (
 type resolvedMainDeps struct {
 	deps                 *modulebuild.Dependencies
 	resolved             *m2local.Resolved
+	resolver             dependencywiring.DependencyResolver
 	localCompileRefs     []string
 	localRuntimeRefs     []string
 	projectCompileCP     []string
@@ -81,6 +82,7 @@ func (c *Compiler) resolveMainDependencies(ctx context.Context, prj *project.Pro
 	if err != nil {
 		return out, err
 	}
+	out.resolver = resolver
 	compileDeps := *out.deps
 	compileDeps.Main = append(append([]modulebuild.Ref{}, out.deps.Main...), out.deps.CompileOnly...)
 	compileDeps.Debug = append([]modulebuild.Ref{}, out.deps.Debug...)
@@ -131,9 +133,9 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	err = c.track("prepareCompileInputs", func() error {
 		out.resourceDeps = uniqueResourceArtifacts(append(append([]androidResourceArtifact{}, deps.projectResources...), externalResources...))
 		out.compileCP = mergePaths(deps.projectCompileCP, collapseVersions(deps.resolved.CompileJars), deps.localCompileRefs)
-		out.compileCP = mergePaths(out.compileCP, fallbackJVMCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
-		out.compileCP = mergePaths(out.compileCP, fallbackAndroidCompileJars(prj, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
-		out.compileCP = mergePaths(out.compileCP, fallbackImportedCatalogJars(prj, mod))
+		out.compileCP = mergePaths(out.compileCP, fallbackJVMCompileJars(prj, deps.resolver, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
+		out.compileCP = mergePaths(out.compileCP, fallbackAndroidCompileJars(prj, deps.resolver, append(append([]modulebuild.Ref{}, deps.deps.Main...), deps.deps.CompileOnly...)))
+		out.compileCP = mergePaths(out.compileCP, fallbackImportedCatalogJars(prj, deps.resolver, mod))
 		out.compileCP = collapseVersions(out.compileCP)
 		out.compileCP = existingClasspathEntries(out.compileCP)
 		out.androidResources = out.resourceDeps
@@ -266,7 +268,7 @@ func (c *Compiler) finishMainWithoutSources(prj *project.Project, mod *project.M
 		if innerErr != nil {
 			return innerErr
 		}
-		runtimeInputs = mergePaths(deps.projectRuntimeInputs, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, fallbackImportedCatalogJars(prj, mod), toolchain.RuntimeJars)
+		runtimeInputs = mergePaths(deps.projectRuntimeInputs, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, fallbackImportedCatalogJars(prj, deps.resolver, mod), toolchain.RuntimeJars)
 		runtimeInputs = collapseVersions(runtimeInputs)
 		return nil
 	})
@@ -375,7 +377,7 @@ func (c *Compiler) compileMainSources(ctx context.Context, prj *project.Project,
 		if innerErr != nil {
 			return innerErr
 		}
-		runtimeInputs = mergePaths(deps.projectRuntimeInputs, []string{moduleJar}, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, fallbackImportedCatalogJars(prj, mod), toolchain.RuntimeJars)
+		runtimeInputs = mergePaths(deps.projectRuntimeInputs, []string{moduleJar}, collapseVersions(deps.resolved.RuntimeJars), deps.localRuntimeRefs, fallbackImportedCatalogJars(prj, deps.resolver, mod), toolchain.RuntimeJars)
 		runtimeInputs = collapseVersions(runtimeInputs)
 		return nil
 	})

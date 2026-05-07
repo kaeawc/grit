@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
+	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
 )
 
@@ -232,4 +234,56 @@ func TestCollectGeneratedKotlinSourcesEmptyDir(t *testing.T) {
 	if got := collectGeneratedKotlinSources(""); len(got) != 0 {
 		t.Fatalf("empty path should yield nil, got %v", got)
 	}
+}
+
+func TestResolveClasspathRefsUsesDependencyResolver(t *testing.T) {
+	resolver := &kspResolverFake{result: &m2local.Resolved{
+		CompileJars: []string{"/deps/compile.jar"},
+		RuntimeJars: []string{"/deps/runtime.jar"},
+		AndroidLibraries: []m2local.AndroidLibrary{
+			{ClassesJar: "/deps/aar-classes.jar"},
+		},
+	}}
+
+	got := resolveClasspathRefs(resolver, []modulebuild.Ref{{Kind: "raw", Value: "com.example:processor:1.0"}}, true)
+	want := []string{"/deps/compile.jar", "/deps/runtime.jar", "/deps/aar-classes.jar"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("resolveClasspathRefs:\n got  %v\n want %v", got, want)
+	}
+	calls := resolver.calls
+	if len(calls) != 1 || len(calls[0].Main) != 1 || calls[0].Main[0].Value != "com.example:processor:1.0" {
+		t.Fatalf("resolver calls: %#v", calls)
+	}
+}
+
+func TestFallbackJVMCompileJarsRoutesRawCoordinatesThroughResolver(t *testing.T) {
+	resolver := &kspResolverFake{result: &m2local.Resolved{CompileJars: []string{"/deps/lib.jar"}}}
+
+	got := fallbackJVMCompileJars(&project.Project{}, resolver, []modulebuild.Ref{{Kind: "raw", Value: "com.example:lib:1.0"}})
+	if strings.Join(got, "\n") != "/deps/lib.jar" {
+		t.Fatalf("fallbackJVMCompileJars: got %v", got)
+	}
+	calls := resolver.calls
+	if len(calls) != 1 || len(calls[0].Main) != 1 || calls[0].Main[0].Value != "com.example:lib:1.0" {
+		t.Fatalf("resolver calls: %#v", calls)
+	}
+}
+
+type kspResolverFake struct {
+	calls  []modulebuild.Dependencies
+	result *m2local.Resolved
+	err    error
+}
+
+func (f *kspResolverFake) Resolve(deps *modulebuild.Dependencies) (*m2local.Resolved, error) {
+	if deps != nil {
+		f.calls = append(f.calls, modulebuild.Dependencies{Main: append([]modulebuild.Ref{}, deps.Main...)})
+	}
+	return f.result, f.err
+}
+
+func (f *kspResolverFake) SetTracker(perf.Tracker) {}
+
+func (f *kspResolverFake) Topology() m2local.CacheTopology {
+	return m2local.CacheTopology{}
 }
