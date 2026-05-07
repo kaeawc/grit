@@ -249,242 +249,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 	tracker := perf.New(perfEnabled)
 	command := args[0]
-	switch args[0] {
-	case "inspect":
-		return runInspect(ctx, args[1:], stdout, stderr, tracker, start)
-	case "tasks":
-		return runTasks(ctx, args[1:], stdout, stderr, tracker, start)
-	case "signingReport":
-		return runSigningReport(ctx, args[1:], stdout, stderr, tracker, start)
-	case "dependencies":
-		return runDependencies(ctx, args[1:], stdout, stderr, tracker, start)
-	case "projects":
-		return runProjects(ctx, args[1:], stdout, stderr, tracker, start)
-	case "properties":
-		return runProperties(ctx, args[1:], stdout, stderr, tracker, start)
-	case "buildEnvironment":
-		return runBuildEnvironment(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactTransforms":
-		return runArtifactTransforms(ctx, args[1:], stdout, stderr, tracker, start)
-	case "dependencyInsight":
-		return runDependencyInsight(ctx, args[1:], stdout, stderr, tracker, start)
-	case "resolverReport":
-		return runResolverReport(ctx, args[1:], stdout, stderr, tracker, start)
-	case "cacheTopology":
-		return runCacheTopology(ctx, args[1:], stdout, stderr, tracker, start)
-	case "explainPlan":
-		return runExplainPlan(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantProvenance":
-		return runVariantProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionProvenance":
-		return runActionProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "cleanupPlan":
-		return runCleanupPlan(ctx, args[1:], stdout, stderr, tracker, start)
-	case "runSummary":
-		return runRunSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "runSummaries":
-		return runRunSummaries(ctx, args[1:], stdout, stderr, tracker, start)
-	case "runGraphSummary":
-		return runRunGraphSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "criticalPathSummary":
-		return runCriticalPathSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "schedulerSummary":
-		return runSchedulerSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "cacheSummary":
-		return runCacheSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "toolSummary":
-		return runToolSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "diagnostics":
-		return runDiagnostics(ctx, args[1:], stdout, stderr, tracker, start)
-	case "diagnosticSummary":
-		return runDiagnosticSummary(ctx, args[1:], stdout, stderr, tracker, start)
-	case "plannedSchedule":
-		return runPlannedSchedule(ctx, args[1:], stdout, stderr, tracker, start)
-	case "scheduleDrift":
-		return runScheduleDrift(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionExecution":
-		return runActionExecution(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionExplanation":
-		return runActionExplanation(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionExecutions":
-		return runActionExecutions(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionExplanations":
-		return runActionExplanations(ctx, args[1:], stdout, stderr, tracker, start)
-	case "cacheProbes":
-		return runCacheProbes(ctx, args[1:], stdout, stderr, tracker, start)
-	case "cacheProbeRecords":
-		return runCacheProbeRecords(ctx, args[1:], stdout, stderr, tracker, start)
-	case "reuseDecision":
-		return runReuseDecision(ctx, args[1:], stdout, stderr, tracker, start)
-	case "reuseDecisions":
-		return runReuseDecisions(ctx, args[1:], stdout, stderr, tracker, start)
-	case "materializations":
-		return runMaterializations(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionTrace":
-		return runActionTrace(ctx, args[1:], stdout, stderr, tracker, start)
-	case "perfTiming":
-		return runPerfTiming(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathSnapshot":
-		return runClasspathSnapshot(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathSnapshotByID":
-		return runClasspathSnapshotByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathSnapshotProvenance":
-		return runClasspathSnapshotProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathSnapshotConsumers":
-		return runClasspathSnapshotConsumers(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathSnapshotConsumersByID":
-		return runClasspathSnapshotConsumersByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathEntryLookup":
-		return runClasspathEntryLookup(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathPathConsumers":
-		return runClasspathPathConsumers(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactOnClasspath":
-		return runArtifactOnClasspath(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactClasspathConsumers":
-		return runArtifactClasspathConsumers(ctx, args[1:], stdout, stderr, tracker, start)
-	case "fileOwners":
-		return runFileOwners(ctx, args[1:], stdout, stderr, tracker, start)
-	case "moduleByID":
-		return runModuleByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantByID":
-		return runVariantByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionByID":
-		return runActionByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactByID":
-		return runArtifactByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "materializationByID":
-		return runMaterializationByID(ctx, args[1:], stdout, stderr, tracker, start)
-	case "materializationConsumers":
-		return runMaterializationConsumers(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionInputs":
-		return runActionInputs(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionOutputs":
-		return runActionOutputs(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionDependencies":
-		return runActionDependencies(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionDependents":
-		return runActionDependents(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionsForModule":
-		return runActionsForModule(ctx, args[1:], stdout, stderr, tracker, start)
-	case "actionsForVariant":
-		return runActionsForVariant(ctx, args[1:], stdout, stderr, tracker, start)
-	case "intellijSyncModel":
-		return runIntelliJSyncModel(ctx, args[1:], stdout, stderr, tracker, start)
-	case "resolveIntelliJTasks":
-		return runResolveIntelliJTasks(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantMaterialization":
-		return runVariantMaterialization(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantSourceSetModel":
-		return runVariantSourceSetModel(ctx, args[1:], stdout, stderr, tracker, start)
-	case "dependencyBindingsForVariant":
-		return runDependencyBindingsForVariant(ctx, args[1:], stdout, stderr, tracker, start)
-	case "dependencyBindingsForModule":
-		return runDependencyBindingsForModule(ctx, args[1:], stdout, stderr, tracker, start)
-	case "dependencyRealizationsForVariant":
-		return runDependencyRealizationsForVariant(ctx, args[1:], stdout, stderr, tracker, start)
-	case "dependencyRealizationsForModule":
-		return runDependencyRealizationsForModule(ctx, args[1:], stdout, stderr, tracker, start)
-	case "plannedActionPolicy":
-		return runPlannedActionPolicy(ctx, args[1:], stdout, stderr, tracker, start)
-	case "plannedActionPolicies":
-		return runPlannedActionPolicies(ctx, args[1:], stdout, stderr, tracker, start)
-	case "materializationProvenance":
-		return runMaterializationProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantCompatibility":
-		return runVariantCompatibility(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactsForVariant":
-		return runArtifactsForVariant(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactsForModule":
-		return runArtifactsForModule(ctx, args[1:], stdout, stderr, tracker, start)
-	case "moduleManifest":
-		return runModuleManifest(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantManifest":
-		return runVariantManifest(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactSnapshotProvenance":
-		return runArtifactSnapshotProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactSnapshotConsumers":
-		return runArtifactSnapshotConsumers(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactProvenance":
-		return runArtifactProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "artifactConsumers":
-		return runArtifactConsumers(ctx, args[1:], stdout, stderr, tracker, start)
-	case "variantImpact":
-		return runVariantImpact(ctx, args[1:], stdout, stderr, tracker, start)
-	case "moduleImpact":
-		return runModuleImpact(ctx, args[1:], stdout, stderr, tracker, start)
-	case "classpathProvenance":
-		return runClasspathProvenance(ctx, args[1:], stdout, stderr, tracker, start)
-	case "androidCapabilities":
-		return runAndroidCapabilities(ctx, args[1:], stdout, stderr, tracker, start)
-	case "javaToolchains":
-		return runJavaToolchains(ctx, args[1:], stdout, stderr, tracker, start)
-	case "kotlinDslAccessorsReport":
-		return runKotlinDslAccessorsReport(ctx, args[1:], stdout, stderr, tracker, start)
-	case "outgoingVariants":
-		return runOutgoingVariants(ctx, args[1:], stdout, stderr, tracker, start)
-	case "resolvableConfigurations":
-		return runResolvableConfigurations(ctx, args[1:], stdout, stderr, tracker, start)
-	case "doctor":
-		return runDoctor(ctx, args[1:], stdout, stderr, tracker, start)
-	case "uninstallDebug":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "uninstallDebug")
-	case "uninstallRelease":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "uninstallRelease")
-	case "uninstallAll":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "uninstallAll")
-	case "clean":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "clean")
-	case "build":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "build")
-	case "buildNeeded":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "buildNeeded")
-	case "buildDependents", "compile":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, command)
-	case "test":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "test")
-	case "assembleDebug":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assembleDebug")
-	case "assembleRelease":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assembleRelease")
-	case "compileDebugSources":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compileDebugSources")
-	case "compileReleaseSources":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compileReleaseSources")
-	case "compileDebugUnitTestSources":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compileDebugUnitTestSources")
-	case "assembleUnitTest":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assembleUnitTest")
-	case "compileDebugAndroidTestSources":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compileDebugAndroidTestSources")
-	case "installDebug":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "installDebug")
-	case "installRelease":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "installRelease")
-	case "installDebugAndroidTest":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "installDebugAndroidTest")
-	case "testDebugUnitTest":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "testDebugUnitTest")
-	case "uninstallDebugAndroidTest":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "uninstallDebugAndroidTest")
-	case "check":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "check")
-	case "compile-debug":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "compile-debug")
-	case "assemble-debug":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assemble-debug")
-	case "assemble-release":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assemble-release")
-	case "assemble":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "assemble")
-	case "install-debug":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "install-debug")
-	case "install":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "install")
-	case "test-debug-unit":
-		return runNativeBuild(ctx, args[1:], stdout, stderr, tracker, start, "test-debug-unit")
-	case "gc":
-		return runGC(ctx, args[1:], stdout, stderr, tracker, start)
-	case "-h", "--help", "help":
+
+	if command == "-h" || command == "--help" || command == "help" {
 		return writeResponse(stdout, response{
 			Success:    true,
 			Command:    "help",
@@ -492,14 +258,18 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			Result:     resultJSON(responsepayload.UsageResult{Usage: usageText}),
 			PerfTiming: tracker.GetTimings(),
 		}, 0, stderr)
-	default:
-		return writeResponse(stdout, response{
-			Success:    false,
-			Command:    command,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      &responseError{Message: fmt.Sprintf("unknown command %q", command)},
-			Result:     resultJSON(responsepayload.UsageResult{Usage: usageText}),
-			PerfTiming: tracker.GetTimings(),
-		}, 2, stderr)
 	}
+
+	if runner, ok := verbLookup[command]; ok {
+		return runner(ctx, args[1:], stdout, stderr, tracker, start)
+	}
+
+	return writeResponse(stdout, response{
+		Success:    false,
+		Command:    command,
+		DurationMs: time.Since(start).Milliseconds(),
+		Error:      &responseError{Message: fmt.Sprintf("unknown command %q", command)},
+		Result:     resultJSON(responsepayload.UsageResult{Usage: usageText}),
+		PerfTiming: tracker.GetTimings(),
+	}, 2, stderr)
 }

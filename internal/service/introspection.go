@@ -1112,31 +1112,8 @@ func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *pr
 	}
 	remoteDecisions := plannedRemoteProbeDecisions(plan.Schedule)
 	for _, step := range plan.Schedule.Steps {
-		remoteDecision := remoteDecisions[step.Action.ID.String()]
-		result.Actions = append(result.Actions, InspectPlannedAction{
-			ID:                   step.Action.ID.String(),
-			Name:                 step.Action.Name,
-			Operation:            step.Action.Attributes["operation"],
-			ModulePath:           step.Action.Attributes["modulePath"],
-			VariantName:          step.Action.Attributes["variantName"],
-			WorkerClass:          step.WorkerClass,
-			ResourceClass:        step.ResourceClass,
-			ResourceCost:         step.ResourceCost,
-			MaxParallelism:       step.MaxParallelism,
-			CacheKey:             step.CacheKey,
-			Cacheable:            step.Cacheable,
-			ProbeOrder:           append([]string(nil), step.ProbeOrder...),
-			ExecuteOnMiss:        step.ExecuteOnMiss,
-			EstimatedBytes:       step.EstimatedBytes,
-			DeferRemote:          remoteDecision.DeferRemote,
-			RemoteProbeAdmission: toPlanRemoteProbeAdmission(remoteDecision),
-			ProbeHint:            step.ProbeHint,
-			RetentionClass:       step.RetentionClass,
-			Shareability:         step.Shareability,
-			Dependencies:         actionIDs(step.Dependencies),
-			Inputs:               artifactIDs(step.Action.Inputs),
-			Outputs:              artifactIDs(step.Action.Outputs),
-		})
+		decision := remoteDecisions[step.Action.ID.String()]
+		result.Actions = append(result.Actions, toInspectPlannedAction(step, decision))
 	}
 	return result, nil
 }
@@ -1162,31 +1139,7 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 	for batchIdx, batch := range schedule.Batches {
 		stepResults := make([]InspectPlannedAction, 0, len(batch))
 		for _, step := range batch {
-			remoteDecision := remoteDecisions[step.Action.ID.String()]
-			stepResults = append(stepResults, InspectPlannedAction{
-				ID:                   step.Action.ID.String(),
-				Name:                 step.Action.Name,
-				Operation:            step.Action.Attributes["operation"],
-				ModulePath:           step.Action.Attributes["modulePath"],
-				VariantName:          step.Action.Attributes["variantName"],
-				WorkerClass:          step.WorkerClass,
-				ResourceClass:        step.ResourceClass,
-				ResourceCost:         step.ResourceCost,
-				MaxParallelism:       step.MaxParallelism,
-				CacheKey:             step.CacheKey,
-				Cacheable:            step.Cacheable,
-				ProbeOrder:           append([]string(nil), step.ProbeOrder...),
-				ExecuteOnMiss:        step.ExecuteOnMiss,
-				EstimatedBytes:       step.EstimatedBytes,
-				DeferRemote:          remoteDecision.DeferRemote,
-				RemoteProbeAdmission: toPlanRemoteProbeAdmission(remoteDecision),
-				ProbeHint:            step.ProbeHint,
-				RetentionClass:       step.RetentionClass,
-				Shareability:         step.Shareability,
-				Dependencies:         actionIDs(step.Dependencies),
-				Inputs:               artifactIDs(step.Action.Inputs),
-				Outputs:              artifactIDs(step.Action.Outputs),
-			})
+			stepResults = append(stepResults, toInspectPlannedAction(step, remoteDecisions[step.Action.ID.String()]))
 		}
 		resources := []PlanResourceUsage(nil)
 		if batchIdx < len(schedule.BatchResources) {
@@ -1206,6 +1159,36 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 		})
 	}
 	return out
+}
+
+// toInspectPlannedAction projects a configmodel.ActionScheduleStep plus the
+// scheduler's bandwidth-aware remote-probe decision into the JSON-serializable
+// inspect view. Single source of truth for the field mapping.
+func toInspectPlannedAction(step configmodel.ActionScheduleStep, decision admission.RemoteProbeDecision) InspectPlannedAction {
+	return InspectPlannedAction{
+		ID:                   step.Action.ID.String(),
+		Name:                 step.Action.Name,
+		Operation:            step.Action.Attributes["operation"],
+		ModulePath:           step.Action.Attributes["modulePath"],
+		VariantName:          step.Action.Attributes["variantName"],
+		WorkerClass:          step.WorkerClass,
+		ResourceClass:        step.ResourceClass,
+		ResourceCost:         step.ResourceCost,
+		MaxParallelism:       step.MaxParallelism,
+		CacheKey:             step.CacheKey,
+		Cacheable:            step.Cacheable,
+		ProbeOrder:           append([]string(nil), step.ProbeOrder...),
+		ExecuteOnMiss:        step.ExecuteOnMiss,
+		EstimatedBytes:       step.EstimatedBytes,
+		DeferRemote:          decision.DeferRemote,
+		RemoteProbeAdmission: toPlanRemoteProbeAdmission(decision),
+		ProbeHint:            step.ProbeHint,
+		RetentionClass:       step.RetentionClass,
+		Shareability:         step.Shareability,
+		Dependencies:         actionIDs(step.Dependencies),
+		Inputs:               artifactIDs(step.Action.Inputs),
+		Outputs:              artifactIDs(step.Action.Outputs),
+	}
 }
 
 func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string]admission.RemoteProbeDecision {
