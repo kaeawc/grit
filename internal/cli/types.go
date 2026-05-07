@@ -137,102 +137,6 @@ type resolveIntelliJTasksResult struct {
 	Requests  []service.BuildRequest `json:"requests"`
 }
 
-type explainPlanResult = service.PlanExplanationResult
-
-type variantProvenanceResult = service.ProvenanceResult
-
-type actionProvenanceResult = service.ProvenanceResult
-
-type cleanupPlanResult = service.CleanupPlanResult
-
-type runSummaryResult = service.RunSummaryResult
-
-type runSummariesResult = service.RunSummariesResult
-
-type runGraphSummaryResult = service.RunGraphSummaryResult
-
-type criticalPathSummaryResult = service.CriticalPathSummaryResult
-
-type schedulerSummaryResult = service.SchedulerSummaryResult
-
-type cacheSummaryResult = service.CacheSummaryResult
-
-type toolSummaryResult = service.ToolSummaryResult
-
-type diagnosticsResult = service.DiagnosticsResult
-
-type diagnosticSummaryResult = service.DiagnosticSummaryResult
-
-type plannedScheduleResult = service.PlannedScheduleResult
-
-type scheduleDriftResult = service.ScheduleDriftResult
-
-type actionExecutionResult = service.ActionExecutionResult
-
-type actionExplanationResult = service.ActionExplanationResult
-
-type actionExecutionsResult = service.ActionExecutionsResult
-
-type actionExplanationsResult = service.ActionExplanationsResult
-
-type cacheProbesResult = service.CacheProbesResult
-
-type cacheProbeRecordsResult = service.CacheProbeRecordsResult
-
-type reuseDecisionResult = service.ReuseDecisionResult
-
-type reuseDecisionsResult = service.ReuseDecisionsResult
-
-type materializationsResult = service.MaterializationsResult
-
-type actionTraceResult = service.ActionTraceResult
-
-type perfTimingResult = service.PerfTimingResult
-
-type classpathSnapshotResult = service.ClasspathSnapshotResult
-
-type classpathSnapshotProvenanceResult = service.ClasspathSnapshotProvenanceResult
-
-type classpathSnapshotConsumersResult = service.ClasspathSnapshotConsumersResult
-
-type classpathEntryLookupResult = service.ClasspathEntryLookupResult
-
-type classpathPathConsumersResult = service.ClasspathPathConsumersResult
-
-type artifactOnClasspathResult = service.ArtifactOnClasspathResult
-
-type artifactClasspathConsumersResult = service.ArtifactClasspathConsumersResult
-
-type fileOwnersResult = service.FileOwnersResult
-
-type moduleByIDResult = service.ModuleByIDResult
-
-type variantByIDResult = service.VariantByIDResult
-
-type actionByIDResult = service.ActionByIDResult
-
-type artifactByIDResult = service.ArtifactByIDResult
-
-type materializationByIDResult = service.MaterializationByIDResult
-
-type materializationConsumersResult = service.MaterializationConsumersResult
-
-type classpathSnapshotByIDResult = service.ClasspathSnapshotByIDResult
-
-type classpathSnapshotConsumersByIDResult = service.ClasspathSnapshotConsumersByIDResult
-
-type actionInputsResult = service.ActionInputsResult
-
-type actionOutputsResult = service.ActionOutputsResult
-
-type actionDependenciesResult = service.ActionDependenciesResult
-
-type actionDependentsResult = service.ActionDependentsResult
-
-type actionsForModuleResult = service.ActionsForModuleResult
-
-type actionsForVariantResult = service.ActionsForVariantResult
-
 type variantMaterializationResult struct {
 	Repo          string                                   `json:"repo"`
 	Module        string                                   `json:"module"`
@@ -240,24 +144,6 @@ type variantMaterializationResult struct {
 	ModelCacheKey string                                   `json:"modelCacheKey,omitempty"`
 	Provenance    integration.VariantMaterializationResult `json:"provenance"`
 }
-
-type materializationProvenanceResult = service.MaterializationProvenanceResult
-
-type variantSourceSetModelResult = service.VariantSourceSetModelResult
-
-type dependencyBindingsForVariantResult = service.DependencyBindingsForVariantResult
-
-type dependencyBindingsForModuleResult = service.DependencyBindingsForModuleResult
-
-type dependencyRealizationsForVariantResult = service.DependencyRealizationsForVariantResult
-
-type dependencyRealizationsForModuleResult = service.DependencyRealizationsForModuleResult
-
-type plannedActionPolicyResult = service.PlannedActionPolicyResult
-
-type plannedActionPoliciesResult = service.PlannedActionPoliciesResult
-
-type variantCompatibilityResult = service.VariantCompatibilityResult
 
 type intellijSyncModelResult struct {
 	Repo          string              `json:"repo"`
@@ -274,8 +160,6 @@ type artifactsForVariantResult struct {
 	ArtifactSnapshotID string                        `json:"artifactSnapshotId,omitempty"`
 	Artifacts          []configmodel.ArtifactSummary `json:"artifacts,omitempty"`
 }
-
-type artifactsForModuleResult = service.ArtifactsForModuleResult
 
 type moduleManifestResult struct {
 	Repo          string                           `json:"repo"`
@@ -298,8 +182,6 @@ type artifactSnapshotProvenanceResult struct {
 	ModelCacheKey      string                                       `json:"modelCacheKey,omitempty"`
 	Provenance         integration.ArtifactSnapshotProvenanceResult `json:"provenance"`
 }
-
-type artifactSnapshotConsumersResult = service.ArtifactSnapshotConsumersResult
 
 type artifactProvenanceResult struct {
 	Repo          string                 `json:"repo"`
@@ -345,8 +227,6 @@ type resolverReportResult struct {
 	Replay       m2local.ResolutionReplay    `json:"replay,omitempty"`
 	Lockfile     m2local.ResolutionLockfile  `json:"lockfile,omitempty"`
 }
-
-type cacheTopologyResult = service.CacheTopologyResult
 
 type resolverReportSummary struct {
 	CompileJarCount     int `json:"compileJarCount,omitempty"`

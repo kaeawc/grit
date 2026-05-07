@@ -1112,31 +1112,8 @@ func (s *Service) ExplainPlan(ctx context.Context, prj *project.Project, mod *pr
 	}
 	remoteDecisions := plannedRemoteProbeDecisions(plan.Schedule)
 	for _, step := range plan.Schedule.Steps {
-		remoteDecision := remoteDecisions[step.Action.ID.String()]
-		result.Actions = append(result.Actions, InspectPlannedAction{
-			ID:                   step.Action.ID.String(),
-			Name:                 step.Action.Name,
-			Operation:            step.Action.Attributes["operation"],
-			ModulePath:           step.Action.Attributes["modulePath"],
-			VariantName:          step.Action.Attributes["variantName"],
-			WorkerClass:          step.WorkerClass,
-			ResourceClass:        step.ResourceClass,
-			ResourceCost:         step.ResourceCost,
-			MaxParallelism:       step.MaxParallelism,
-			CacheKey:             step.CacheKey,
-			Cacheable:            step.Cacheable,
-			ProbeOrder:           append([]string(nil), step.ProbeOrder...),
-			ExecuteOnMiss:        step.ExecuteOnMiss,
-			EstimatedBytes:       step.EstimatedBytes,
-			DeferRemote:          remoteDecision.DeferRemote,
-			RemoteProbeAdmission: toPlanRemoteProbeAdmission(remoteDecision),
-			ProbeHint:            step.ProbeHint,
-			RetentionClass:       step.RetentionClass,
-			Shareability:         step.Shareability,
-			Dependencies:         actionIDs(step.Dependencies),
-			Inputs:               artifactIDs(step.Action.Inputs),
-			Outputs:              artifactIDs(step.Action.Outputs),
-		})
+		decision := remoteDecisions[step.Action.ID.String()]
+		result.Actions = append(result.Actions, toInspectPlannedAction(step, decision))
 	}
 	return result, nil
 }
@@ -1162,31 +1139,7 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 	for batchIdx, batch := range schedule.Batches {
 		stepResults := make([]InspectPlannedAction, 0, len(batch))
 		for _, step := range batch {
-			remoteDecision := remoteDecisions[step.Action.ID.String()]
-			stepResults = append(stepResults, InspectPlannedAction{
-				ID:                   step.Action.ID.String(),
-				Name:                 step.Action.Name,
-				Operation:            step.Action.Attributes["operation"],
-				ModulePath:           step.Action.Attributes["modulePath"],
-				VariantName:          step.Action.Attributes["variantName"],
-				WorkerClass:          step.WorkerClass,
-				ResourceClass:        step.ResourceClass,
-				ResourceCost:         step.ResourceCost,
-				MaxParallelism:       step.MaxParallelism,
-				CacheKey:             step.CacheKey,
-				Cacheable:            step.Cacheable,
-				ProbeOrder:           append([]string(nil), step.ProbeOrder...),
-				ExecuteOnMiss:        step.ExecuteOnMiss,
-				EstimatedBytes:       step.EstimatedBytes,
-				DeferRemote:          remoteDecision.DeferRemote,
-				RemoteProbeAdmission: toPlanRemoteProbeAdmission(remoteDecision),
-				ProbeHint:            step.ProbeHint,
-				RetentionClass:       step.RetentionClass,
-				Shareability:         step.Shareability,
-				Dependencies:         actionIDs(step.Dependencies),
-				Inputs:               artifactIDs(step.Action.Inputs),
-				Outputs:              artifactIDs(step.Action.Outputs),
-			})
+			stepResults = append(stepResults, toInspectPlannedAction(step, remoteDecisions[step.Action.ID.String()]))
 		}
 		resources := []PlanResourceUsage(nil)
 		if batchIdx < len(schedule.BatchResources) {
@@ -1206,6 +1159,36 @@ func toPlanScheduleResult(schedule configmodel.ActionSchedule) PlanScheduleResul
 		})
 	}
 	return out
+}
+
+// toInspectPlannedAction projects a configmodel.ActionScheduleStep plus the
+// scheduler's bandwidth-aware remote-probe decision into the JSON-serializable
+// inspect view. Single source of truth for the field mapping.
+func toInspectPlannedAction(step configmodel.ActionScheduleStep, decision admission.RemoteProbeDecision) InspectPlannedAction {
+	return InspectPlannedAction{
+		ID:                   step.Action.ID.String(),
+		Name:                 step.Action.Name,
+		Operation:            step.Action.Attributes["operation"],
+		ModulePath:           step.Action.Attributes["modulePath"],
+		VariantName:          step.Action.Attributes["variantName"],
+		WorkerClass:          step.WorkerClass,
+		ResourceClass:        step.ResourceClass,
+		ResourceCost:         step.ResourceCost,
+		MaxParallelism:       step.MaxParallelism,
+		CacheKey:             step.CacheKey,
+		Cacheable:            step.Cacheable,
+		ProbeOrder:           append([]string(nil), step.ProbeOrder...),
+		ExecuteOnMiss:        step.ExecuteOnMiss,
+		EstimatedBytes:       step.EstimatedBytes,
+		DeferRemote:          decision.DeferRemote,
+		RemoteProbeAdmission: toPlanRemoteProbeAdmission(decision),
+		ProbeHint:            step.ProbeHint,
+		RetentionClass:       step.RetentionClass,
+		Shareability:         step.Shareability,
+		Dependencies:         actionIDs(step.Dependencies),
+		Inputs:               artifactIDs(step.Action.Inputs),
+		Outputs:              artifactIDs(step.Action.Outputs),
+	}
 }
 
 func plannedRemoteProbeDecisions(schedule configmodel.ActionSchedule) map[string]admission.RemoteProbeDecision {
@@ -1262,35 +1245,23 @@ func (s *Service) VariantProvenance(ctx context.Context, prj *project.Project, m
 }
 
 func (s *Service) ActionProvenance(ctx context.Context, prj *project.Project, actionID string) (ProvenanceResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ProvenanceResult{}, err
-	}
-	provenance, ok := view.ProvenanceForAction(graph.ActionID(actionID))
-	if !ok {
-		return ProvenanceResult{}, os.ErrNotExist
-	}
-	return ProvenanceResult{
-		Repo:          prj.RootDir,
-		ModelCacheKey: view.CacheKey(),
-		Provenance:    provenance,
-	}, nil
+	return entityLookup(s, ctx, prj, actionID,
+		func(v *integration.ModelView, id string) (integration.Provenance, bool) {
+			return v.ProvenanceForAction(graph.ActionID(id))
+		},
+		func(repo, _, key string, r integration.Provenance) ProvenanceResult {
+			return ProvenanceResult{Repo: repo, ModelCacheKey: key, Provenance: r}
+		})
 }
 
 func (s *Service) ArtifactProvenance(ctx context.Context, prj *project.Project, artifactID string) (ProvenanceResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ProvenanceResult{}, err
-	}
-	provenance, ok := view.ProvenanceForArtifact(graph.ArtifactID(artifactID))
-	if !ok {
-		return ProvenanceResult{}, os.ErrNotExist
-	}
-	return ProvenanceResult{
-		Repo:          prj.RootDir,
-		ModelCacheKey: view.CacheKey(),
-		Provenance:    provenance,
-	}, nil
+	return entityLookup(s, ctx, prj, artifactID,
+		func(v *integration.ModelView, id string) (integration.Provenance, bool) {
+			return v.ProvenanceForArtifact(graph.ArtifactID(id))
+		},
+		func(repo, _, key string, r integration.Provenance) ProvenanceResult {
+			return ProvenanceResult{Repo: repo, ModelCacheKey: key, Provenance: r}
+		})
 }
 
 func (s *Service) ClasspathProvenance(ctx context.Context, prj *project.Project, modulePath, variantName string) (ClasspathProvenanceResult, error) {
@@ -1326,37 +1297,23 @@ func (s *Service) ClasspathSnapshot(ctx context.Context, prj *project.Project, m
 }
 
 func (s *Service) ClasspathSnapshotProvenance(ctx context.Context, prj *project.Project, snapshotID string) (ClasspathSnapshotProvenanceResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ClasspathSnapshotProvenanceResult{}, err
-	}
-	provenance, ok := view.ClasspathSnapshotProvenance(snapshotID)
-	if !ok {
-		return ClasspathSnapshotProvenanceResult{}, os.ErrNotExist
-	}
-	return ClasspathSnapshotProvenanceResult{
-		Repo:                prj.RootDir,
-		ClasspathSnapshotID: snapshotID,
-		ModelCacheKey:       view.CacheKey(),
-		Provenance:          provenance,
-	}, nil
+	return entityLookup(s, ctx, prj, snapshotID,
+		func(v *integration.ModelView, id string) (integration.ClasspathSnapshotProvenanceResult, bool) {
+			return v.ClasspathSnapshotProvenance(id)
+		},
+		func(repo, id, key string, r integration.ClasspathSnapshotProvenanceResult) ClasspathSnapshotProvenanceResult {
+			return ClasspathSnapshotProvenanceResult{Repo: repo, ClasspathSnapshotID: id, ModelCacheKey: key, Provenance: r}
+		})
 }
 
 func (s *Service) ClasspathSnapshotConsumers(ctx context.Context, prj *project.Project, snapshotID string) (ClasspathSnapshotConsumersResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ClasspathSnapshotConsumersResult{}, err
-	}
-	consumers, ok := view.ClasspathSnapshotConsumers(snapshotID)
-	if !ok {
-		return ClasspathSnapshotConsumersResult{}, os.ErrNotExist
-	}
-	return ClasspathSnapshotConsumersResult{
-		Repo:                prj.RootDir,
-		ClasspathSnapshotID: snapshotID,
-		ModelCacheKey:       view.CacheKey(),
-		Consumers:           consumers,
-	}, nil
+	return entityLookup(s, ctx, prj, snapshotID,
+		func(v *integration.ModelView, id string) (integration.ClasspathSnapshotConsumersResult, bool) {
+			return v.ClasspathSnapshotConsumers(id)
+		},
+		func(repo, id, key string, r integration.ClasspathSnapshotConsumersResult) ClasspathSnapshotConsumersResult {
+			return ClasspathSnapshotConsumersResult{Repo: repo, ClasspathSnapshotID: id, ModelCacheKey: key, Consumers: r}
+		})
 }
 
 func (s *Service) ClasspathEntryLookup(ctx context.Context, prj *project.Project, modulePath, variantName, path string) (ClasspathEntryLookupResult, error) {
@@ -1408,20 +1365,13 @@ func (s *Service) ArtifactOnClasspath(ctx context.Context, prj *project.Project,
 }
 
 func (s *Service) ArtifactClasspathConsumers(ctx context.Context, prj *project.Project, artifactID string) (ArtifactClasspathConsumersResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ArtifactClasspathConsumersResult{}, err
-	}
-	consumers, ok := view.ArtifactClasspathConsumers(graph.ArtifactID(artifactID))
-	if !ok {
-		return ArtifactClasspathConsumersResult{}, os.ErrNotExist
-	}
-	return ArtifactClasspathConsumersResult{
-		Repo:          prj.RootDir,
-		ArtifactID:    artifactID,
-		ModelCacheKey: view.CacheKey(),
-		Consumers:     consumers,
-	}, nil
+	return entityLookup(s, ctx, prj, artifactID,
+		func(v *integration.ModelView, id string) (integration.ArtifactClasspathConsumersResult, bool) {
+			return v.ArtifactClasspathConsumers(graph.ArtifactID(id))
+		},
+		func(repo, id, key string, r integration.ArtifactClasspathConsumersResult) ArtifactClasspathConsumersResult {
+			return ArtifactClasspathConsumersResult{Repo: repo, ArtifactID: id, ModelCacheKey: key, Consumers: r}
+		})
 }
 
 func (s *Service) FileOwners(ctx context.Context, prj *project.Project, path string) (FileOwnersResult, error) {
@@ -1437,71 +1387,43 @@ func (s *Service) FileOwners(ctx context.Context, prj *project.Project, path str
 }
 
 func (s *Service) ActionInputs(ctx context.Context, prj *project.Project, actionID string) (ActionInputsResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ActionInputsResult{}, err
-	}
-	inputs, ok := view.ActionInputsResult(graph.ActionID(actionID))
-	if !ok {
-		return ActionInputsResult{}, os.ErrNotExist
-	}
-	return ActionInputsResult{
-		Repo:          prj.RootDir,
-		ActionID:      actionID,
-		ModelCacheKey: view.CacheKey(),
-		Inputs:        inputs,
-	}, nil
+	return entityLookup(s, ctx, prj, actionID,
+		func(v *integration.ModelView, id string) (integration.ActionInputsResult, bool) {
+			return v.ActionInputsResult(graph.ActionID(id))
+		},
+		func(repo, id, key string, r integration.ActionInputsResult) ActionInputsResult {
+			return ActionInputsResult{Repo: repo, ActionID: id, ModelCacheKey: key, Inputs: r}
+		})
 }
 
 func (s *Service) ActionOutputs(ctx context.Context, prj *project.Project, actionID string) (ActionOutputsResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ActionOutputsResult{}, err
-	}
-	outputs, ok := view.ActionOutputsResult(graph.ActionID(actionID))
-	if !ok {
-		return ActionOutputsResult{}, os.ErrNotExist
-	}
-	return ActionOutputsResult{
-		Repo:          prj.RootDir,
-		ActionID:      actionID,
-		ModelCacheKey: view.CacheKey(),
-		Outputs:       outputs,
-	}, nil
+	return entityLookup(s, ctx, prj, actionID,
+		func(v *integration.ModelView, id string) (integration.ActionOutputsResult, bool) {
+			return v.ActionOutputsResult(graph.ActionID(id))
+		},
+		func(repo, id, key string, r integration.ActionOutputsResult) ActionOutputsResult {
+			return ActionOutputsResult{Repo: repo, ActionID: id, ModelCacheKey: key, Outputs: r}
+		})
 }
 
 func (s *Service) ActionDependencies(ctx context.Context, prj *project.Project, actionID string) (ActionDependenciesResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ActionDependenciesResult{}, err
-	}
-	dependencies, ok := view.ActionDependenciesResult(graph.ActionID(actionID))
-	if !ok {
-		return ActionDependenciesResult{}, os.ErrNotExist
-	}
-	return ActionDependenciesResult{
-		Repo:          prj.RootDir,
-		ActionID:      actionID,
-		ModelCacheKey: view.CacheKey(),
-		Dependencies:  dependencies,
-	}, nil
+	return entityLookup(s, ctx, prj, actionID,
+		func(v *integration.ModelView, id string) (integration.ActionDependenciesResult, bool) {
+			return v.ActionDependenciesResult(graph.ActionID(id))
+		},
+		func(repo, id, key string, r integration.ActionDependenciesResult) ActionDependenciesResult {
+			return ActionDependenciesResult{Repo: repo, ActionID: id, ModelCacheKey: key, Dependencies: r}
+		})
 }
 
 func (s *Service) ActionDependents(ctx context.Context, prj *project.Project, actionID string) (ActionDependentsResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ActionDependentsResult{}, err
-	}
-	dependents, ok := view.ActionDependentsResult(graph.ActionID(actionID))
-	if !ok {
-		return ActionDependentsResult{}, os.ErrNotExist
-	}
-	return ActionDependentsResult{
-		Repo:          prj.RootDir,
-		ActionID:      actionID,
-		ModelCacheKey: view.CacheKey(),
-		Dependents:    dependents,
-	}, nil
+	return entityLookup(s, ctx, prj, actionID,
+		func(v *integration.ModelView, id string) (integration.ActionDependentsResult, bool) {
+			return v.ActionDependentsResult(graph.ActionID(id))
+		},
+		func(repo, id, key string, r integration.ActionDependentsResult) ActionDependentsResult {
+			return ActionDependentsResult{Repo: repo, ActionID: id, ModelCacheKey: key, Dependents: r}
+		})
 }
 
 func (s *Service) ActionsForModule(ctx context.Context, prj *project.Project, modulePath string) (ActionsForModuleResult, error) {
@@ -2063,156 +1985,93 @@ func (s *Service) PlannedActionPolicies(ctx context.Context, prj *project.Projec
 }
 
 func (s *Service) ModuleByID(ctx context.Context, prj *project.Project, moduleID string) (ModuleByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ModuleByIDResult{}, err
-	}
-	result, ok := view.ModuleByID(graph.LogicalModuleID(moduleID))
-	if !ok {
-		return ModuleByIDResult{}, os.ErrNotExist
-	}
-	return ModuleByIDResult{
-		Repo:          prj.RootDir,
-		ModuleID:      moduleID,
-		ModelCacheKey: view.CacheKey(),
-		Result:        result,
-	}, nil
+	return entityLookup(s, ctx, prj, moduleID,
+		func(v *integration.ModelView, id string) (integration.ModuleByIDResult, bool) {
+			return v.ModuleByID(graph.LogicalModuleID(id))
+		},
+		func(repo, id, key string, r integration.ModuleByIDResult) ModuleByIDResult {
+			return ModuleByIDResult{Repo: repo, ModuleID: id, ModelCacheKey: key, Result: r}
+		})
 }
 
 func (s *Service) VariantByID(ctx context.Context, prj *project.Project, variantID string) (VariantByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return VariantByIDResult{}, err
-	}
-	result, ok := view.VariantByID(graph.VariantID(variantID))
-	if !ok {
-		return VariantByIDResult{}, os.ErrNotExist
-	}
-	return VariantByIDResult{
-		Repo:          prj.RootDir,
-		VariantID:     variantID,
-		ModelCacheKey: view.CacheKey(),
-		Result:        result,
-	}, nil
+	return entityLookup(s, ctx, prj, variantID,
+		func(v *integration.ModelView, id string) (integration.VariantByIDResult, bool) {
+			return v.VariantByID(graph.VariantID(id))
+		},
+		func(repo, id, key string, r integration.VariantByIDResult) VariantByIDResult {
+			return VariantByIDResult{Repo: repo, VariantID: id, ModelCacheKey: key, Result: r}
+		})
 }
 
 func (s *Service) ActionByID(ctx context.Context, prj *project.Project, actionID string) (ActionByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ActionByIDResult{}, err
-	}
-	result, ok := view.ActionByID(graph.ActionID(actionID))
-	if !ok {
-		return ActionByIDResult{}, os.ErrNotExist
-	}
-	return ActionByIDResult{
-		Repo:          prj.RootDir,
-		ActionID:      actionID,
-		ModelCacheKey: view.CacheKey(),
-		Result:        result,
-	}, nil
+	return entityLookup(s, ctx, prj, actionID,
+		func(v *integration.ModelView, id string) (integration.ActionByIDResult, bool) {
+			return v.ActionByID(graph.ActionID(id))
+		},
+		func(repo, id, key string, r integration.ActionByIDResult) ActionByIDResult {
+			return ActionByIDResult{Repo: repo, ActionID: id, ModelCacheKey: key, Result: r}
+		})
 }
 
 func (s *Service) ArtifactByID(ctx context.Context, prj *project.Project, artifactID string) (ArtifactByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ArtifactByIDResult{}, err
-	}
-	result, ok := view.ArtifactByID(graph.ArtifactID(artifactID))
-	if !ok {
-		return ArtifactByIDResult{}, os.ErrNotExist
-	}
-	return ArtifactByIDResult{
-		Repo:          prj.RootDir,
-		ArtifactID:    artifactID,
-		ModelCacheKey: view.CacheKey(),
-		Result:        result,
-	}, nil
+	return entityLookup(s, ctx, prj, artifactID,
+		func(v *integration.ModelView, id string) (integration.ArtifactByIDResult, bool) {
+			return v.ArtifactByID(graph.ArtifactID(id))
+		},
+		func(repo, id, key string, r integration.ArtifactByIDResult) ArtifactByIDResult {
+			return ArtifactByIDResult{Repo: repo, ArtifactID: id, ModelCacheKey: key, Result: r}
+		})
 }
 
 func (s *Service) MaterializationByID(ctx context.Context, prj *project.Project, materializationID string) (MaterializationByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return MaterializationByIDResult{}, err
-	}
-	result, ok := view.MaterializationByID(graph.MaterializationID(materializationID))
-	if !ok {
-		return MaterializationByIDResult{}, os.ErrNotExist
-	}
-	return MaterializationByIDResult{
-		Repo:              prj.RootDir,
-		MaterializationID: materializationID,
-		ModelCacheKey:     view.CacheKey(),
-		Result:            result,
-	}, nil
+	return entityLookup(s, ctx, prj, materializationID,
+		func(v *integration.ModelView, id string) (integration.MaterializationByIDResult, bool) {
+			return v.MaterializationByID(graph.MaterializationID(id))
+		},
+		func(repo, id, key string, r integration.MaterializationByIDResult) MaterializationByIDResult {
+			return MaterializationByIDResult{Repo: repo, MaterializationID: id, ModelCacheKey: key, Result: r}
+		})
 }
 
 func (s *Service) MaterializationConsumers(ctx context.Context, prj *project.Project, materializationID string) (MaterializationConsumersResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return MaterializationConsumersResult{}, err
-	}
-	consumers, ok := view.MaterializationConsumers(graph.MaterializationID(materializationID))
-	if !ok {
-		return MaterializationConsumersResult{}, os.ErrNotExist
-	}
-	return MaterializationConsumersResult{
-		Repo:              prj.RootDir,
-		MaterializationID: materializationID,
-		ModelCacheKey:     view.CacheKey(),
-		Consumers:         consumers,
-	}, nil
+	return entityLookup(s, ctx, prj, materializationID,
+		func(v *integration.ModelView, id string) (integration.MaterializationConsumersResult, bool) {
+			return v.MaterializationConsumers(graph.MaterializationID(id))
+		},
+		func(repo, id, key string, r integration.MaterializationConsumersResult) MaterializationConsumersResult {
+			return MaterializationConsumersResult{Repo: repo, MaterializationID: id, ModelCacheKey: key, Consumers: r}
+		})
 }
 
 func (s *Service) ClasspathSnapshotByID(ctx context.Context, prj *project.Project, snapshotID string) (ClasspathSnapshotByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ClasspathSnapshotByIDResult{}, err
-	}
-	result, ok := view.ClasspathSnapshotByID(snapshotID)
-	if !ok {
-		return ClasspathSnapshotByIDResult{}, os.ErrNotExist
-	}
-	return ClasspathSnapshotByIDResult{
-		Repo:                prj.RootDir,
-		ClasspathSnapshotID: snapshotID,
-		ModelCacheKey:       view.CacheKey(),
-		Result:              result,
-	}, nil
+	return entityLookup(s, ctx, prj, snapshotID,
+		func(v *integration.ModelView, id string) (integration.ClasspathSnapshotByIDResult, bool) {
+			return v.ClasspathSnapshotByID(id)
+		},
+		func(repo, id, key string, r integration.ClasspathSnapshotByIDResult) ClasspathSnapshotByIDResult {
+			return ClasspathSnapshotByIDResult{Repo: repo, ClasspathSnapshotID: id, ModelCacheKey: key, Result: r}
+		})
 }
 
 func (s *Service) ClasspathSnapshotConsumersByID(ctx context.Context, prj *project.Project, snapshotID string) (ClasspathSnapshotConsumersByIDResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ClasspathSnapshotConsumersByIDResult{}, err
-	}
-	consumers, ok := view.ClasspathSnapshotConsumersByID(snapshotID)
-	if !ok {
-		return ClasspathSnapshotConsumersByIDResult{}, os.ErrNotExist
-	}
-	return ClasspathSnapshotConsumersByIDResult{
-		Repo:                prj.RootDir,
-		ClasspathSnapshotID: snapshotID,
-		ModelCacheKey:       view.CacheKey(),
-		Consumers:           consumers,
-	}, nil
+	return entityLookup(s, ctx, prj, snapshotID,
+		func(v *integration.ModelView, id string) (integration.ClasspathSnapshotConsumersByIDResult, bool) {
+			return v.ClasspathSnapshotConsumersByID(id)
+		},
+		func(repo, id, key string, r integration.ClasspathSnapshotConsumersByIDResult) ClasspathSnapshotConsumersByIDResult {
+			return ClasspathSnapshotConsumersByIDResult{Repo: repo, ClasspathSnapshotID: id, ModelCacheKey: key, Consumers: r}
+		})
 }
 
 func (s *Service) MaterializationProvenance(ctx context.Context, prj *project.Project, materializationID string) (MaterializationProvenanceResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return MaterializationProvenanceResult{}, err
-	}
-	provenance, ok := view.MaterializationProvenance(graph.MaterializationID(materializationID))
-	if !ok {
-		return MaterializationProvenanceResult{}, os.ErrNotExist
-	}
-	return MaterializationProvenanceResult{
-		Repo:              prj.RootDir,
-		MaterializationID: materializationID,
-		ModelCacheKey:     view.CacheKey(),
-		Provenance:        provenance,
-	}, nil
+	return entityLookup(s, ctx, prj, materializationID,
+		func(v *integration.ModelView, id string) (integration.MaterializationProvenanceResult, bool) {
+			return v.MaterializationProvenance(graph.MaterializationID(id))
+		},
+		func(repo, id, key string, r integration.MaterializationProvenanceResult) MaterializationProvenanceResult {
+			return MaterializationProvenanceResult{Repo: repo, MaterializationID: id, ModelCacheKey: key, Provenance: r}
+		})
 }
 
 func (s *Service) VariantCompatibility(ctx context.Context, prj *project.Project, modulePath, variantName string) (VariantCompatibilityResult, error) {
@@ -2379,53 +2238,33 @@ func (s *Service) VariantManifest(ctx context.Context, prj *project.Project, mod
 }
 
 func (s *Service) ArtifactSnapshotProvenance(ctx context.Context, prj *project.Project, snapshotID string) (ArtifactSnapshotProvenanceResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ArtifactSnapshotProvenanceResult{}, err
-	}
-	provenance, ok := view.ArtifactSnapshotProvenance(snapshotID)
-	if !ok {
-		return ArtifactSnapshotProvenanceResult{}, os.ErrNotExist
-	}
-	return ArtifactSnapshotProvenanceResult{
-		Repo:          prj.RootDir,
-		ModelCacheKey: view.CacheKey(),
-		Provenance:    provenance,
-	}, nil
+	return entityLookup(s, ctx, prj, snapshotID,
+		func(v *integration.ModelView, id string) (integration.ArtifactSnapshotProvenanceResult, bool) {
+			return v.ArtifactSnapshotProvenance(id)
+		},
+		func(repo, _, key string, r integration.ArtifactSnapshotProvenanceResult) ArtifactSnapshotProvenanceResult {
+			return ArtifactSnapshotProvenanceResult{Repo: repo, ModelCacheKey: key, Provenance: r}
+		})
 }
 
 func (s *Service) ArtifactSnapshotConsumers(ctx context.Context, prj *project.Project, snapshotID string) (ArtifactSnapshotConsumersResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ArtifactSnapshotConsumersResult{}, err
-	}
-	consumers, ok := view.ArtifactSnapshotConsumers(snapshotID)
-	if !ok {
-		return ArtifactSnapshotConsumersResult{}, os.ErrNotExist
-	}
-	return ArtifactSnapshotConsumersResult{
-		Repo:               prj.RootDir,
-		ArtifactSnapshotID: snapshotID,
-		ModelCacheKey:      view.CacheKey(),
-		Consumers:          consumers,
-	}, nil
+	return entityLookup(s, ctx, prj, snapshotID,
+		func(v *integration.ModelView, id string) (integration.ArtifactSnapshotConsumersResult, bool) {
+			return v.ArtifactSnapshotConsumers(id)
+		},
+		func(repo, id, key string, r integration.ArtifactSnapshotConsumersResult) ArtifactSnapshotConsumersResult {
+			return ArtifactSnapshotConsumersResult{Repo: repo, ArtifactSnapshotID: id, ModelCacheKey: key, Consumers: r}
+		})
 }
 
 func (s *Service) ArtifactConsumers(ctx context.Context, prj *project.Project, artifactID string) (ArtifactConsumersResult, error) {
-	view, err := s.IntegrationView(ctx, prj)
-	if err != nil {
-		return ArtifactConsumersResult{}, err
-	}
-	consumers, ok := view.ArtifactConsumers(graph.ArtifactID(artifactID))
-	if !ok {
-		return ArtifactConsumersResult{}, os.ErrNotExist
-	}
-	return ArtifactConsumersResult{
-		Repo:          prj.RootDir,
-		ArtifactID:    artifactID,
-		ModelCacheKey: view.CacheKey(),
-		Consumers:     consumers,
-	}, nil
+	return entityLookup(s, ctx, prj, artifactID,
+		func(v *integration.ModelView, id string) (integration.ArtifactConsumersResult, bool) {
+			return v.ArtifactConsumers(graph.ArtifactID(id))
+		},
+		func(repo, id, key string, r integration.ArtifactConsumersResult) ArtifactConsumersResult {
+			return ArtifactConsumersResult{Repo: repo, ArtifactID: id, ModelCacheKey: key, Consumers: r}
+		})
 }
 
 func (s *Service) VariantImpact(ctx context.Context, prj *project.Project, modulePath, variantName string) (VariantImpactResult, error) {
