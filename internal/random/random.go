@@ -1,9 +1,6 @@
-// Package random provides a Random interface for sampling so production code
-// can use crypto/rand while tests substitute a deterministic Seeded source.
-//
-// Inject Random anywhere you'd otherwise reach for math/rand or crypto/rand —
-// pick a random element, shuffle a slice, generate a UUID — and tests can
-// assert on exact outputs by passing a Seeded with a known seed.
+// Package random provides a Random interface so test code can substitute
+// deterministic output for crypto/rand, plus a Sequence helper for readable
+// counter-style ids in test fixtures.
 package random
 
 import (
@@ -12,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"sync"
 )
 
 // Random is the source-of-randomness interface.
@@ -81,15 +79,13 @@ func (c *Crypto) UUID() string {
 	return formatUUID(b)
 }
 
-// Seeded is a deterministic Random backed by math/rand/v2 with a fixed seed.
-// Use this in tests so output is reproducible across runs.
+// Seeded is a deterministic Random backed by math/rand/v2 (PCG). Not
+// cryptographically secure; production code should use Crypto.
 type Seeded struct {
 	r *rand.Rand
 }
 
-// NewSeeded returns a Seeded source initialized with seed. Seeded uses
-// math/rand/v2 (PCG) — fast and reproducible for tests, NOT cryptographically
-// secure. Production code should use Crypto.
+// NewSeeded returns a Seeded source initialized with seed.
 func NewSeeded(seed uint64) *Seeded {
 	// #nosec G404 -- intentional non-crypto PRNG for deterministic test fixtures
 	return &Seeded{r: rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))}
@@ -165,4 +161,37 @@ func Shuffle[T any](r Random, items []T) []T {
 		out[i], out[j] = out[j], out[i]
 	}
 	return out
+}
+
+// Sequence emits prefixed counter ids: "id-1", "id-2", ... Safe for concurrent
+// use. Intended for tests that want readable, stable identifiers in golden
+// fixtures; production code wanting fresh ids should call UUID on a Random.
+type Sequence struct {
+	mu     sync.Mutex
+	prefix string
+	n      uint64
+}
+
+// NewSequence returns a Sequence using prefix. An empty prefix becomes "id".
+func NewSequence(prefix string) *Sequence {
+	if prefix == "" {
+		prefix = "id"
+	}
+	return &Sequence{prefix: prefix}
+}
+
+// Next returns the next prefixed counter id.
+func (s *Sequence) Next() string {
+	s.mu.Lock()
+	s.n++
+	n := s.n
+	s.mu.Unlock()
+	return fmt.Sprintf("%s-%d", s.prefix, n)
+}
+
+// Reset returns the counter to zero so the next Next call yields prefix-1.
+func (s *Sequence) Reset() {
+	s.mu.Lock()
+	s.n = 0
+	s.mu.Unlock()
 }
