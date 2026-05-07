@@ -166,7 +166,12 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	if mod.UsesWire {
 		err = c.track("wireCodegen", func() error {
 			var innerErr error
-			wireResult, innerErr = c.runWireCodegen(ctx, prj, mod, variantName, stdout, stderr)
+			var resolver dependencywiring.DependencyResolver
+			resolver, innerErr = state.resolverForProject(prj)
+			if innerErr != nil {
+				return innerErr
+			}
+			wireResult, innerErr = c.runWireCodegen(ctx, prj, mod, variantName, resolver, stdout, stderr)
 			return innerErr
 		})
 		if err != nil {

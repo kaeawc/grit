@@ -132,6 +132,82 @@ type ArtifactResolver interface {
 	Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error)
 }
 
+// ResolvePluginVersion returns the first resolved version for aliases or
+// plugin ids in the project's effective version catalog.
+func ResolvePluginVersion(prj *project.Project, refs ...string) (string, error) {
+	cat, err := LoadCatalog(prj)
+	if err != nil || cat == nil {
+		return "", err
+	}
+	for _, ref := range refs {
+		plugin, err := cat.ResolvePlugin(ref)
+		if err == nil && strings.TrimSpace(plugin.Version) != "" {
+			return strings.TrimSpace(plugin.Version), nil
+		}
+	}
+	for _, ref := range refs {
+		for _, plugin := range cat.Plugins {
+			if plugin.ID != ref {
+				continue
+			}
+			if plugin.Version == "" && plugin.VersionRef != "" {
+				plugin.Version = cat.Versions[plugin.VersionRef]
+			}
+			if plugin.Version == "" {
+				plugin.Version = cat.ResolveRichVersion(plugin.VersionConstraint)
+			}
+			if strings.TrimSpace(plugin.Version) != "" {
+				return strings.TrimSpace(plugin.Version), nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// ResolveRawClasspath resolves raw Maven coordinates and returns the merged
+// compile/runtime jar classpath. It is a small reusable adapter for tool
+// classpaths that are not declared directly in a module build script.
+func ResolveRawClasspath(resolver ArtifactResolver, coordinates ...string) ([]string, error) {
+	if resolver == nil || len(coordinates) == 0 {
+		return nil, nil
+	}
+	refs := make([]modulebuild.Ref, 0, len(coordinates))
+	for _, coord := range coordinates {
+		coord = strings.TrimSpace(coord)
+		if coord == "" {
+			continue
+		}
+		refs = append(refs, modulebuild.Ref{Kind: "raw", Value: coord})
+	}
+	if len(refs) == 0 {
+		return nil, nil
+	}
+	resolved, err := resolver.Resolve(&modulebuild.Dependencies{Main: refs})
+	if err != nil || resolved == nil {
+		return nil, err
+	}
+	return mergeClasspath(resolved.CompileJars, resolved.RuntimeJars), nil
+}
+
+func mergeClasspath(parts ...[]string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, part := range parts {
+		for _, path := range part {
+			path = strings.TrimSpace(path)
+			if path == "" {
+				continue
+			}
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
 type legacyResolver interface {
 	Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error)
 	SetTracker(perf.Tracker)
