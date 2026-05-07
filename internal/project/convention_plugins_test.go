@@ -49,20 +49,20 @@ func TestConventionPluginMapExpandsTransitively(t *testing.T) {
   id("org.jetbrains.kotlin.plugin.compose")
 }
 `
-	if err := os.WriteFile(filepath.Join(conv, "signal-library.gradle.kts"), []byte(library), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(conv, "convention-library.gradle.kts"), []byte(library), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conventions := conventionPluginMap(root)
-	got, ok := conventions["signal-library"]
+	got, ok := conventions["convention-library"]
 	if !ok {
-		t.Fatalf("signal-library convention plugin not detected")
+		t.Fatalf("convention-library convention plugin not detected")
 	}
 	if len(got) != 2 {
 		t.Fatalf("expected 2 transitive plugins, got %d (%v)", len(got), got)
 	}
 
-	expanded := expandPlugins([]string{"signal-library"}, conventions)
-	want := []string{"com.android.library", "org.jetbrains.kotlin.plugin.compose", "signal-library"}
+	expanded := expandPlugins([]string{"convention-library"}, conventions)
+	want := []string{"com.android.library", "convention-library", "org.jetbrains.kotlin.plugin.compose"}
 	if len(expanded) != len(want) {
 		t.Fatalf("expected %d expanded ids, got %v", len(want), expanded)
 	}

@@ -66,7 +66,7 @@ rootProject.name = "Example"
 include(":core-ui")
 `)
 	testutil.WriteFile(t, root, "build.gradle.kts", "")
-	testutil.WriteFile(t, root, "build-logic/plugins/src/main/kotlin/signal-library.gradle.kts", `
+	testutil.WriteFile(t, root, "build-logic/plugins/src/main/kotlin/convention-library.gradle.kts", `
 plugins {
   id("com.android.library")
   id("org.jetbrains.kotlin.plugin.compose")
@@ -74,7 +74,7 @@ plugins {
 `)
 	testutil.WriteFile(t, root, "core-ui/build.gradle.kts", `
 plugins {
-  id("signal-library")
+  id("convention-library")
 }
 `)
 

@@ -274,7 +274,7 @@ func TestExpandRefsSupportsComposeAccessors(t *testing.T) {
 		t.Fatalf("expected one coordinate, got %#v", coords)
 	}
 	got := coords[0]
-	if got.Group != "org.jetbrains.compose.components" || got.Module != "components-resources" || got.Version != "1.10.0" {
+	if got.Group != "org.jetbrains.compose.components" || got.Module != "components-resources-jvm" || got.Version != "1.10.0" {
 		t.Fatalf("unexpected compose coordinate %#v", got)
 	}
 }

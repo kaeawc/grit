@@ -87,12 +87,12 @@ func TestLoadModulePopulatesKSPConfig(t *testing.T) {
 	prj := &Project{RootDir: root}
 	testutil.WriteFile(t, root, "glide-config/build.gradle.kts", `
 plugins {
-  id("signal-library")
+  id("convention-library")
   id("com.google.devtools.ksp")
 }
 
 android {
-  namespace = "org.signal.glide.config"
+  namespace = "org.example.glide.config"
 }
 
 dependencies {
