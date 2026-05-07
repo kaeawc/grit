@@ -4,9 +4,18 @@ import (
 	"strings"
 
 	"github.com/kaeawc/grit/internal/pathutil"
-	"github.com/kaeawc/grit/internal/treesitter"
+	tskotlin "github.com/kaeawc/grit/internal/treesitter/kotlin"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
+
+func parseKotlinSource(src []byte) *sitter.Tree {
+	parser := sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(sitter.NewLanguage(tskotlin.Language())); err != nil {
+		return nil
+	}
+	return parser.Parse(src, nil)
+}
 
 type settingsModel struct {
 	Name         string
@@ -20,10 +29,7 @@ func parseSettingsKTS(body string) settingsModel {
 }
 
 func parseSettingsKTSWithProperties(body string, gradleProperties map[string]string) settingsModel {
-	tree, err := treesitter.Parse(treesitter.Kotlin, []byte(body))
-	if err != nil {
-		return settingsModel{}
-	}
+	tree := parseKotlinSource([]byte(body))
 	if tree == nil {
 		return settingsModel{}
 	}

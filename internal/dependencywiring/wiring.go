@@ -3,7 +3,6 @@ package dependencywiring
 import (
 	"context"
 	"errors"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,12 +11,9 @@ import (
 
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/catalog"
-	"github.com/kaeawc/grit/internal/downloader"
-	"github.com/kaeawc/grit/internal/downloader/chain"
+	"github.com/kaeawc/grit/internal/depcache"
 	"github.com/kaeawc/grit/internal/downloader/gradlecache"
 	mavenread "github.com/kaeawc/grit/internal/downloader/mavenlocal"
-	"github.com/kaeawc/grit/internal/downloader/mavenremote"
-	"github.com/kaeawc/grit/internal/downloader/retry"
 	artifactcache "github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/lockfile"
 	"github.com/kaeawc/grit/internal/lockfile/produce"
@@ -26,8 +22,6 @@ import (
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
-	mavenpublish "github.com/kaeawc/grit/internal/publish/mavenlocal"
-	"github.com/kaeawc/grit/internal/tieredcas"
 	"github.com/kaeawc/grit/internal/transform/aarextract"
 )
 
@@ -486,58 +480,44 @@ type stackMaterializer struct {
 	workRoot       string
 	cacheRoot      string
 	repositories   []project.Repository
-	store          cas.Store
-	tieredStore    *tieredcas.Store
-	downloader     downloader.Downloader
 	repositoryRoot string
 	androidAARRoot string
+	stack          *depcache.Stack
 }
 
 func newStackMaterializer(prj *project.Project) *stackMaterializer {
-	worktreeStore := cas.NewFilesystemStore(worktreeCASRoot(prj.RootDir))
-	tiers := []cas.Store{worktreeStore}
-	if sharedRoot := sharedCASRoot(); sharedRoot != "" {
-		tiers = append(tiers, cas.NewFilesystemStore(sharedRoot))
-	}
-	tieredStore, err := tieredcas.New(tiers...)
-	if err != nil {
-		tieredStore = nil
-	}
-	var store cas.Store
-	if tieredStore != nil {
-		store = tieredStore
-	}
-	chainDownloader, err := chain.New(sourceDownloaders(prj.Repositories))
-	if err != nil {
-		chainDownloader = nil
-	}
+	repositoryRoot := MaterializedRepositoryRoot(prj.RootDir)
+	stack, _ := depcache.New(depcache.Config{
+		WorktreeCASRoot: worktreeCASRoot(prj.RootDir),
+		SharedCASRoot:   sharedCASRoot(),
+		PublishRoot:     repositoryRoot,
+		GradleCacheRoot: ResolverCacheRoot(),
+		Repositories:    prj.Repositories,
+	})
 	return &stackMaterializer{
 		workRoot:       prj.RootDir,
 		cacheRoot:      ResolverCacheRoot(),
 		repositories:   append([]project.Repository(nil), prj.Repositories...),
-		store:          store,
-		tieredStore:    tieredStore,
-		downloader:     chainDownloader,
-		repositoryRoot: MaterializedRepositoryRoot(prj.RootDir),
+		repositoryRoot: repositoryRoot,
 		androidAARRoot: MaterializedAARRoot(prj.RootDir),
+		stack:          stack,
 	}
 }
 
 func (m *stackMaterializer) Materialize(ctx context.Context, resolved *m2local.Resolved) (*m2local.Resolved, error) {
-	if resolved == nil || m == nil || m.store == nil || m.downloader == nil {
+	if resolved == nil || m == nil || m.stack == nil || m.stack.Store == nil || m.stack.Downloader == nil {
 		return resolved, nil
 	}
 	lockfilePins, err := m.lockfilePins(resolved)
 	if err != nil || len(lockfilePins) == 0 {
 		return resolved, err
 	}
-	publisher := mavenpublish.New(m.repositoryRoot)
 	pinsByCoordinate := map[string]lockfile.Pin{}
 	for _, pin := range lockfilePins {
-		if err := m.downloader.Fetch(ctx, pin, m.store); err != nil {
+		if err := m.stack.Fetch(ctx, pin); err != nil {
 			return nil, err
 		}
-		if err := publisher.PublishPin(ctx, pin, m.store); err != nil {
+		if err := m.stack.Publish(ctx, pin); err != nil {
 			return nil, err
 		}
 		pinsByCoordinate[pin.Coordinate.String()] = pin
@@ -727,17 +707,8 @@ func (m *stackMaterializer) materializeAndroidLibraries(ctx context.Context, lib
 	return out
 }
 
-// runAARExtract routes the aar-extract action through the production
-// cache wiring (CachedRunner) when a tieredcas store is available, so
-// every extract produces a CacheSummary sidecar and probes/promotes via
-// the tier chain. Falls back to the direct aarextract.Extract path when
-// only a plain cas.Store is configured.
 func (m *stackMaterializer) runAARExtract(ctx context.Context, primaryHash cas.Hash) (cas.ActionResult, error) {
-	if m.tieredStore != nil {
-		runner := &aarextract.CachedRunner{Store: m.tieredStore}
-		return runner.Run(ctx, primaryHash)
-	}
-	return aarextract.Extract(ctx, m.store, primaryHash)
+	return m.stack.Extract(ctx, primaryHash)
 }
 
 func (m *stackMaterializer) materializeAARProjection(ctx context.Context, coord lockfile.Coordinate, pin lockfile.Pin) (m2local.AndroidLibrary, error) {
@@ -768,17 +739,17 @@ func (m *stackMaterializer) materializeAARProjection(ctx context.Context, coord 
 		return m2local.AndroidLibrary{}, err
 	}
 	if output, ok := result.Output(aarextract.RoleClassesJar); ok {
-		if err := copyBlobToFile(ctx, m.store, output.Blob.Hash, filepath.Join(tmpDir, "classes.jar")); err != nil {
+		if err := copyBlobToFile(ctx, m.stack.Store, output.Blob.Hash, filepath.Join(tmpDir, "classes.jar")); err != nil {
 			return m2local.AndroidLibrary{}, err
 		}
 	}
 	if output, ok := result.Output(aarextract.RoleAndroidManifest); ok {
-		if err := copyBlobToFile(ctx, m.store, output.Blob.Hash, filepath.Join(tmpDir, "AndroidManifest.xml")); err != nil {
+		if err := copyBlobToFile(ctx, m.stack.Store, output.Blob.Hash, filepath.Join(tmpDir, "AndroidManifest.xml")); err != nil {
 			return m2local.AndroidLibrary{}, err
 		}
 	}
 	if output, ok := result.Output(aarextract.RoleResourceTree); ok {
-		if err := expandZipBlobToDir(ctx, m.store, output.Blob.Hash, filepath.Join(tmpDir, "res")); err != nil {
+		if err := expandZipBlobToDir(ctx, m.stack.Store, output.Blob.Hash, filepath.Join(tmpDir, "res")); err != nil {
 			return m2local.AndroidLibrary{}, err
 		}
 	}
@@ -798,89 +769,6 @@ func materializedAndroidLibrary(coord lockfile.Coordinate, outDir string) m2loca
 		ClassesJar:   existingFile(filepath.Join(outDir, "classes.jar")),
 		ManifestPath: existingFile(filepath.Join(outDir, "AndroidManifest.xml")),
 		ResDir:       existingDir(filepath.Join(outDir, "res")),
-	}
-}
-
-func sourceDownloaders(repos []project.Repository) []downloader.Downloader {
-	// Gradle cache is an internal cache (not a declared repository) so it
-	// always comes first as a fast local source.
-	var sources []downloader.Downloader
-	if root := ResolverCacheRoot(); root != "" {
-		sources = append(sources, gradlecache.New(root))
-	}
-
-	// Build declared repository downloaders in declaration order.
-	hasDeclaredMavenLocal := false
-	for _, repo := range repos {
-		if repo.Kind == "mavenLocal" {
-			hasDeclaredMavenLocal = true
-		}
-		if dl := downloaderForRepository(repo); dl != nil {
-			sources = append(sources, dl)
-		}
-	}
-
-	// If no repository explicitly declares mavenLocal(), add it as an
-	// implicit fallback after declared repositories for backward
-	// compatibility with projects that rely on ~/.m2/repository without
-	// declaring it.
-	if !hasDeclaredMavenLocal {
-		if root := mavenread.DefaultRoot(); root != "" {
-			sources = append(sources, mavenread.New(root))
-		}
-	}
-
-	return deduplicateDownloaders(sources)
-}
-
-// deduplicateDownloaders removes duplicate downloaders by ID, keeping the
-// first occurrence. This prevents the same source (e.g. maven-local at
-// the default root) from appearing twice in the chain when it is both
-// implicitly added and explicitly declared.
-func deduplicateDownloaders(sources []downloader.Downloader) []downloader.Downloader {
-	seen := map[string]bool{}
-	out := make([]downloader.Downloader, 0, len(sources))
-	for _, dl := range sources {
-		id := dl.ID()
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		out = append(out, dl)
-	}
-	return out
-}
-
-func downloaderForRepository(repo project.Repository) downloader.Downloader {
-	switch repo.Kind {
-	case "mavenLocal":
-		if root := fileURLPath(repo.URL); root != "" {
-			return mavenread.New(root)
-		}
-		if root := mavenread.DefaultRoot(); root != "" {
-			return mavenread.New(root)
-		}
-		return nil
-	case "maven", "google", "mavenCentral", "gradlePluginPortal", "jcenter":
-		if root := fileURLPath(repo.URL); root != "" {
-			return mavenread.New(root)
-		}
-		if strings.TrimSpace(repo.URL) == "" {
-			return nil
-		}
-		remote, err := mavenremote.New(repo.URL, mavenremote.WithID(firstNonEmpty(repo.Name, repo.Kind)))
-		if err != nil {
-			return nil
-		}
-		wrapped, err := retry.New(remote, retry.WithAttempts(3), retry.WithBackoff(func(attempt int) time.Duration {
-			return time.Duration(attempt) * 10 * time.Millisecond
-		}))
-		if err != nil {
-			return remote
-		}
-		return wrapped
-	default:
-		return nil
 	}
 }
 
@@ -982,14 +870,6 @@ func repositoryIDForURL(rawURL string, repos []project.Repository) string {
 
 func sameRepositoryURL(a, b string) bool {
 	return strings.TrimRight(strings.TrimSpace(a), "/") == strings.TrimRight(strings.TrimSpace(b), "/")
-}
-
-func fileURLPath(raw string) string {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Scheme != "file" {
-		return ""
-	}
-	return filepath.FromSlash(u.Path)
 }
 
 func parseResolutionCoordinate(value string) (lockfile.Coordinate, bool) {
