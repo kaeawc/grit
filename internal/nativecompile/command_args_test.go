@@ -3,6 +3,7 @@ package nativecompile
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kaeawc/grit/internal/project"
@@ -128,11 +129,12 @@ func TestD8ReleaseArgs(t *testing.T) {
 func TestR8Args(t *testing.T) {
 	t.Setenv("HOME", "/home/test")
 
+	tc := &androidDexToolchain{Version: "8.6.27", Source: "dependency", JarPath: "/deps/r8-8.6.27.jar"}
 	mod := &project.Module{MinSDK: "24"}
 	variant := project.BuildType{ProguardFiles: []string{"a.pro", "b.pro"}}
-	got := r8Args("/sdk/android.jar", mod, variant, "classes.jar", "dex-out", []string{"rt-a.jar", "rt-b.jar"}, "generated-rules.pro")
+	got := r8Args(tc, "/sdk/android.jar", mod, variant, "classes.jar", "dex-out", []string{"rt-a.jar", "rt-b.jar"}, "generated-rules.pro")
 	want := []string{
-		"-cp", "/home/test/Library/Android/sdk/build-tools/36.0.0/lib/d8.jar",
+		"-cp", "/deps/r8-8.6.27.jar",
 		"com.android.tools.r8.R8",
 		"--release",
 		"--lib", "/sdk/android.jar",
@@ -148,6 +150,11 @@ func TestR8Args(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected r8 args: got %#v want %#v", got, want)
+	}
+	for _, arg := range got {
+		if strings.Contains(arg, "build-tools/36.0.0") {
+			t.Fatalf("r8 args must not contain hard-coded build-tools path: %#v", got)
+		}
 	}
 }
 

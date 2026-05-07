@@ -9,22 +9,25 @@ import (
 	"strings"
 )
 
-func runD8(ctx context.Context, workRoot, classesJar, _ string, _ string, mergedDexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+func runD8(ctx context.Context, tc *androidDexToolchain, workRoot, classesJar, _ string, _ string, mergedDexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+	if err := tc.validate(); err != nil {
+		return err
+	}
 	runtimeCP = collapseVersions(runtimeCP)
 	traceD8Inputs("runtime", runtimeCP, stderr)
 	projectLibs, externalLibs := partitionRuntimeClasspath(workRoot, runtimeCP)
 	traceD8Inputs("project", projectLibs, stderr)
 	traceD8Inputs("external", externalLibs, stderr)
-	projectDexDir := sharedProjectDexDir(projectLibs)
-	externalDexDir := sharedExternalDexDir(externalLibs)
-	sharedAppDexDir := sharedAppDexDir(classesJar, runtimeCP)
-	if err := runD8ForLibraries(ctx, externalDexDir, externalLibs, stdout, stderr); err != nil {
+	projectDexDir := sharedProjectDexDir(tc, projectLibs)
+	externalDexDir := sharedExternalDexDir(tc, externalLibs)
+	sharedAppDexDir := sharedAppDexDir(tc, classesJar, runtimeCP)
+	if err := runD8ForLibraries(ctx, tc, externalDexDir, externalLibs, stdout, stderr); err != nil {
 		return err
 	}
-	if err := runD8ForLibraries(ctx, projectDexDir, projectLibs, stdout, stderr); err != nil {
+	if err := runD8ForLibraries(ctx, tc, projectDexDir, projectLibs, stdout, stderr); err != nil {
 		return err
 	}
-	if err := runD8ForApp(ctx, classesJar, sharedAppDexDir, runtimeCP, stdout, stderr); err != nil {
+	if err := runD8ForApp(ctx, tc, classesJar, sharedAppDexDir, runtimeCP, stdout, stderr); err != nil {
 		return err
 	}
 	mergeStampPath := filepath.Join(filepath.Dir(mergedDexDir), "dex-merge.stamp")
@@ -32,7 +35,7 @@ func runD8(ctx context.Context, workRoot, classesJar, _ string, _ string, merged
 	if stampMatches(mergeStampPath, mergeStampValue) && hasOutputFiles(mergedDexDir) {
 		return nil
 	}
-	if outputsNewerThanInputs(mergedDexDir, []string{sharedAppDexDir, projectDexDir, externalDexDir}) {
+	if dexOutputsFresh(mergedDexDir, []string{sharedAppDexDir, projectDexDir, externalDexDir}, tc) {
 		_ = writeStamp(mergeStampPath, mergeStampValue)
 		return nil
 	}
@@ -45,7 +48,10 @@ func runD8(ctx context.Context, workRoot, classesJar, _ string, _ string, merged
 	if err := mergeDexDirs(mergedDexDir, sharedAppDexDir, projectDexDir, externalDexDir); err != nil {
 		return err
 	}
-	return writeStamp(mergeStampPath, mergeStampValue)
+	if err := writeStamp(mergeStampPath, mergeStampValue); err != nil {
+		return err
+	}
+	return writeDexToolchainStamp(mergedDexDir, tc)
 }
 
 func traceD8Inputs(label string, paths []string, stderr *os.File) {
@@ -58,7 +64,7 @@ func traceD8Inputs(label string, paths []string, stderr *os.File) {
 	}
 }
 
-func runD8ForLibraries(ctx context.Context, dexDir string, jars []string, stdout, stderr *os.File) error {
+func runD8ForLibraries(ctx context.Context, tc *androidDexToolchain, dexDir string, jars []string, stdout, stderr *os.File) error {
 	jars = collapseVersions(jars)
 	if len(jars) == 0 {
 		return os.MkdirAll(dexDir, 0o755)
@@ -67,7 +73,7 @@ func runD8ForLibraries(ctx context.Context, dexDir string, jars []string, stdout
 		return nil
 	}
 	inputs := append([]string{androidJarPath()}, jars...)
-	if outputsNewerThanInputs(dexDir, inputs) {
+	if dexOutputsFresh(dexDir, inputs, tc) {
 		return nil
 	}
 	if err := os.RemoveAll(dexDir); err != nil {
@@ -83,16 +89,19 @@ func runD8ForLibraries(ctx context.Context, dexDir string, jars []string, stdout
 		"--output", dexDir,
 	}
 	args = append(args, jars...)
-	return runD8Command(ctx, args, stdout, stderr)
+	if err := runD8Command(ctx, tc, args, stdout, stderr); err != nil {
+		return err
+	}
+	return writeDexToolchainStamp(dexDir, tc)
 }
 
-func runD8ForApp(ctx context.Context, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+func runD8ForApp(ctx context.Context, tc *androidDexToolchain, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
 	runtimeCP = collapseVersions(runtimeCP)
 	if isSharedDexCacheReady(dexDir) {
 		return nil
 	}
 	inputs := append([]string{classesJar, androidJarPath()}, runtimeCP...)
-	if outputsNewerThanInputs(dexDir, inputs) {
+	if dexOutputsFresh(dexDir, inputs, tc) {
 		return nil
 	}
 	if err := os.RemoveAll(dexDir); err != nil {
@@ -111,7 +120,10 @@ func runD8ForApp(ctx context.Context, classesJar, dexDir string, runtimeCP []str
 		args = append(args, "--classpath", jar)
 	}
 	args = append(args, classesJar)
-	return runD8Command(ctx, args, stdout, stderr)
+	if err := runD8Command(ctx, tc, args, stdout, stderr); err != nil {
+		return err
+	}
+	return writeDexToolchainStamp(dexDir, tc)
 }
 
 func partitionRuntimeClasspath(workRoot string, runtimeCP []string) ([]string, []string) {

@@ -25,6 +25,9 @@ type compileState struct {
 	bundletoolOnce    sync.Once
 	bundletool        *bundletoolToolchain
 	bundletoolErr     error
+	dexToolchainOnce  sync.Once
+	dexToolchain      *androidDexToolchain
+	dexToolchainErr   error
 }
 
 type inFlightCompile struct {

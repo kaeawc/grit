@@ -146,8 +146,15 @@ func classesJarForDir(ctx context.Context, classesDir string, stdout, stderr *os
 	return outJar, nil
 }
 
-func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) error {
-	res, err := defaultRunner.Run(ctx, proc.Cmd{Name: "d8", Args: args})
+func runD8Command(ctx context.Context, tc *androidDexToolchain, args []string, stdout, stderr *os.File) error {
+	if err := tc.validate(); err != nil {
+		return err
+	}
+	javaArgs := append([]string{"-cp", tc.JarPath, "com.android.tools.r8.D8"}, args...)
+	if err := prepareJavaStartupArgs(javaArgs); err != nil {
+		return err
+	}
+	res, err := defaultRunner.Run(ctx, proc.Cmd{Name: "java", Args: javaArgs})
 	if err == nil && res.ExitCode != 0 {
 		err = fmt.Errorf("d8 exited with %d", res.ExitCode)
 	}
@@ -167,18 +174,21 @@ func runD8Command(ctx context.Context, args []string, stdout, stderr *os.File) e
 	return nil
 }
 
-func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+func runR8(ctx context.Context, tc *androidDexToolchain, mod *project.Module, variant project.BuildType, classesJar, dexDir string, runtimeCP []string, stdout, stderr *os.File) error {
+	if err := tc.validate(); err != nil {
+		return err
+	}
 	r8ProgramCP := filterR8ProgramClasspath(collapseVersions(runtimeCP))
 	traceD8Inputs("r8", r8ProgramCP, stderr)
 	inputs := append([]string{classesJar, androidJarPath()}, r8ProgramCP...)
-	if outputsNewerThanInputs(dexDir, inputs) {
+	if dexOutputsFresh(dexDir, inputs, tc) {
 		return nil
 	}
 	extraRules, err := writeGeneratedR8Rules(mod, variant)
 	if err != nil {
 		return err
 	}
-	args := r8Args(androidJarPath(), mod, variant, classesJar, dexDir, r8ProgramCP, extraRules)
+	args := r8Args(tc, androidJarPath(), mod, variant, classesJar, dexDir, r8ProgramCP, extraRules)
 	if err := prepareJavaStartupArgs(args); err != nil {
 		return err
 	}
@@ -199,7 +209,7 @@ func runR8(ctx context.Context, mod *project.Module, variant project.BuildType, 
 	if warningLines := countNonEmptyLines(string(res.Stdout)) + countNonEmptyLines(string(res.Stderr)); warningLines > 0 {
 		_, _ = fmt.Fprintf(stderr, "r8 emitted %d warning lines; suppressed after successful build\n", warningLines)
 	}
-	return nil
+	return writeDexToolchainStamp(dexDir, tc)
 }
 
 func runCmd(ctx context.Context, bin string, args []string, stdout, stderr *os.File) error {

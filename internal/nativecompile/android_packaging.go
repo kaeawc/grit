@@ -12,6 +12,7 @@ import (
 )
 
 func assembleAPK(ctx context.Context, prj *project.Project, mod *project.Module, variant project.BuildType, classesDir string, runtimeCP []string, resources []androidResourceArtifact, stdout, stderr *os.File, tracker perf.Tracker) (string, error) {
+	dexState := newCompileState()
 	variantDir := moduleOutputRelPath(mod.Path)
 	outRoot := filepath.Join(prj.RootDir, "build", "grit", variantDir, variant.Name)
 	dexDir := filepath.Join(outRoot, "dex")
@@ -57,18 +58,27 @@ func assembleAPK(ctx context.Context, prj *project.Project, mod *project.Module,
 		return "", err
 	}
 	if variant.IsMinifyEnabled {
+		tc, err := dexState.dexToolchainForProject(prj)
+		if err != nil {
+			return "", err
+		}
 		if err := tracker.Track("runR8", func() error {
-			return runR8(ctx, mod, variant, classesJar, dexDir, runtimeCP, stdout, stderr)
+			return runR8(ctx, tc, mod, variant, classesJar, dexDir, runtimeCP, stdout, stderr)
 		}); err != nil {
 			return "", err
 		}
 	} else if err := tracker.Track("runD8", func() error {
-		if outputsNewerThanInputs(dexDir, append([]string{classesJar}, runtimeCP...)) {
+		tc, err := dexState.dexToolchainForProject(prj)
+		if err != nil {
+			return err
+		}
+		inputs := append([]string{classesJar}, runtimeCP...)
+		if dexOutputsFresh(dexDir, inputs, tc) {
 			recordCacheProbe(tracker, "runD8", true, "local-up-to-date", "dex outputs newer than classes and runtime classpath")
 		} else {
 			recordCacheProbe(tracker, "runD8", false, "cache-miss", "dex outputs required D8 execution")
 		}
-		return runD8(ctx, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
+		return runD8(ctx, tc, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
 	}); err != nil {
 		return "", err
 	}
@@ -115,6 +125,7 @@ func assembleAPK(ctx context.Context, prj *project.Project, mod *project.Module,
 }
 
 func assembleAndroidTestAPK(ctx context.Context, prj *project.Project, mod *project.Module, variant project.BuildType, manifestPath, classesDir string, runtimeCP []string, stdout, stderr *os.File, tracker perf.Tracker) (string, error) {
+	dexState := newCompileState()
 	variantDir := moduleOutputRelPath(mod.Path)
 	outRoot := filepath.Join(prj.RootDir, "build", "grit", variantDir, variant.Name+"AndroidTest")
 	dexDir := filepath.Join(outRoot, "dex")
@@ -159,12 +170,17 @@ func assembleAndroidTestAPK(ctx context.Context, prj *project.Project, mod *proj
 		return "", err
 	}
 	if err := tracker.Track("runD8AndroidTest", func() error {
-		if outputsNewerThanInputs(dexDir, append([]string{classesJar}, runtimeCP...)) {
+		tc, err := dexState.dexToolchainForProject(prj)
+		if err != nil {
+			return err
+		}
+		inputs := append([]string{classesJar}, runtimeCP...)
+		if dexOutputsFresh(dexDir, inputs, tc) {
 			recordCacheProbe(tracker, "runD8AndroidTest", true, "local-up-to-date", "androidTest dex outputs newer than classes and runtime classpath")
 		} else {
 			recordCacheProbe(tracker, "runD8AndroidTest", false, "cache-miss", "androidTest dex outputs required D8 execution")
 		}
-		return runD8(ctx, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
+		return runD8(ctx, tc, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
 	}); err != nil {
 		return "", err
 	}
@@ -258,18 +274,27 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 
 	// Dex.
 	if variant.IsMinifyEnabled {
+		tc, err := s.dexToolchainForProject(prj)
+		if err != nil {
+			return "", err
+		}
 		if err := tracker.Track("runR8", func() error {
-			return runR8(ctx, mod, variant, classesJar, dexDir, runtimeCP, stdout, stderr)
+			return runR8(ctx, tc, mod, variant, classesJar, dexDir, runtimeCP, stdout, stderr)
 		}); err != nil {
 			return "", err
 		}
 	} else if err := tracker.Track("runD8", func() error {
-		if outputsNewerThanInputs(dexDir, append([]string{classesJar}, runtimeCP...)) {
+		tc, err := s.dexToolchainForProject(prj)
+		if err != nil {
+			return err
+		}
+		inputs := append([]string{classesJar}, runtimeCP...)
+		if dexOutputsFresh(dexDir, inputs, tc) {
 			recordCacheProbe(tracker, "runD8", true, "local-up-to-date", "dex outputs newer than classes and runtime classpath")
 		} else {
 			recordCacheProbe(tracker, "runD8", false, "cache-miss", "dex outputs required D8 execution")
 		}
-		return runD8(ctx, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
+		return runD8(ctx, tc, prj.RootDir, classesJar, appDexDir, libDexDir, dexDir, runtimeCP, stdout, stderr)
 	}); err != nil {
 		return "", err
 	}
