@@ -5,8 +5,18 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/m2local"
+	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
+
+type fakeArtifactResolver struct {
+	resolved *m2local.Resolved
+}
+
+func (r fakeArtifactResolver) Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error) {
+	return r.resolved, nil
+}
 
 func TestKotlincLibDirResolvesAdjacentLib(t *testing.T) {
 	tempDir := t.TempDir()
@@ -109,5 +119,34 @@ func TestCheckKotlinCompilerFailsWithoutPathOrCachedCompiler(t *testing.T) {
 	})
 	if item.OK {
 		t.Fatalf("expected missing Kotlin compiler to fail: %#v", item)
+	}
+}
+
+func TestCheckMetroCompilerPluginUsesResolverPath(t *testing.T) {
+	prj := &project.Project{
+		VersionCatalogData: map[string]string{"metro": "0.13.0"},
+	}
+	resolver := fakeArtifactResolver{
+		resolved: &m2local.Resolved{
+			RuntimeJars: []string{"/work/.grit/worktree/materialized-m2/dev/zacsweers/metro/compiler/0.13.0/compiler-0.13.0.jar"},
+		},
+	}
+
+	item := checkMetroCompilerPluginWithResolver(prj, resolver)
+	if !item.OK {
+		t.Fatalf("expected Metro compiler plugin to pass: %#v", item)
+	}
+	if item.Detail != "/work/.grit/worktree/materialized-m2/dev/zacsweers/metro/compiler/0.13.0/compiler-0.13.0.jar" {
+		t.Fatalf("unexpected detail: %q", item.Detail)
+	}
+}
+
+func TestCheckMetroCompilerPluginReportsMissingVersion(t *testing.T) {
+	item := checkMetroCompilerPluginWithResolver(&project.Project{}, fakeArtifactResolver{})
+	if item.OK {
+		t.Fatalf("expected missing Metro version to fail: %#v", item)
+	}
+	if item.Detail != "no Metro version declared" {
+		t.Fatalf("unexpected detail: %q", item.Detail)
 	}
 }
