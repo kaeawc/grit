@@ -54,23 +54,10 @@ func runIntelliJSyncModel(ctx context.Context, args []string, stdout, stderr io.
 }
 
 func runSigningReport(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("signingReport", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("signingReport", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	mod, err := cmd.requireModule(prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(cmd.svc.SigningReport(mod, prj)))
+	return runRequireModuleLookup(args, stdout, stderr, tracker, start, "signingReport",
+		func(svc *service.Service, mod *project.Module, prj *project.Project) (service.SigningReportResult, error) {
+			return svc.SigningReport(mod, prj), nil
+		})
 }
 
 func runProjects(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -89,47 +76,15 @@ func runProjects(_ context.Context, args []string, stdout, stderr io.Writer, tra
 }
 
 func runProperties(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("properties", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("properties", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	mod, err := cmd.requireModule(prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(cmd.svc.Properties(mod, prj)))
+	return runRequireModuleLookup(args, stdout, stderr, tracker, start, "properties",
+		func(svc *service.Service, mod *project.Module, prj *project.Project) (service.PropertiesResult, error) {
+			return svc.Properties(mod, prj), nil
+		})
 }
 
 func runDependencies(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("dependencies", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("dependencies", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	mod, err := cmd.requireModule(prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	deps, err := cmd.svc.Dependencies(mod, prj)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(deps))
+	return runRequireModuleLookup(args, stdout, stderr, tracker, start, "dependencies",
+		(*service.Service).Dependencies)
 }
 
 func runBuildEnvironment(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -148,23 +103,10 @@ func runBuildEnvironment(_ context.Context, args []string, stdout, stderr io.Wri
 }
 
 func runArtifactTransforms(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
-	cmd := newCommandState("artifactTransforms", stdout, stderr, tracker, start)
-	fs := flag.NewFlagSet("artifactTransforms", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
-	if err := fs.Parse(args); err != nil {
-		return cmd.fail(2, err)
-	}
-	prj, err := cmd.loadProject(*repo)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	mod, err := cmd.requireModule(prj, *modulePath)
-	if err != nil {
-		return cmd.fail(1, err)
-	}
-	return cmd.success(resultJSON(cmd.svc.ArtifactTransforms(mod, prj)))
+	return runRequireModuleLookup(args, stdout, stderr, tracker, start, "artifactTransforms",
+		func(svc *service.Service, mod *project.Module, prj *project.Project) (service.ArtifactTransformsResult, error) {
+			return svc.ArtifactTransforms(mod, prj), nil
+		})
 }
 
 func runDependencyInsight(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {

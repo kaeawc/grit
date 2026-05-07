@@ -109,3 +109,39 @@ func runModuleLookup[R any](
 	}
 	return cmd.success(resultJSON(result))
 }
+
+// runRequireModuleLookup folds verbs that take --repo --module (default :app)
+// and dispatch to a service method whose signature is `(mod, prj) (R, error)`.
+// It validates the module up front via cmd.requireModule before calling the
+// service. For service methods that don't return an error, wrap them in a
+// closure: `func(svc *service.Service, mod *project.Module, prj *project.Project) (R, error) { return svc.X(mod, prj), nil }`.
+func runRequireModuleLookup[R any](
+	args []string,
+	stdout, stderr io.Writer,
+	tracker perf.Tracker,
+	start time.Time,
+	verb string,
+	lookup func(svc *service.Service, mod *project.Module, prj *project.Project) (R, error),
+) int {
+	cmd := newCommandState(verb, stdout, stderr, tracker, start)
+	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	repo := fs.String("repo", ".", "Path to repository root")
+	modulePath := fs.String("module", ":app", "Android module path")
+	if err := fs.Parse(args); err != nil {
+		return cmd.fail(2, err)
+	}
+	prj, err := cmd.loadProject(*repo)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	mod, err := cmd.requireModule(prj, *modulePath)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	result, err := lookup(cmd.svc, mod, prj)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	return cmd.success(resultJSON(result))
+}
