@@ -1,12 +1,8 @@
 package nativecompile
 
 import (
-	"archive/zip"
 	"context"
-	"encoding/xml"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -118,15 +114,11 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 		)
 	}
 	if len(jars) == 0 {
-		for _, raw := range []string{
+		jars = resolveRawCoordinates(resolver, []string{
 			"com.google.devtools.ksp:symbol-processing-aa-embeddable:" + version,
 			"com.google.devtools.ksp:symbol-processing-api:" + version,
 			"com.google.devtools.ksp:symbol-processing-common-deps:" + version,
-		} {
-			if jar := fetchMavenJar(prj, raw); jar != "" {
-				jars = append(jars, jar)
-			}
-		}
+		}, true)
 	}
 	if len(jars) == 0 {
 		return nil, fmt.Errorf("ksp2 runtime jars not found for version %s; bump KSP to a release that ships symbol-processing-aa-embeddable", version)
@@ -180,11 +172,6 @@ func resolveKSPProcessors(state *compileState, prj *project.Project, refs []modu
 	}
 	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
 	if len(jars) > 0 {
-		for _, ref := range kspProcessorJVMFallbackRefs(prj, refs) {
-			if ref.Kind == "raw" {
-				jars = append(jars, fetchMavenPOMDependencyJars(prj, ref.Value)...)
-			}
-		}
 		return mergePaths(jars), nil
 	}
 	fallbackRefs := kspProcessorJVMFallbackRefs(prj, refs)
@@ -199,60 +186,34 @@ func resolveKSPProcessors(state *compileState, prj *project.Project, refs []modu
 	if len(jars) > 0 {
 		return jars, nil
 	}
-	for _, ref := range fallbackRefs {
-		if ref.Kind != "raw" {
-			continue
-		}
-		if jar := fetchMavenJar(prj, ref.Value); jar != "" {
-			jars = append(jars, jar)
-		}
-		jars = append(jars, fetchMavenPOMDependencyJars(prj, ref.Value)...)
-	}
-	return mergePaths(jars), nil
+	return resolveClasspathRefs(resolver, fallbackRefs, true), nil
 }
 
 func kspProcessorJVMFallbackRefs(prj *project.Project, refs []modulebuild.Ref) []modulebuild.Ref {
 	return jvmFallbackRefs(prj, refs)
 }
 
-func fallbackJVMCompileJars(prj *project.Project, refs []modulebuild.Ref) []string {
-	var out []string
-	for _, coord := range catalogCoordinates(prj, refs) {
-		if jar := fetchMavenJar(prj, coord); jar != "" {
-			out = append(out, jar)
-		}
-		out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
-	}
-	for _, ref := range jvmFallbackRefs(prj, refs) {
-		if ref.Kind != "raw" {
-			continue
-		}
-		if jar := fetchMavenJar(prj, ref.Value); jar != "" {
-			out = append(out, jar)
-		}
-		out = append(out, fetchMavenPOMDependencyJars(prj, ref.Value)...)
-	}
-	return mergePaths(out, transitiveJarsForMaterialized(prj, out), companionCoreJVMJars(prj, out))
+func fallbackJVMCompileJars(prj *project.Project, resolver dependencywiring.DependencyResolver, refs []modulebuild.Ref) []string {
+	coords := catalogCoordinates(prj, refs)
+	fallbackRefs := append(rawCoordinateRefs(coords), jvmFallbackRefs(prj, refs)...)
+	out := resolveClasspathRefs(resolver, fallbackRefs, true)
+	return mergePaths(out, companionCoreJVMJars(prj, resolver, out))
 }
 
-func fallbackAndroidCompileJars(prj *project.Project, refs []modulebuild.Ref) []string {
-	var out []string
+func fallbackAndroidCompileJars(prj *project.Project, resolver dependencywiring.DependencyResolver, refs []modulebuild.Ref) []string {
+	var fallbackRefs []modulebuild.Ref
 	for _, coord := range catalogCoordinates(prj, refs) {
-		if jar := fetchMavenAARClasses(prj, coord); jar != "" {
-			out = append(out, jar)
-		}
+		fallbackRefs = append(fallbackRefs, modulebuild.Ref{Kind: "raw", Value: coord})
 		parts := strings.Split(coord, ":")
 		if len(parts) == 3 && !strings.HasSuffix(parts[1], "-android") {
 			androidCoord := parts[0] + ":" + parts[1] + "-android:" + parts[2]
-			if jar := fetchMavenAARClasses(prj, androidCoord); jar != "" {
-				out = append(out, jar)
-			}
+			fallbackRefs = append(fallbackRefs, modulebuild.Ref{Kind: "raw", Value: androidCoord})
 		}
 	}
-	return mergePaths(out)
+	return resolveClasspathRefs(resolver, fallbackRefs, true)
 }
 
-func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []string {
+func fallbackImportedCatalogJars(prj *project.Project, resolver dependencywiring.DependencyResolver, mod *project.Module) []string {
 	cat, err := dependencywiring.LoadCatalog(prj)
 	if err != nil || cat == nil || mod == nil {
 		return nil
@@ -272,6 +233,7 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 		{needle: "org.koin.", groups: []string{"io.insert-koin"}},
 	}
 	var out []string
+	var fallbackRefs []modulebuild.Ref
 	for _, fallback := range fallbacks {
 		if !moduleSourcesContain(mod, fallback.needle) {
 			continue
@@ -282,8 +244,8 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 			}
 		}
 		if fallback.needle == "coil3." {
-			if jar := fetchMavenJar(prj, "io.coil-kt.coil3:coil-core-jvm:"+catalogGroupVersion(cat, "io.coil-kt.coil3")); jar != "" {
-				out = append(out, jar)
+			if version := catalogGroupVersion(cat, "io.coil-kt.coil3"); version != "" {
+				fallbackRefs = append(fallbackRefs, modulebuild.Ref{Kind: "raw", Value: "io.coil-kt.coil3:coil-core-jvm:" + version})
 			}
 		}
 		if fallback.needle == "okio." {
@@ -302,32 +264,21 @@ func fallbackImportedCatalogJars(prj *project.Project, mod *project.Module) []st
 				continue
 			}
 			coord := lib.Group + ":" + lib.Name + ":" + lib.Version
-			if jar := fetchMavenJar(prj, coord); jar != "" {
-				out = append(out, jar)
-			}
-			if jar := fetchMavenAARClasses(prj, coord); jar != "" {
-				out = append(out, jar)
-			}
-			out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
+			fallbackRefs = append(fallbackRefs, modulebuild.Ref{Kind: "raw", Value: coord})
 			if !strings.HasSuffix(lib.Name, "-android") {
 				androidCoord := lib.Group + ":" + lib.Name + "-android:" + lib.Version
-				if jar := fetchMavenAARClasses(prj, androidCoord); jar != "" {
-					out = append(out, jar)
-				}
-				out = append(out, fetchMavenPOMDependencyJars(prj, androidCoord)...)
+				fallbackRefs = append(fallbackRefs, modulebuild.Ref{Kind: "raw", Value: androidCoord})
 			}
 			if strings.HasSuffix(lib.Name, "-jvm") {
-				out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
+				continue
 			} else {
 				jvmCoord := lib.Group + ":" + lib.Name + "-jvm:" + lib.Version
-				if jar := fetchMavenJar(prj, jvmCoord); jar != "" {
-					out = append(out, jar)
-				}
-				out = append(out, fetchMavenPOMDependencyJars(prj, jvmCoord)...)
+				fallbackRefs = append(fallbackRefs, modulebuild.Ref{Kind: "raw", Value: jvmCoord})
 			}
 		}
 	}
-	return mergePaths(out, transitiveJarsForMaterialized(prj, out), companionCoreJVMJars(prj, out))
+	resolved := resolveClasspathRefs(resolver, fallbackRefs, true)
+	return mergePaths(out, resolved, companionCoreJVMJars(prj, resolver, append(out, resolved...)))
 }
 
 func stringInList(value string, list []string) bool {
@@ -488,209 +439,38 @@ func jvmFallbackRefs(prj *project.Project, refs []modulebuild.Ref) []modulebuild
 	return out
 }
 
-func fetchMavenJar(prj *project.Project, raw string) string {
-	parts := strings.Split(raw, ":")
-	if len(parts) != 3 || prj == nil {
-		return ""
-	}
-	group, module, version := parts[0], parts[1], parts[2]
-	artifactVersion := mavenArtifactVersion(prj, group, module, version, "jar")
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + artifactVersion + ".jar"
-	out := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", rel)
-	if pathIsFile(out) {
-		return out
-	}
-	var urls []string
-	for _, repo := range prj.Repositories {
-		base := strings.TrimSpace(repo.URL)
-		if base == "" || strings.HasPrefix(base, "file:") {
+func rawCoordinateRefs(coords []string) []modulebuild.Ref {
+	refs := make([]modulebuild.Ref, 0, len(coords))
+	for _, coord := range coords {
+		if strings.Count(coord, ":") != 2 {
 			continue
 		}
-		urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
+		refs = append(refs, modulebuild.Ref{Kind: "raw", Value: coord})
 	}
-	urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
-	for _, url := range urls {
-		resp, err := http.Get(url)
-		if err != nil {
-			continue
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			_ = resp.Body.Close()
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-			_ = resp.Body.Close()
-			return ""
-		}
-		f, err := os.Create(out)
-		if err != nil {
-			_ = resp.Body.Close()
-			return ""
-		}
-		_, copyErr := io.Copy(f, resp.Body)
-		closeErr := f.Close()
-		_ = resp.Body.Close()
-		if copyErr == nil && closeErr == nil {
-			return out
-		}
-		_ = os.Remove(out)
-	}
-	return ""
+	return refs
 }
 
-func fetchMavenAARClasses(prj *project.Project, raw string) string {
-	parts := strings.Split(raw, ":")
-	if len(parts) != 3 || prj == nil {
-		return ""
-	}
-	group, module, version := parts[0], parts[1], parts[2]
-	out := filepath.Join(prj.RootDir, ".grit", "worktree", "aar", group, module, version, "classes.jar")
-	if pathIsFile(out) {
-		return out
-	}
-	artifactVersion := mavenArtifactVersion(prj, group, module, version, "aar")
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + artifactVersion + ".aar"
-	aarPath := filepath.Join(prj.RootDir, ".grit", "worktree", "materialized-m2", rel)
-	if !pathIsFile(aarPath) {
-		var urls []string
-		for _, repo := range prj.Repositories {
-			base := strings.TrimSpace(repo.URL)
-			if base == "" || strings.HasPrefix(base, "file:") {
-				continue
-			}
-			urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
-		}
-		urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
-		for _, url := range urls {
-			resp, err := http.Get(url)
-			if err != nil {
-				continue
-			}
-			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-				_ = resp.Body.Close()
-				continue
-			}
-			if err := os.MkdirAll(filepath.Dir(aarPath), 0o755); err != nil {
-				_ = resp.Body.Close()
-				return ""
-			}
-			f, err := os.Create(aarPath)
-			if err != nil {
-				_ = resp.Body.Close()
-				return ""
-			}
-			_, copyErr := io.Copy(f, resp.Body)
-			closeErr := f.Close()
-			_ = resp.Body.Close()
-			if copyErr == nil && closeErr == nil {
-				break
-			}
-			_ = os.Remove(aarPath)
-		}
-	}
-	if !pathIsFile(aarPath) {
-		return ""
-	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		return ""
-	}
-	if err := extractZipFile(aarPath, "classes.jar", out); err != nil {
-		return ""
-	}
-	return out
+func resolveRawCoordinates(resolver dependencywiring.DependencyResolver, coords []string, includeAndroid bool) []string {
+	return resolveClasspathRefs(resolver, rawCoordinateRefs(coords), includeAndroid)
 }
 
-func extractZipFile(zipPath, name, out string) error {
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = zr.Close() }()
-	for _, f := range zr.File {
-		if f.Name != name {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return err
-		}
-		defer func() { _ = rc.Close() }()
-		w, err := os.Create(out)
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(w, rc)
-		closeErr := w.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		return closeErr
-	}
-	return os.ErrNotExist
-}
-
-type mavenPOM struct {
-	Dependencies []mavenDependency `xml:"dependencies>dependency"`
-}
-
-type mavenDependency struct {
-	GroupID    string `xml:"groupId"`
-	ArtifactID string `xml:"artifactId"`
-	Version    string `xml:"version"`
-	Scope      string `xml:"scope"`
-	Optional   string `xml:"optional"`
-}
-
-type snapshotMetadata struct {
-	Versioning struct {
-		SnapshotVersions []struct {
-			Extension string `xml:"extension"`
-			Value     string `xml:"value"`
-		} `xml:"snapshotVersions>snapshotVersion"`
-		Snapshot struct {
-			Timestamp   string `xml:"timestamp"`
-			BuildNumber string `xml:"buildNumber"`
-		} `xml:"snapshot"`
-	} `xml:"versioning"`
-}
-
-func fetchMavenPOMDependencyJars(prj *project.Project, raw string) []string {
-	pomData := fetchMavenPOM(prj, raw)
-	if len(pomData) == 0 {
+func resolveClasspathRefs(resolver dependencywiring.DependencyResolver, refs []modulebuild.Ref, includeAndroid bool) []string {
+	if resolver == nil || len(refs) == 0 {
 		return nil
 	}
-	var pom mavenPOM
-	if err := xml.Unmarshal(pomData, &pom); err != nil {
+	resolved, err := resolver.Resolve(&modulebuild.Dependencies{Main: append([]modulebuild.Ref{}, refs...)})
+	if err != nil || resolved == nil {
 		return nil
 	}
-	var out []string
-	for _, dep := range pom.Dependencies {
-		scope := strings.TrimSpace(dep.Scope)
-		if scope == "test" || scope == "provided" || strings.TrimSpace(dep.Optional) == "true" {
-			continue
-		}
-		if dep.GroupID == "" || dep.ArtifactID == "" || dep.Version == "" || strings.Contains(dep.Version, "${") {
-			continue
-		}
-		if jar := fetchMavenJar(prj, dep.GroupID+":"+dep.ArtifactID+":"+dep.Version); jar != "" {
-			out = append(out, jar)
+	out := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
+	if includeAndroid {
+		for _, lib := range resolved.AndroidLibraries {
+			if lib.ClassesJar != "" {
+				out = append(out, lib.ClassesJar)
+			}
 		}
 	}
-	return out
-}
-
-func transitiveJarsForMaterialized(prj *project.Project, jars []string) []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, jar := range jars {
-		coord := materializedJarCoordinate(prj, jar)
-		if coord == "" || seen[coord] {
-			continue
-		}
-		seen[coord] = true
-		out = append(out, fetchMavenPOMDependencyJars(prj, coord)...)
-	}
-	return out
+	return mergePaths(out)
 }
 
 func materializedJarCoordinate(prj *project.Project, path string) string {
@@ -719,8 +499,16 @@ func materializedJarCoordinate(prj *project.Project, path string) string {
 	return group + ":" + module + ":" + version
 }
 
-func companionCoreJVMJars(prj *project.Project, jars []string) []string {
-	var out []string
+func companionCoreJVMJars(prj *project.Project, resolver dependencywiring.DependencyResolver, jars []string) []string {
+	var refs []modulebuild.Ref
+	seen := map[string]bool{}
+	add := func(coord string) {
+		if coord == "" || seen[coord] {
+			return
+		}
+		seen[coord] = true
+		refs = append(refs, modulebuild.Ref{Kind: "raw", Value: coord})
+	}
 	for _, jar := range jars {
 		coord := materializedJarCoordinate(prj, jar)
 		parts := strings.Split(coord, ":")
@@ -731,96 +519,9 @@ func companionCoreJVMJars(prj *project.Project, jars []string) []string {
 		if strings.HasSuffix(base, "-core") {
 			continue
 		}
-		if core := fetchMavenJar(prj, parts[0]+":"+base+"-core-jvm:"+parts[2]); core != "" {
-			out = append(out, core)
-		}
+		add(parts[0] + ":" + base + "-core-jvm:" + parts[2])
 	}
-	return out
-}
-
-func fetchMavenPOM(prj *project.Project, raw string) []byte {
-	parts := strings.Split(raw, ":")
-	if len(parts) != 3 || prj == nil {
-		return nil
-	}
-	group, module, version := parts[0], parts[1], parts[2]
-	artifactVersion := mavenArtifactVersion(prj, group, module, version, "pom")
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/" + module + "-" + artifactVersion + ".pom"
-	var urls []string
-	for _, repo := range prj.Repositories {
-		base := strings.TrimSpace(repo.URL)
-		if base == "" || strings.HasPrefix(base, "file:") {
-			continue
-		}
-		urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
-	}
-	urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
-	for _, url := range urls {
-		resp, err := http.Get(url)
-		if err != nil {
-			continue
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			_ = resp.Body.Close()
-			continue
-		}
-		data, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err == nil {
-			return data
-		}
-	}
-	return nil
-}
-
-func mavenArtifactVersion(prj *project.Project, group, module, version, ext string) string {
-	if !strings.HasSuffix(version, "-SNAPSHOT") {
-		return version
-	}
-	rel := strings.ReplaceAll(group, ".", "/") + "/" + module + "/" + version + "/maven-metadata.xml"
-	for _, url := range remoteMavenURLs(prj, rel) {
-		resp, err := http.Get(url)
-		if err != nil {
-			continue
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			_ = resp.Body.Close()
-			continue
-		}
-		data, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil || len(data) == 0 {
-			continue
-		}
-		var metadata snapshotMetadata
-		if xml.Unmarshal(data, &metadata) != nil {
-			continue
-		}
-		for _, candidate := range metadata.Versioning.SnapshotVersions {
-			if candidate.Extension == ext && candidate.Value != "" {
-				return candidate.Value
-			}
-		}
-		if metadata.Versioning.Snapshot.Timestamp != "" && metadata.Versioning.Snapshot.BuildNumber != "" {
-			return strings.TrimSuffix(version, "-SNAPSHOT") + "-" + metadata.Versioning.Snapshot.Timestamp + "-" + metadata.Versioning.Snapshot.BuildNumber
-		}
-	}
-	return version
-}
-
-func remoteMavenURLs(prj *project.Project, rel string) []string {
-	var urls []string
-	if prj != nil {
-		for _, repo := range prj.Repositories {
-			base := strings.TrimSpace(repo.URL)
-			if base == "" || strings.HasPrefix(base, "file:") {
-				continue
-			}
-			urls = append(urls, strings.TrimRight(base, "/")+"/"+rel)
-		}
-	}
-	urls = append(urls, "https://repo1.maven.org/maven2/"+rel)
-	return urls
+	return resolveClasspathRefs(resolver, refs, false)
 }
 
 // kspLanguageVersion derives the KSP -language-version flag from the
@@ -922,7 +623,11 @@ func (c *Compiler) runKSP2ForModule(ctx context.Context, state *compileState, pr
 	if coroutinesVersion := latestCachedVersionFor("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm"); coroutinesVersion != "" {
 		processorCP = mergePaths(processorCP, findGradleArtifactJars("org.jetbrains.kotlinx", "kotlinx-coroutines-core-jvm", coroutinesVersion))
 	}
-	processorCP = mergePaths(processorCP, fallbackJVMCompileJars(prj, mod.KSP.Processors))
+	resolver, err := state.resolverForProject(prj)
+	if err != nil {
+		return out, err
+	}
+	processorCP = mergePaths(processorCP, fallbackJVMCompileJars(prj, resolver, mod.KSP.Processors))
 	processorCP = mergePaths(processorCP, compileCP)
 	if len(processorCP) == 0 {
 		return out, fmt.Errorf("no processor jars resolved for %s; declared refs: %v", mod.Path, mod.KSP.Processors)
