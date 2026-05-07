@@ -229,7 +229,7 @@ func assembleAAB(ctx context.Context, s *compileState, prj *project.Project, mod
 	}
 
 	// Resolve bundletool toolchain.
-	tc, err := s.bundletoolToolchainForProject()
+	tc, err := s.bundletoolToolchainForProject(prj)
 	if err != nil {
 		return "", err
 	}
