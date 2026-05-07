@@ -2,12 +2,14 @@ package nativecompile
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/kaeawc/grit/internal/m2local"
+	"github.com/kaeawc/grit/internal/modulebuild"
+	"github.com/kaeawc/grit/internal/project"
 )
 
 type bundletoolToolchain struct {
@@ -15,14 +17,14 @@ type bundletoolToolchain struct {
 	JarPath string
 }
 
-func (s *compileState) bundletoolToolchainForProject() (*bundletoolToolchain, error) {
+func (s *compileState) bundletoolToolchainForProject(prj *project.Project) (*bundletoolToolchain, error) {
 	s.bundletoolOnce.Do(func() {
-		s.bundletool, s.bundletoolErr = loadBundletoolToolchain()
+		s.bundletool, s.bundletoolErr = loadBundletoolToolchain(prj, s)
 	})
 	return s.bundletool, s.bundletoolErr
 }
 
-func loadBundletoolToolchain() (*bundletoolToolchain, error) {
+func loadBundletoolToolchain(prj *project.Project, state *compileState) (*bundletoolToolchain, error) {
 	// 1. Explicit environment variable.
 	if p := strings.TrimSpace(os.Getenv("BUNDLETOOL_JAR")); p != "" {
 		if pathIsFile(p) {
@@ -34,36 +36,43 @@ func loadBundletoolToolchain() (*bundletoolToolchain, error) {
 		return nil, fmt.Errorf("BUNDLETOOL_JAR set to %s but file does not exist", p)
 	}
 
-	// 2. Gradle cache (com.android.tools.build:bundletool).
-	if tc := bundletoolFromGradleCache(); tc != nil {
-		return tc, nil
-	}
-
-	// 3. Android SDK build-tools bundled copy.
+	// 2. Android SDK build-tools bundled copy.
 	if tc := bundletoolFromSDK(); tc != nil {
 		return tc, nil
 	}
 
-	// 4. Auto-download from Maven Central.
-	if tc, err := downloadBundletool(); err == nil {
-		return tc, nil
+	// 3. Project dependency resolver. This path honors declared
+	// repositories and the resolver's persisted metadata/lockfile instead
+	// of picking the newest artifact already present in a machine cache.
+	if state == nil {
+		return nil, fmt.Errorf("bundletool JAR not found; set BUNDLETOOL_JAR, install Android SDK bundletool, or configure BUNDLETOOL_VERSION for project resolution")
 	}
-
-	return nil, fmt.Errorf("bundletool JAR not found; set BUNDLETOOL_JAR or install via Android SDK / Gradle")
+	resolver, err := state.resolverForProject(prj)
+	if err != nil {
+		return nil, err
+	}
+	if tc, err := resolveBundletoolFromDependencies(resolver); err == nil {
+		return tc, nil
+	} else {
+		return nil, err
+	}
 }
 
-func bundletoolFromGradleCache() *bundletoolToolchain {
-	version := latestCachedVersionFor("com.android.tools.build", "bundletool")
+func resolveBundletoolFromDependencies(resolver dependencyResolverForToolArtifact) (*bundletoolToolchain, error) {
+	version := strings.TrimSpace(os.Getenv("BUNDLETOOL_VERSION"))
 	if version == "" {
-		return nil
+		return nil, fmt.Errorf("bundletool version not configured; set BUNDLETOOL_VERSION or BUNDLETOOL_JAR")
 	}
-	jars := findGradleArtifactJars("com.android.tools.build", "bundletool", version)
-	for _, jar := range jars {
-		if pathIsFile(jar) {
-			return &bundletoolToolchain{Version: version, JarPath: jar}
-		}
+	jar, err := resolveMavenToolJar(resolver, mavenToolArtifact{
+		Group:        "com.android.tools.build",
+		Artifact:     "bundletool",
+		Version:      version,
+		JarBaseNames: []string{"bundletool-all-", "bundletool-"},
+	})
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	return &bundletoolToolchain{Version: version, JarPath: jar}, nil
 }
 
 func bundletoolFromSDK() *bundletoolToolchain {
@@ -105,83 +114,6 @@ func bundletoolVersionFromPath(p string) string {
 	return "unknown"
 }
 
-// defaultBundletoolVersion is the version downloaded when no local copy is
-// found. Override with the BUNDLETOOL_VERSION environment variable.
-const defaultBundletoolVersion = "1.17.2"
-
-// bundletoolDownloadURL returns the Maven Central URL for the bundletool
-// all-in-one JAR at the given version.
-func bundletoolDownloadURL(version string) string {
-	return fmt.Sprintf(
-		"https://repo1.maven.org/maven2/com/android/tools/build/bundletool/%s/bundletool-all-%s.jar",
-		version, version,
-	)
-}
-
-// bundletoolCacheJarPath returns the local cache path where the
-// auto-downloaded bundletool JAR is stored.
-func bundletoolCacheJarPath(version string) string {
-	return filepath.Join(sharedNativeCacheRoot(), "bundletool", fmt.Sprintf("bundletool-all-%s.jar", version))
-}
-
-// downloadBundletool downloads the bundletool JAR from Maven Central
-// into the grit cache and returns a toolchain pointing at it.
-func downloadBundletool() (*bundletoolToolchain, error) {
-	version := strings.TrimSpace(os.Getenv("BUNDLETOOL_VERSION"))
-	if version == "" {
-		version = defaultBundletoolVersion
-	}
-
-	jarPath := bundletoolCacheJarPath(version)
-
-	// Already downloaded.
-	if pathIsFile(jarPath) {
-		return &bundletoolToolchain{Version: version, JarPath: jarPath}, nil
-	}
-
-	url := bundletoolDownloadURL(version)
-	if err := downloadFile(url, jarPath); err != nil {
-		return nil, fmt.Errorf("download bundletool %s: %w", version, err)
-	}
-	return &bundletoolToolchain{Version: version, JarPath: jarPath}, nil
-}
-
-// downloadFile fetches url and writes the response body to dst. The
-// destination directory is created if it does not exist. A partial
-// download is cleaned up on error.
-func downloadFile(url, dst string) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-
-	resp, err := http.Get(url) //nolint:gosec // URL is constructed internally from a known base.
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d for %s", resp.StatusCode, url)
-	}
-
-	// Write to a temp file first so a partial download never looks valid.
-	tmp := dst + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, dst)
-}
-
 func (t *bundletoolToolchain) validate() error {
 	if t == nil {
 		return fmt.Errorf("bundletool toolchain is nil")
@@ -193,4 +125,49 @@ func (t *bundletoolToolchain) validate() error {
 		return fmt.Errorf("bundletool JAR not found at %s", t.JarPath)
 	}
 	return nil
+}
+
+type dependencyResolverForToolArtifact interface {
+	Resolve(*modulebuild.Dependencies) (*m2local.Resolved, error)
+}
+
+type mavenToolArtifact struct {
+	Group        string
+	Artifact     string
+	Version      string
+	JarBaseNames []string
+}
+
+func resolveMavenToolJar(resolver dependencyResolverForToolArtifact, artifact mavenToolArtifact) (string, error) {
+	if resolver == nil {
+		return "", fmt.Errorf("tool artifact resolver is nil")
+	}
+	coord := artifact.Group + ":" + artifact.Artifact + ":" + artifact.Version
+	resolved, err := resolver.Resolve(&modulebuild.Dependencies{
+		Main: []modulebuild.Ref{{Kind: "raw", Value: coord}},
+	})
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", coord, err)
+	}
+	if resolved == nil {
+		return "", fmt.Errorf("resolve %s: empty result", coord)
+	}
+	for _, path := range mergePaths(resolved.CompileJars, resolved.RuntimeJars) {
+		if toolArtifactJarMatches(path, artifact) && pathIsFile(path) {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("resolve %s: artifact jar not found in resolved classpath", coord)
+}
+
+func toolArtifactJarMatches(path string, artifact mavenToolArtifact) bool {
+	if !strings.HasSuffix(strings.ToLower(filepath.Base(path)), ".jar") {
+		return false
+	}
+	for _, prefix := range artifact.JarBaseNames {
+		if strings.HasPrefix(filepath.Base(path), prefix) {
+			return true
+		}
+	}
+	return strings.HasPrefix(filepath.Base(path), artifact.Artifact+"-")
 }
