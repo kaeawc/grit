@@ -177,7 +177,9 @@ type ResolverOptions struct {
 	// caller must fall back explicitly. Reads default to whatever
 	// EnvUseTieredCache resolves to in the environment when nil options
 	// are passed.
-	UseTieredCache bool
+	UseTieredCache            bool
+	AllowMavenCentralFallback bool
+	Offline                   bool
 }
 
 // ErrTieredCacheUnavailable is returned by Resolver when UseTieredCache
@@ -223,6 +225,8 @@ func ResolverWith(prj *project.Project, tracker perf.Tracker, opts ResolverOptio
 		return nil, err
 	}
 	legacy := m2local.New(ResolverCacheRoot(), prj.RootDir, prj.Repositories, cat)
+	legacy.AllowRepositoryFallback = opts.AllowMavenCentralFallback || prj.AllowMavenCentralFallback
+	legacy.Offline = opts.Offline || prj.Offline
 	legacy.SetTracker(tracker)
 	return &wiredResolver{
 		legacy:      legacy,
@@ -262,9 +266,12 @@ func CacheTopology(prj *project.Project) (m2local.CacheTopology, error) {
 
 func emptyCatalog() *catalog.Catalog {
 	return &catalog.Catalog{
-		Versions:  map[string]string{},
-		Libraries: map[string]catalog.Library{},
-		Bundles:   map[string][]string{},
+		Versions:     map[string]string{},
+		RichVersions: map[string]catalog.RichVersion{},
+		Libraries:    map[string]catalog.Library{},
+		Bundles:      map[string][]string{},
+		Plugins:      map[string]catalog.Plugin{},
+		Provenance:   map[string]catalog.Provenance{},
 	}
 }
 

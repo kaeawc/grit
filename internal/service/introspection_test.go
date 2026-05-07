@@ -1667,7 +1667,7 @@ func TestResolverReportReadsCachedM2LocalProduct(t *testing.T) {
 	if result.Summary.CompileJarCount != 1 || result.Summary.ConflictCount != 1 || result.Summary.PinCount != 1 {
 		t.Fatalf("unexpected resolver summary: %#v", result.Summary)
 	}
-	if result.Inputs.CacheStatus != "hit" || result.Inputs.CacheKey == "" || result.Inputs.CacheVersion != "16" {
+	if result.Inputs.CacheStatus != "hit" || result.Inputs.CacheKey == "" || result.Inputs.CacheVersion != "17" {
 		t.Fatalf("unexpected resolver inputs: %#v", result.Inputs)
 	}
 	if len(result.Report.Selections) != 1 || result.Report.Selections[0].Chosen != "releaseRuntimeElements" {
@@ -1723,8 +1723,11 @@ func TestCacheTopologyExposesResolverRootsAndLayers(t *testing.T) {
 
 func loadEmptyResolverCatalog() *catalog.Catalog {
 	return &catalog.Catalog{
-		Versions:  map[string]string{},
-		Libraries: map[string]catalog.Library{},
-		Bundles:   map[string][]string{},
+		Versions:     map[string]string{},
+		RichVersions: map[string]catalog.RichVersion{},
+		Libraries:    map[string]catalog.Library{},
+		Bundles:      map[string][]string{},
+		Plugins:      map[string]catalog.Plugin{},
+		Provenance:   map[string]catalog.Provenance{},
 	}
 }

@@ -15,14 +15,17 @@ import (
 	"github.com/kaeawc/grit/internal/project"
 )
 
-const resolvedCacheVersion = "16"
+const resolvedCacheVersion = "17"
 
 type resolvedCacheKeyData struct {
-	CacheVersion string                    `json:"cacheVersion"`
-	Topology     CacheTopology             `json:"topology"`
-	Repositories []project.Repository      `json:"repositories"`
-	Catalog      *catalog.Catalog          `json:"catalog"`
-	Deps         *modulebuild.Dependencies `json:"deps"`
+	CacheVersion               string                    `json:"cacheVersion"`
+	Topology                   CacheTopology             `json:"topology"`
+	Repositories               []project.Repository      `json:"repositories"`
+	AllowRepositoryFallback    bool                      `json:"allowRepositoryFallback"`
+	AllowCachedVersionFallback bool                      `json:"allowCachedVersionFallback"`
+	Offline                    bool                      `json:"offline"`
+	Catalog                    *catalog.Catalog          `json:"catalog"`
+	Deps                       *modulebuild.Dependencies `json:"deps"`
 }
 
 func (r *Resolver) Resolve(deps *modulebuild.Dependencies) (*Resolved, error) {
@@ -503,11 +506,14 @@ func boolString(v bool) string {
 
 func (r *Resolver) resolvedCacheKeyData(deps *modulebuild.Dependencies) resolvedCacheKeyData {
 	return resolvedCacheKeyData{
-		CacheVersion: resolvedCacheVersion,
-		Topology:     r.Topology(),
-		Repositories: r.Repositories,
-		Catalog:      r.Catalog,
-		Deps:         deps,
+		CacheVersion:               resolvedCacheVersion,
+		Topology:                   r.Topology(),
+		Repositories:               r.Repositories,
+		AllowRepositoryFallback:    r.AllowRepositoryFallback,
+		AllowCachedVersionFallback: r.AllowCachedVersionFallback,
+		Offline:                    r.Offline,
+		Catalog:                    r.Catalog,
+		Deps:                       deps,
 	}
 }
 

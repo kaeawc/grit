@@ -297,6 +297,7 @@ type Dependencies struct {
 	AndroidTestRuntimeOnly []Ref
 	CoreLibraryDesugaring  []Ref
 	Scoped                 map[string][]Ref
+	Requests               []DependencyRequest
 }
 
 type Ref struct {
@@ -340,6 +341,7 @@ func parseDependencyBlockInto(deps *Dependencies, block string) error {
 			deps.Scoped = map[string][]Ref{}
 		}
 		deps.Scoped[scope] = append(deps.Scoped[scope], ref)
+		deps.Requests = append(deps.Requests, requestFromRef(scope, ref, match[2]))
 		addRefByScope(deps, scope, ref)
 	}
 	return nil
@@ -374,27 +376,58 @@ func conventionPluginDependencyFiles(rootDir string, pluginIDs []string) []strin
 	if len(pluginSet) == 0 {
 		return nil
 	}
-	root := filepath.Join(rootDir, "build-logic")
 	var out []string
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d == nil || d.IsDir() {
+	for _, root := range conventionBuildRoots(rootDir) {
+		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d == nil || d.IsDir() {
+				return nil
+			}
+			name := d.Name()
+			if !strings.HasSuffix(name, ".gradle.kts") && !strings.HasSuffix(name, ".gradle") {
+				return nil
+			}
+			if !strings.Contains(filepath.ToSlash(path), "/src/main/") {
+				return nil
+			}
+			id := strings.TrimSuffix(name, ".gradle.kts")
+			id = strings.TrimSuffix(id, ".gradle")
+			if _, ok := pluginSet[id]; ok {
+				out = append(out, path)
+			}
 			return nil
-		}
-		name := d.Name()
-		if !strings.HasSuffix(name, ".gradle.kts") && !strings.HasSuffix(name, ".gradle") {
-			return nil
-		}
-		if !strings.Contains(filepath.ToSlash(path), "/src/main/") {
-			return nil
-		}
-		id := strings.TrimSuffix(name, ".gradle.kts")
-		id = strings.TrimSuffix(id, ".gradle")
-		if _, ok := pluginSet[id]; ok {
-			out = append(out, path)
-		}
-		return nil
-	})
+		})
+	}
 	return out
+}
+
+func conventionBuildRoots(rootDir string) []string {
+	if strings.TrimSpace(rootDir) == "" {
+		return nil
+	}
+	seen := map[string]bool{}
+	var roots []string
+	add := func(path string) {
+		if path == "" || seen[path] {
+			return
+		}
+		seen[path] = true
+		roots = append(roots, path)
+	}
+	add(filepath.Join(rootDir, "build-logic"))
+	for _, settings := range []string{filepath.Join(rootDir, "settings.gradle.kts"), filepath.Join(rootDir, "settings.gradle")} {
+		data, err := os.ReadFile(settings) // #nosec
+		if err != nil {
+			continue
+		}
+		re := regexp.MustCompile(`includeBuild\s*\(\s*"([^"]+)"\s*\)`)
+		for _, match := range re.FindAllStringSubmatch(string(data), -1) {
+			if len(match) >= 2 {
+				add(filepath.Clean(filepath.Join(rootDir, match[1])))
+			}
+		}
+		break
+	}
+	return roots
 }
 
 func mergeDependencies(dst, src *Dependencies) {
@@ -412,6 +445,7 @@ func mergeDependencies(dst, src *Dependencies) {
 	dst.AndroidTestCompileOnly = append(dst.AndroidTestCompileOnly, src.AndroidTestCompileOnly...)
 	dst.AndroidTestRuntimeOnly = append(dst.AndroidTestRuntimeOnly, src.AndroidTestRuntimeOnly...)
 	dst.CoreLibraryDesugaring = append(dst.CoreLibraryDesugaring, src.CoreLibraryDesugaring...)
+	dst.Requests = append(dst.Requests, src.Requests...)
 	if len(src.Scoped) > 0 && dst.Scoped == nil {
 		dst.Scoped = map[string][]Ref{}
 	}
@@ -534,6 +568,12 @@ func ParseRef(expr string) Ref {
 func parseRef(expr string) Ref {
 	expr = strings.TrimSpace(expr)
 	expr = stripTrailingClosure(expr)
+	if strings.HasPrefix(expr, "enforcedPlatform(") && strings.HasSuffix(expr, ")") {
+		inner := strings.TrimSuffix(strings.TrimPrefix(expr, "enforcedPlatform("), ")")
+		ref := parseRef(inner)
+		ref.Kind = "enforced-platform-" + ref.Kind
+		return ref
+	}
 	if strings.HasPrefix(expr, "platform(") && strings.HasSuffix(expr, ")") {
 		inner := strings.TrimSuffix(strings.TrimPrefix(expr, "platform("), ")")
 		ref := parseRef(inner)
@@ -566,6 +606,34 @@ func parseRef(expr string) Ref {
 	default:
 		return Ref{Kind: "raw", Value: expr}
 	}
+}
+
+func requestFromRef(scope string, ref Ref, raw string) DependencyRequest {
+	req := DependencyRequest{
+		Scope:         scope,
+		Kind:          ref.Kind,
+		Value:         ref.Value,
+		Raw:           strings.TrimSpace(raw),
+		Configuration: scope,
+	}
+	kind := ref.Kind
+	if strings.HasPrefix(kind, "enforced-platform-") {
+		req.Enforced = true
+		req.Platform = true
+		kind = strings.TrimPrefix(kind, "enforced-platform-")
+	} else if strings.HasPrefix(kind, "platform-") {
+		req.Platform = true
+		kind = strings.TrimPrefix(kind, "platform-")
+	}
+	switch kind {
+	case "project":
+		req.Project = true
+	case "library":
+		req.CatalogAlias = ref.Value
+	case "bundle":
+		req.BundleAlias = ref.Value
+	}
+	return req
 }
 
 func stripTrailingClosure(expr string) string {

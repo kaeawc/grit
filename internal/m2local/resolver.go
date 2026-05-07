@@ -14,16 +14,19 @@ import (
 const maxAvailableAtDepth = 5
 
 type Resolver struct {
-	CacheRoot    string
-	WorkRoot     string
-	Repositories []project.Repository
-	Catalog      *catalog.Catalog
-	Tracker      perf.Tracker
-	mu           sync.Mutex
-	inflight     map[string]*resolveCall
-	fetched      map[string]ResolutionMetadataSource
-	report       ResolutionReport
-	replay       ResolutionReplay
+	CacheRoot                  string
+	WorkRoot                   string
+	Repositories               []project.Repository
+	Catalog                    *catalog.Catalog
+	AllowRepositoryFallback    bool
+	AllowCachedVersionFallback bool
+	Offline                    bool
+	Tracker                    perf.Tracker
+	mu                         sync.Mutex
+	inflight                   map[string]*resolveCall
+	fetched                    map[string]ResolutionMetadataSource
+	report                     ResolutionReport
+	replay                     ResolutionReplay
 }
 
 type resolveCall struct {

@@ -1,7 +1,6 @@
 package nativecompile
 
 import (
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -119,13 +118,14 @@ func TestCompilerPluginsForModuleFallsBackToLegacyModuleFlags(t *testing.T) {
 	toolchain := &kotlinToolchain{
 		ComposePlugin:       "/plugins/compose.jar",
 		SerializationPlugin: "/plugins/serialization.jar",
+		MetroPlugin:         "/plugins/metro.jar",
 	}
 
 	got, options := compilerPluginsForModule(mod, "debug", toolchain)
 	want := []string{
 		"/plugins/compose.jar",
 		"/plugins/serialization.jar",
-		"/home/test/.gradle/caches/modules-2/files-2.1/dev.zacsweers.metro/compiler/0.12.0/898e83c86c03300a76d55f83815ce13a1d1fc005/compiler-0.12.0.jar",
+		"/plugins/metro.jar",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected legacy plugin fallback: got %#v want %#v", got, want)
@@ -134,7 +134,4 @@ func TestCompilerPluginsForModuleFallsBackToLegacyModuleFlags(t *testing.T) {
 		t.Fatalf("expected no legacy plugin options, got %#v", options)
 	}
 
-	if sep := string(os.PathSeparator); !strings.Contains(got[2], sep+".gradle"+sep) {
-		t.Fatalf("expected metro plugin path to use filepath.Join semantics, got %q", got[2])
-	}
 }

@@ -72,3 +72,25 @@ func TestConventionPluginMapExpandsTransitively(t *testing.T) {
 		}
 	}
 }
+
+func TestConventionPluginMapScansIncludedBuilds(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "settings.gradle.kts"), []byte(`includeBuild("gradle/build-logic")`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conv := filepath.Join(root, "gradle", "build-logic", "plugins", "src", "main", "kotlin")
+	if err := os.MkdirAll(conv, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `plugins {
+  id("com.android.library")
+}`
+	if err := os.WriteFile(filepath.Join(conv, "included-library.gradle.kts"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conventions := conventionPluginMap(root)
+	got := conventions["included-library"]
+	if len(got) != 1 || got[0] != "com.android.library" {
+		t.Fatalf("included build convention plugins not detected: %#v", conventions)
+	}
+}

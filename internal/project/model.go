@@ -9,20 +9,24 @@ import (
 )
 
 type Project struct {
-	Name               string
-	RootDir            string
-	SettingsFile       string
-	RootBuildFile      string
-	ModuleDirs         map[string]string
-	GradleProperties   map[string]string
-	VersionCatalog     string
-	VersionCatalogs    []string
-	VersionCatalogData map[string]string
-	PluginAliases      map[string]string
-	Repositories       []Repository
-	RootPlugins        []string
-	Modules            []Module
-	RecommendedBackend string
+	Name                      string
+	RootDir                   string
+	SettingsFile              string
+	RootBuildFile             string
+	ModuleDirs                map[string]string
+	GradleProperties          map[string]string
+	VersionCatalog            string
+	VersionCatalogs           []string
+	VersionCatalogData        map[string]string
+	PluginAliases             map[string]string
+	Repositories              []Repository
+	RootPlugins               []string
+	DiscoveryMode             string
+	AllowMavenCentralFallback bool
+	Offline                   bool
+	RefreshDiscovery          bool
+	Modules                   []Module
+	RecommendedBackend        string
 }
 
 type Repository struct {
@@ -79,6 +83,55 @@ type Module struct {
 	ProductFlavors            map[string]ProductFlavor
 	BuildTypes                map[string]BuildType
 	EnabledVariants           []string
+	PluginEffects             []PluginEffect
+	GeneratedSources          []GeneratedSourceSet
+	ObservedPlugins           []ObservedPlugin
+}
+
+// GeneratedSourceSet is Grit's normalized view of generated source roots.
+// Providers may be statically modeled, contributed by plugin descriptors, or
+// read from a cached Gradle discovery snapshot.
+type GeneratedSourceSet struct {
+	OwnerPlugin    string   `json:"ownerPlugin,omitempty"`
+	Provider       string   `json:"provider,omitempty"`
+	Language       string   `json:"language,omitempty"`
+	Scope          string   `json:"scope,omitempty"`
+	Variant        string   `json:"variant,omitempty"`
+	Dirs           []string `json:"dirs,omitempty"`
+	Inputs         []string `json:"inputs,omitempty"`
+	FreshnessKeys  []string `json:"freshnessKeys,omitempty"`
+	ProducedByGrit bool     `json:"producedByGrit,omitempty"`
+	Discovered     bool     `json:"discovered,omitempty"`
+	Required       bool     `json:"required,omitempty"`
+}
+
+// PluginDescriptor describes the build effects Grit understands for a Gradle
+// plugin. Convention plugins compose descriptors instead of only expanding to
+// raw plugin IDs.
+type PluginDescriptor struct {
+	ID      string
+	Source  string
+	Known   bool
+	Effects PluginEffect
+}
+
+type PluginEffect struct {
+	PluginID             string
+	AppliedPluginIDs     []string
+	GeneratedSourceSets  []GeneratedSourceSet
+	DependencyScopes     map[string][]string
+	CompilerPluginIDs    []string
+	Repositories         []Repository
+	AndroidBuildFeatures BuildFeatures
+	ModuleTypes          []string
+	VariantContributions []string
+}
+
+type ObservedPlugin struct {
+	ID         string `json:"id"`
+	Known      bool   `json:"known"`
+	Source     string `json:"source,omitempty"`
+	Limitation string `json:"limitation,omitempty"`
 }
 
 // WireConfig captures the resolved settings from a `wire { }` block on a

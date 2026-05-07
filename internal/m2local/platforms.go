@@ -28,29 +28,14 @@ func (r *Resolver) loadBOM(coord Coordinate) (map[string]string, error) {
 }
 
 func (r *Resolver) seedPlatforms() map[string]map[string]string {
-	platforms := map[string]map[string]string{}
-	for _, lib := range r.Catalog.Libraries {
-		version := lib.Version
-		if version == "" && lib.VersionRef != "" {
-			version = r.Catalog.Versions[lib.VersionRef]
-		}
-		if version == "" || !strings.Contains(lib.Name, "bom") {
-			continue
-		}
-		managed, err := r.loadBOM(Coordinate{Group: lib.Group, Module: lib.Name, Version: version})
-		if err != nil {
-			continue
-		}
-		platforms[lib.Group+":"+lib.Name] = managed
-	}
-	return platforms
+	return map[string]map[string]string{}
 }
 
 func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[string]string) ([]Coordinate, error) {
 	var out []Coordinate
 	for _, ref := range refs {
 		switch ref.Kind {
-		case "platform-raw":
+		case "platform-raw", "enforced-platform-raw":
 			coord, err := parseRawCoordinate(ref.Value)
 			if err != nil {
 				return nil, err
@@ -60,7 +45,7 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 				continue
 			}
 			platforms[coord.Group+":"+coord.Module] = managed
-		case "platform-library":
+		case "platform-library", "enforced-platform-library":
 			lib, err := r.Catalog.ResolveLibrary(ref.Value)
 			if err != nil {
 				return nil, err
@@ -74,6 +59,13 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 			lib, err := r.Catalog.ResolveLibrary(ref.Value)
 			if err != nil {
 				return nil, err
+			}
+			if lib.Platform {
+				managed, err := r.loadBOM(Coordinate{Group: lib.Group, Module: lib.Name, Version: lib.Version})
+				if err == nil {
+					platforms[lib.Group+":"+lib.Name] = managed
+				}
+				continue
 			}
 			lib = normalizeResolvedLibrary(lib)
 			version := lib.Version
@@ -207,8 +199,10 @@ func (r *Resolver) lookupVersion(platforms map[string]map[string]string, group, 
 			}
 		}
 	}
-	if version := r.findCachedVersion(group, module); version != "" {
-		return version
+	if r != nil && r.AllowCachedVersionFallback {
+		if version := r.findCachedVersion(group, module); version != "" {
+			return version
+		}
 	}
 	return ""
 }

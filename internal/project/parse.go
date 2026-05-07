@@ -39,7 +39,7 @@ func Load(root string) (*Project, error) {
 		RootBuildFile:      rootBuildFile,
 		ModuleDirs:         settingsModel.ModuleDirs,
 		GradleProperties:   gradleProperties,
-		VersionCatalogs:    collectVersionCatalogs(filepath.Join(abs, "gradle")),
+		VersionCatalogs:    mergeStrings(collectVersionCatalogs(filepath.Join(abs, "gradle")), collectDeclaredVersionCatalogs(abs, string(settingsData))),
 		Repositories:       repositories,
 		RootPlugins:        collectPluginIDs(string(rootBuildData)),
 		RecommendedBackend: "native",
@@ -82,6 +82,9 @@ func Load(root string) (*Project, error) {
 	}
 	prj.Repositories = annotateRepositories(prj.Repositories, "", 0)
 	prj.Repositories = dedupeRepositories(prj.Repositories)
+	if snapshot, snapshotErr := LoadDiscoverySnapshot(prj); snapshotErr == nil {
+		ApplyDiscoverySnapshot(prj, snapshot)
+	}
 
 	sort.Slice(prj.Modules, func(i, j int) bool { return prj.Modules[i].Path < prj.Modules[j].Path })
 	if prj.Name == "" {

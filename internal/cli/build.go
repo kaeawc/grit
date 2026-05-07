@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"time"
 
@@ -21,12 +22,31 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	modulePath := fs.String("module", ":app", "Android module path")
 	variant := fs.String("variant", "", "Build variant name")
 	deviceSerial := fs.String("device", "", "ADB device serial")
+	discoveryMode := fs.String("discovery", "hybrid", "Generated-source discovery mode: static, hybrid, or snapshot")
+	allowMavenCentralFallback := fs.Bool("allow-maven-central-fallback", false, "Allow implicit Google/Maven Central fallback when no declared dependency repository matches")
+	offline := fs.Bool("offline", false, "Fail instead of fetching dependency metadata or artifacts from remote repositories")
+	refreshDiscovery := fs.Bool("refresh-discovery", false, "Refresh cached Gradle discovery snapshots before compiling")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
+	}
+	if *discoveryMode != "static" && *discoveryMode != "hybrid" && *discoveryMode != "snapshot" {
+		return cmd.fail(2, fmt.Errorf("invalid --discovery %q (want static, hybrid, or snapshot)", *discoveryMode))
 	}
 
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	prj.DiscoveryMode = *discoveryMode
+	prj.AllowMavenCentralFallback = *allowMavenCentralFallback
+	prj.Offline = *offline
+	prj.RefreshDiscovery = *refreshDiscovery
+	if err := project.RefreshDiscoverySnapshot(ctx, prj); err != nil {
+		return cmd.fail(1, err)
+	}
+	if snapshot, err := project.LoadDiscoverySnapshot(prj); err == nil {
+		project.ApplyDiscoverySnapshot(prj, snapshot)
+	} else {
 		return cmd.fail(1, err)
 	}
 	mod, err := cmd.requireModule(prj, *modulePath)
