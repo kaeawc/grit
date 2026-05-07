@@ -248,7 +248,7 @@ func runClasspathSnapshot(ctx context.Context, args []string, stdout, stderr io.
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(classpathSnapshotResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runClasspathSnapshotByID(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -297,7 +297,7 @@ func runClasspathEntryLookup(ctx context.Context, args []string, stdout, stderr 
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(classpathEntryLookupResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runClasspathPathConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -328,7 +328,7 @@ func runArtifactOnClasspath(ctx context.Context, args []string, stdout, stderr i
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(artifactOnClasspathResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runArtifactClasspathConsumers(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -423,7 +423,7 @@ func runActionsForModule(ctx context.Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionsForModuleResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -450,7 +450,7 @@ func runActionsForVariant(ctx context.Context, args []string, stdout, stderr io.
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionsForVariantResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runVariantMaterialization(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -498,7 +498,7 @@ func runVariantSourceSetModel(ctx context.Context, args []string, stdout, stderr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(variantSourceSetModelResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runDependencyBindingsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -519,7 +519,7 @@ func runDependencyBindingsForVariant(ctx context.Context, args []string, stdout,
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(dependencyBindingsForVariantResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runDependencyBindingsForModule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -539,7 +539,7 @@ func runDependencyBindingsForModule(ctx context.Context, args []string, stdout, 
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(dependencyBindingsForModuleResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runDependencyRealizationsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -560,7 +560,7 @@ func runDependencyRealizationsForVariant(ctx context.Context, args []string, std
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(dependencyRealizationsForVariantResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runDependencyRealizationsForModule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -580,7 +580,7 @@ func runDependencyRealizationsForModule(ctx context.Context, args []string, stdo
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(dependencyRealizationsForModuleResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runPlannedActionPolicy(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -613,7 +613,7 @@ func runPlannedActionPolicy(ctx context.Context, args []string, stdout, stderr i
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(plannedActionPolicyResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runPlannedActionPolicies(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -642,7 +642,7 @@ func runPlannedActionPolicies(ctx context.Context, args []string, stdout, stderr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(plannedActionPoliciesResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runMaterializationProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -669,7 +669,7 @@ func runVariantCompatibility(ctx context.Context, args []string, stdout, stderr 
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(variantCompatibilityResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runArtifactsForVariant(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -718,7 +718,7 @@ func runArtifactsForModule(ctx context.Context, args []string, stdout, stderr io
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(artifactsForModuleResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runModuleManifest(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -977,7 +977,7 @@ func runCacheTopology(_ context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(cacheTopologyResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runExplainPlan(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1006,7 +1006,7 @@ func runExplainPlan(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(explainPlanResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runVariantProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1030,7 +1030,7 @@ func runVariantProvenance(ctx context.Context, args []string, stdout, stderr io.
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(variantProvenanceResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1053,7 +1053,7 @@ func runActionProvenance(ctx context.Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionProvenanceResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runCleanupPlan(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1072,7 +1072,7 @@ func runCleanupPlan(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(cleanupPlanResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runRunSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1099,7 +1099,7 @@ func runRunSummary(ctx context.Context, args []string, stdout, stderr io.Writer,
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(runSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runRunSummaries(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1119,7 +1119,7 @@ func runRunSummaries(ctx context.Context, args []string, stdout, stderr io.Write
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(runSummariesResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runRunGraphSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1146,7 +1146,7 @@ func runRunGraphSummary(ctx context.Context, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(runGraphSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runCriticalPathSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1173,7 +1173,7 @@ func runCriticalPathSummary(ctx context.Context, args []string, stdout, stderr i
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(criticalPathSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runSchedulerSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1200,7 +1200,7 @@ func runSchedulerSummary(ctx context.Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(schedulerSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runCacheSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1227,7 +1227,7 @@ func runCacheSummary(ctx context.Context, args []string, stdout, stderr io.Write
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(cacheSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runToolSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1254,7 +1254,7 @@ func runToolSummary(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(toolSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runDiagnostics(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1278,7 +1278,7 @@ func runDiagnostics(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(diagnosticsResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runDiagnosticSummary(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1302,7 +1302,7 @@ func runDiagnosticSummary(ctx context.Context, args []string, stdout, stderr io.
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(diagnosticSummaryResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runPlannedSchedule(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1329,7 +1329,7 @@ func runPlannedSchedule(ctx context.Context, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(plannedScheduleResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runScheduleDrift(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1356,7 +1356,7 @@ func runScheduleDrift(ctx context.Context, args []string, stdout, stderr io.Writ
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(scheduleDriftResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionExecution(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1387,7 +1387,7 @@ func runActionExecution(ctx context.Context, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionExecutionResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionExplanation(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1418,7 +1418,7 @@ func runActionExplanation(ctx context.Context, args []string, stdout, stderr io.
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionExplanationResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionExecutions(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1445,7 +1445,7 @@ func runActionExecutions(ctx context.Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionExecutionsResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionExplanations(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1472,7 +1472,7 @@ func runActionExplanations(ctx context.Context, args []string, stdout, stderr io
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionExplanationsResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runCacheProbes(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1509,7 +1509,7 @@ func runCacheProbes(ctx context.Context, args []string, stdout, stderr io.Writer
 		}
 		result.Probes = filtered
 	}
-	return cmd.success(resultJSON(cacheProbesResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runCacheProbeRecords(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1553,7 +1553,7 @@ func runCacheProbeRecords(ctx context.Context, args []string, stdout, stderr io.
 		}
 		result.Records = filtered
 	}
-	return cmd.success(resultJSON(cacheProbeRecordsResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runReuseDecision(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1584,7 +1584,7 @@ func runReuseDecision(ctx context.Context, args []string, stdout, stderr io.Writ
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(reuseDecisionResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runReuseDecisions(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1611,7 +1611,7 @@ func runReuseDecisions(ctx context.Context, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(reuseDecisionsResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runMaterializations(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1638,7 +1638,7 @@ func runMaterializations(ctx context.Context, args []string, stdout, stderr io.W
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(materializationsResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runActionTrace(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1665,7 +1665,7 @@ func runActionTrace(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(actionTraceResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runPerfTiming(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
@@ -1689,7 +1689,7 @@ func runPerfTiming(ctx context.Context, args []string, stdout, stderr io.Writer,
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	return cmd.success(resultJSON(perfTimingResult(result)))
+	return cmd.success(resultJSON(result))
 }
 
 func runClasspathProvenance(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
