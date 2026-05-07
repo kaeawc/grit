@@ -49,7 +49,7 @@ func (c *Compiler) runWireCodegen(ctx context.Context, prj *project.Project, mod
 	}
 	// Always surface the runtime classpath when the plugin is applied — the
 	// module may consume wire types from another generator without producing
-	// any of its own (Signal's core-util-jvm is the canonical example).
+	// any of its own (a JVM utility module is the canonical example).
 	if wireRuntimeVersion != "" {
 		out.RuntimeClasspath = wireRuntimeClasspath(wireRuntimeVersion)
 	}

@@ -306,7 +306,7 @@ include(":feature")
 	testutil.WriteFile(t, root, "build.gradle.kts", `plugins {}`)
 	testutil.WriteFile(t, root, "feature/build.gradle", `
 plugins {
-  id 'signal-library'
+  id 'convention-library'
 }
 
 android {
@@ -536,11 +536,11 @@ func TestDetectModuleTypeSupportsDirectPluginIDs(t *testing.T) {
 		want string
 	}{
 		{body: `plugins { id("com.android.application") }`, want: "android-application"},
-		{body: `plugins { id("signal-sample-app") }`, want: "android-application"},
-		{body: `plugins { id 'signal-sample-app' }`, want: "android-application"},
+		{body: `plugins { id("convention-sample-app") }`, want: "android-application"},
+		{body: `plugins { id 'convention-sample-app' }`, want: "android-application"},
 		{body: `plugins { id("com.android.library") }`, want: "android-library"},
-		{body: `plugins { id("signal-library") }`, want: "android-library"},
-		{body: `plugins { id 'signal-library' }`, want: "android-library"},
+		{body: `plugins { id("convention-library") }`, want: "android-library"},
+		{body: `plugins { id 'convention-library' }`, want: "android-library"},
 		{body: `plugins { id("org.jetbrains.kotlin.jvm") }`, want: "jvm-library"},
 	}
 	for _, tc := range tests {

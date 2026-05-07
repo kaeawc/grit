@@ -98,13 +98,13 @@ func detectModuleType(body string) string {
 	case strings.Contains(body, "libs.plugins.android.application"),
 		strings.Contains(body, `id("com.android.application")`),
 		strings.Contains(body, `id 'com.android.application'`),
-		strings.Contains(body, `id("signal-sample-app")`),
-		strings.Contains(body, `id 'signal-sample-app'`),
+		strings.Contains(body, `id("convention-sample-app")`),
+		strings.Contains(body, `id 'convention-sample-app'`),
 		strings.Contains(body, `id("com.android.test")`):
 		return "android-application"
 	case strings.Contains(body, "libs.plugins.android.library"),
-		strings.Contains(body, `id("signal-library")`),
-		strings.Contains(body, `id 'signal-library'`),
+		strings.Contains(body, `id("convention-library")`),
+		strings.Contains(body, `id 'convention-library'`),
 		strings.Contains(body, `id("com.android.library")`):
 		return "android-library"
 	case strings.Contains(body, `kotlin("jvm")`),

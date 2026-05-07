@@ -102,7 +102,7 @@ func TestParseDependenciesForModuleIncludesConventionPluginDependencies(t *testi
 	}
 	if err := os.WriteFile(buildFile, []byte(`
 plugins {
-  id("signal-library")
+  id("convention-library")
 }
 
 dependencies {
@@ -111,14 +111,14 @@ dependencies {
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "signal-library.gradle.kts"), []byte(`
+	if err := os.WriteFile(filepath.Join(pluginDir, "convention-library.gradle.kts"), []byte(`
 dependencies {
   implementation(libs.androidx.core.ktx)
 }
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	deps, err := ParseDependenciesForModule(buildFile, root, []string{"signal-library"})
+	deps, err := ParseDependenciesForModule(buildFile, root, []string{"convention-library"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ dependencies {
 }
 
 // TestParseDependenciesLetBinding verifies that platform(...).let { name -> ... }
-// expands to flat scope(platform(...)) lines (the Signal-Android core-ui pattern).
+// expands to flat scope(platform(...)) lines (the convention plugin core-ui pattern).
 func TestParseDependenciesLetBinding(t *testing.T) {
 	root := t.TempDir()
 	buildFile := filepath.Join(root, "build.gradle.kts")

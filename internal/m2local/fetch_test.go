@@ -261,7 +261,12 @@ func TestExpandRefsSupportsRawCoordinates(t *testing.T) {
 func TestExpandRefsSupportsComposeAccessors(t *testing.T) {
 	t.Parallel()
 
-	resolver := New(filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1"), t.TempDir(), nil, &catalog.Catalog{
+	cacheRoot := t.TempDir()
+	jvmSibling := filepath.Join(cacheRoot, "org.jetbrains.compose.components", "components-resources-jvm", "1.10.0")
+	if err := os.MkdirAll(jvmSibling, 0o755); err != nil {
+		t.Fatalf("seed jvm sibling: %v", err)
+	}
+	resolver := New(cacheRoot, t.TempDir(), nil, &catalog.Catalog{
 		Versions:  map[string]string{"compose-multiplatform": "1.10.0"},
 		Libraries: map[string]catalog.Library{},
 		Bundles:   map[string][]string{},
@@ -274,7 +279,7 @@ func TestExpandRefsSupportsComposeAccessors(t *testing.T) {
 		t.Fatalf("expected one coordinate, got %#v", coords)
 	}
 	got := coords[0]
-	if got.Group != "org.jetbrains.compose.components" || got.Module != "components-resources" || got.Version != "1.10.0" {
+	if got.Group != "org.jetbrains.compose.components" || got.Module != "components-resources-jvm" || got.Version != "1.10.0" {
 		t.Fatalf("unexpected compose coordinate %#v", got)
 	}
 }

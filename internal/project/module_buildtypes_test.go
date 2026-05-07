@@ -38,7 +38,7 @@ val selectableVariants = listOf(
 )
 
 android {
-  namespace = "org.signal"
+  namespace = "org.example"
   compileSdk = 35
   flavorDimensions += listOf("distribution", "environment")
 
@@ -139,7 +139,7 @@ android {
 		"websiteProdSpinner",
 	}
 	if !sameStrings(names, want) {
-		t.Fatalf("unexpected Signal-style variants: got %#v want %#v", names, want)
+		t.Fatalf("unexpected convention-style variants: got %#v want %#v", names, want)
 	}
 
 	resolved := mod.ResolveVariant("playProdSpinner")

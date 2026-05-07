@@ -23,7 +23,7 @@ func detectKSPApplied(body string) bool {
 }
 
 // kspDepRE matches `ksp(<expr>)` calls inside a dependencies block. We don't
-// require the line to live inside `dependencies { ... }` because Signal-style
+// require the line to live inside `dependencies { ... }` because convention-style
 // build scripts apply KSP at the top level of the dependencies block and the
 // regex anchors to lines starting with `ksp(`.
 var kspDepRE = regexp.MustCompile(`(?m)^\s*ksp\(([^()]*(?:\([^()]*\))?[^()]*)\)\s*$`)

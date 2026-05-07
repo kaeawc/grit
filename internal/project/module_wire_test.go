@@ -67,7 +67,7 @@ wire {
   protoLibrary = true
   kotlin { javaInterop = true }
   sourcePath { srcDir("src/main/protowire") }
-  custom { schemaHandlerFactoryClass = "org.signal.wire.Factory" }
+  custom { schemaHandlerFactoryClass = "org.example.wire.Factory" }
 }
 `
 	cfg := parseWireConfig(body, "/tmp/mod")
