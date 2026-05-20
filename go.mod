@@ -1,6 +1,6 @@
 module github.com/kaeawc/grit
 
-go 1.26.2
+go 1.26.3
 
 require github.com/tree-sitter/go-tree-sitter v0.25.0
 
