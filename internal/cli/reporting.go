@@ -114,7 +114,7 @@ func runDependencyInsight(_ context.Context, args []string, stdout, stderr io.Wr
 	fs := flag.NewFlagSet("dependencyInsight", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	query := fs.String("dependency", "", "Substring to match in dependency refs")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -123,7 +123,7 @@ func runDependencyInsight(_ context.Context, args []string, stdout, stderr io.Wr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -177,13 +177,16 @@ func runClasspathSnapshot(ctx context.Context, args []string, stdout, stderr io.
 	fs := flag.NewFlagSet("classpathSnapshot", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.ClasspathSnapshot(ctx, prj, *modulePath, *variant)
@@ -222,7 +225,7 @@ func runClasspathEntryLookup(ctx context.Context, args []string, stdout, stderr 
 	fs := flag.NewFlagSet("classpathEntryLookup", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	path := fs.String("path", "", "Path to look up on the classpath")
 	if err := fs.Parse(args); err != nil {
@@ -233,6 +236,9 @@ func runClasspathEntryLookup(ctx context.Context, args []string, stdout, stderr 
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.ClasspathEntryLookup(ctx, prj, *modulePath, *variant, *path)
@@ -253,7 +259,7 @@ func runArtifactOnClasspath(ctx context.Context, args []string, stdout, stderr i
 	fs := flag.NewFlagSet("artifactOnClasspath", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	artifactID := fs.String("artifact", "", "Artifact ID")
 	if err := fs.Parse(args); err != nil {
@@ -264,6 +270,9 @@ func runArtifactOnClasspath(ctx context.Context, args []string, stdout, stderr i
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.ArtifactOnClasspath(ctx, prj, *modulePath, *variant, *artifactID)
@@ -400,13 +409,16 @@ func runVariantMaterialization(ctx context.Context, args []string, stdout, stder
 	fs := flag.NewFlagSet("variantMaterialization", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.VariantMaterialization(ctx, prj, *modulePath, *variant)
@@ -452,7 +464,7 @@ func runPlannedActionPolicy(ctx context.Context, args []string, stdout, stderr i
 	fs := flag.NewFlagSet("plannedActionPolicy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	command := fs.String("command", "", "Build command")
 	variant := fs.String("variant", "", "Requested variant name")
 	actionID := fs.String("action", "", "Action ID")
@@ -469,7 +481,7 @@ func runPlannedActionPolicy(ctx context.Context, args []string, stdout, stderr i
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -485,7 +497,7 @@ func runPlannedActionPolicies(ctx context.Context, args []string, stdout, stderr
 	fs := flag.NewFlagSet("plannedActionPolicies", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	command := fs.String("command", "", "Build command")
 	variant := fs.String("variant", "", "Requested variant name")
 	if err := fs.Parse(args); err != nil {
@@ -498,7 +510,7 @@ func runPlannedActionPolicies(ctx context.Context, args []string, stdout, stderr
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -525,13 +537,16 @@ func runArtifactsForVariant(ctx context.Context, args []string, stdout, stderr i
 	fs := flag.NewFlagSet("artifactsForVariant", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.ArtifactsForVariant(ctx, prj, *modulePath, *variant)
@@ -559,12 +574,15 @@ func runModuleManifest(ctx context.Context, args []string, stdout, stderr io.Wri
 	fs := flag.NewFlagSet("moduleManifest", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.ModuleManifest(ctx, prj, *modulePath)
@@ -584,13 +602,16 @@ func runVariantManifest(ctx context.Context, args []string, stdout, stderr io.Wr
 	fs := flag.NewFlagSet("variantManifest", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.VariantManifest(ctx, prj, *modulePath, *variant)
@@ -701,13 +722,16 @@ func runVariantImpact(ctx context.Context, args []string, stdout, stderr io.Writ
 	fs := flag.NewFlagSet("variantImpact", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.VariantImpact(ctx, prj, *modulePath, *variant)
@@ -728,12 +752,15 @@ func runModuleImpact(ctx context.Context, args []string, stdout, stderr io.Write
 	fs := flag.NewFlagSet("moduleImpact", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.ModuleImpact(ctx, prj, *modulePath)
@@ -753,7 +780,7 @@ func runResolverReport(_ context.Context, args []string, stdout, stderr io.Write
 	fs := flag.NewFlagSet("resolverReport", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -761,7 +788,7 @@ func runResolverReport(_ context.Context, args []string, stdout, stderr io.Write
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -818,7 +845,7 @@ func runExplainPlan(ctx context.Context, args []string, stdout, stderr io.Writer
 	fs := flag.NewFlagSet("explainPlan", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	command := fs.String("command", "", "Build command")
 	variant := fs.String("variant", "", "Requested variant name")
 	if err := fs.Parse(args); err != nil {
@@ -831,7 +858,7 @@ func runExplainPlan(ctx context.Context, args []string, stdout, stderr io.Writer
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -847,7 +874,7 @@ func runVariantProvenance(ctx context.Context, args []string, stdout, stderr io.
 	fs := flag.NewFlagSet("variantProvenance", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -857,6 +884,9 @@ func runVariantProvenance(ctx context.Context, args []string, stdout, stderr io.
 	}
 	prj, err := cmd.loadProject(*repo)
 	if err != nil {
+		return cmd.fail(1, err)
+	}
+	if *modulePath, err = resolveModulePath(prj, *modulePath); err != nil {
 		return cmd.fail(1, err)
 	}
 	result, err := cmd.svc.VariantProvenance(ctx, prj, *modulePath, *variant)
@@ -1095,7 +1125,7 @@ func runDiagnostics(ctx context.Context, args []string, stdout, stderr io.Writer
 	fs := flag.NewFlagSet("diagnostics", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	command := fs.String("command", "", "Build command")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -1119,7 +1149,7 @@ func runDiagnosticSummary(ctx context.Context, args []string, stdout, stderr io.
 	fs := flag.NewFlagSet("diagnosticSummary", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	command := fs.String("command", "", "Build command")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -1506,7 +1536,7 @@ func runPerfTiming(ctx context.Context, args []string, stdout, stderr io.Writer,
 	fs := flag.NewFlagSet("perfTiming", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	command := fs.String("command", "", "Command name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -1530,7 +1560,7 @@ func runClasspathProvenance(ctx context.Context, args []string, stdout, stderr i
 	fs := flag.NewFlagSet("classpathProvenance", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -1551,7 +1581,7 @@ func runAndroidCapabilities(ctx context.Context, args []string, stdout, stderr i
 	fs := flag.NewFlagSet("androidCapabilities", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}

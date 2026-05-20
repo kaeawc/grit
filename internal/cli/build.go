@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/kaeawc/grit/internal/explain"
@@ -19,7 +20,8 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
+	allModules := fs.Bool("all-modules", false, allModulesFlagUsage)
 	variant := fs.String("variant", "", "Build variant name")
 	deviceSerial := fs.String("device", "", "ADB device serial")
 	discoveryMode := fs.String("discovery", "hybrid", "Generated-source discovery mode: static, hybrid, or snapshot")
@@ -31,6 +33,9 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	if *discoveryMode != "static" && *discoveryMode != "hybrid" && *discoveryMode != "snapshot" {
 		return cmd.fail(2, fmt.Errorf("invalid --discovery %q (want static, hybrid, or snapshot)", *discoveryMode))
+	}
+	if *allModules && strings.TrimSpace(*modulePath) != "" {
+		return cmd.fail(2, fmt.Errorf("--all-modules conflicts with --module"))
 	}
 
 	prj, err := cmd.loadProject(*repo)
@@ -49,7 +54,27 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	} else {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+
+	req := service.BuildRequest{
+		Command:          command,
+		RequestedVariant: *variant,
+		VariantExplicit:  hasOption(args, "--variant"),
+		DeviceSerial:     *deviceSerial,
+	}
+
+	if *allModules {
+		paths := prj.AllModulePaths()
+		if len(paths) == 0 {
+			return cmd.fail(1, fmt.Errorf("no modules discovered; check settings.gradle.kts"))
+		}
+		return runNativeBuildAllModules(ctx, cmd, prj, paths, req, tracker, start)
+	}
+
+	resolvedModule, err := resolveModulePath(prj, *modulePath)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	mod, err := cmd.requireModule(prj, resolvedModule)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -61,18 +86,30 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	defer logCapture.Close()
 
 	tracker = tracker.Serial("execute")
-	outcome, runErr := cmd.svc.Build(ctx, prj, mod, service.BuildRequest{
-		Command:          command,
-		RequestedVariant: *variant,
-		VariantExplicit:  hasOption(args, "--variant"),
-		DeviceSerial:     *deviceSerial,
-	}, logCapture.Stdout, logCapture.Stderr, tracker)
+	outcome, runErr := cmd.svc.Build(ctx, prj, mod, req, logCapture.Stdout, logCapture.Stderr, tracker)
 	tracker = tracker.End()
 
 	logs := logCapture.Logs()
-	result := nativeResult{
-		Repo:                   prj.RootDir,
-		Module:                 *modulePath,
+	result := nativeResultFromOutcome(prj.RootDir, resolvedModule, outcome, logs)
+	resp := response{
+		Success:    runErr == nil,
+		Command:    cmd.name,
+		DurationMs: time.Since(start).Milliseconds(),
+		Result:     resultJSON(result),
+		Logs:       &logs,
+		PerfTiming: tracker.GetTimings(),
+	}
+	if runErr != nil {
+		resp.Error = &responseError{Message: runErr.Error()}
+		return writeResponse(stdout, resp, 1, stderr)
+	}
+	return writeResponse(stdout, resp, 0, stderr)
+}
+
+func nativeResultFromOutcome(repoDir, modulePath string, outcome service.BuildOutcome, logs responseLogs) nativeResult {
+	return nativeResult{
+		Repo:                   repoDir,
+		Module:                 modulePath,
 		Variant:                outcome.Variant,
 		Variants:               append([]string{}, outcome.Variants...),
 		VariantConfig:          outcome.VariantConfig,
@@ -97,19 +134,82 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 		RunSummaryPath:         outcome.RunSummaryPath,
 		APKPath:                parseAPKPath(logs.Stdout),
 	}
+}
+
+func runNativeBuildAllModules(ctx context.Context, cmd commandState, prj *project.Project, paths []string, req service.BuildRequest, tracker perf.Tracker, start time.Time) int {
+	combinedLogs, err := newLogCapture()
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	defer combinedLogs.Close()
+
+	execTracker := tracker.Serial("execute")
+	results := make([]moduleBuildResult, 0, len(paths))
+	failed := make([]string, 0)
+	var firstErr error
+	for _, path := range paths {
+		mod, modErr := cmd.requireModule(prj, path)
+		if modErr != nil {
+			results = append(results, moduleBuildResult{
+				Module:  path,
+				Success: false,
+				Error:   modErr.Error(),
+			})
+			failed = append(failed, path)
+			if firstErr == nil {
+				firstErr = modErr
+			}
+			continue
+		}
+		outcome, buildErr := cmd.svc.Build(ctx, prj, mod, req, combinedLogs.Stdout, combinedLogs.Stderr, execTracker)
+		entry := moduleBuildResult{
+			Module:  path,
+			Success: buildErr == nil,
+			Result:  nativeResultFromOutcome(prj.RootDir, path, outcome, responseLogs{}),
+		}
+		if buildErr != nil {
+			entry.Error = buildErr.Error()
+			failed = append(failed, path)
+			if firstErr == nil {
+				firstErr = buildErr
+			}
+		}
+		results = append(results, entry)
+	}
+	execTracker = execTracker.End()
+
+	logs := combinedLogs.Logs()
+	resultPayload := multiModuleResult{
+		Repo:    prj.RootDir,
+		Modules: results,
+		Failed:  failed,
+	}
 	resp := response{
-		Success:    runErr == nil,
+		Success:    firstErr == nil,
 		Command:    cmd.name,
 		DurationMs: time.Since(start).Milliseconds(),
-		Result:     resultJSON(result),
+		Result:     resultJSON(resultPayload),
 		Logs:       &logs,
-		PerfTiming: tracker.GetTimings(),
+		PerfTiming: execTracker.GetTimings(),
 	}
-	if runErr != nil {
-		resp.Error = &responseError{Message: runErr.Error()}
-		return writeResponse(stdout, resp, 1, stderr)
+	if firstErr != nil {
+		resp.Error = &responseError{Message: fmt.Sprintf("%d of %d modules failed", len(failed), len(paths))}
+		return writeResponse(cmd.stdout, resp, 1, cmd.stderr)
 	}
-	return writeResponse(stdout, resp, 0, stderr)
+	return writeResponse(cmd.stdout, resp, 0, cmd.stderr)
+}
+
+type moduleBuildResult struct {
+	Module  string       `json:"module"`
+	Success bool         `json:"success"`
+	Error   string       `json:"error,omitempty"`
+	Result  nativeResult `json:"result"`
+}
+
+type multiModuleResult struct {
+	Repo    string              `json:"repo"`
+	Modules []moduleBuildResult `json:"modules"`
+	Failed  []string            `json:"failed,omitempty"`
 }
 
 func cloneResolvedVariant(variant project.ResolvedVariant) *project.ResolvedVariant {

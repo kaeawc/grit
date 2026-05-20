@@ -62,7 +62,7 @@ func runModuleVariantLookup[R any](
 	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	variant := fs.String("variant", "debug", "Variant name")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
@@ -71,7 +71,11 @@ func runModuleVariantLookup[R any](
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	result, err := lookup(cmd.svc, ctx, prj, *modulePath, *variant)
+	resolvedModule, err := resolveModulePath(prj, *modulePath)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	result, err := lookup(cmd.svc, ctx, prj, resolvedModule, *variant)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -93,7 +97,7 @@ func runModuleLookup[R any](
 	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android or JVM module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -101,7 +105,11 @@ func runModuleLookup[R any](
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	result, err := lookup(cmd.svc, ctx, prj, *modulePath)
+	resolvedModule, err := resolveModulePath(prj, *modulePath)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	result, err := lookup(cmd.svc, ctx, prj, resolvedModule)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -125,7 +133,7 @@ func runRequireModuleLookup[R any](
 	fs := flag.NewFlagSet(verb, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -133,7 +141,11 @@ func runRequireModuleLookup[R any](
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	resolvedModule, err := resolveModulePath(prj, *modulePath)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	mod, err := cmd.requireModule(prj, resolvedModule)
 	if err != nil {
 		return cmd.fail(1, err)
 	}

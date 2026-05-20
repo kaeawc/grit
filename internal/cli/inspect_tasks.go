@@ -29,7 +29,7 @@ func runTasks(_ context.Context, args []string, stdout, stderr io.Writer, tracke
 	fs := flag.NewFlagSet("tasks", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -37,7 +37,11 @@ func runTasks(_ context.Context, args []string, stdout, stderr io.Writer, tracke
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	resolvedModule, err := resolveModulePath(prj, *modulePath)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	mod, err := cmd.requireModule(prj, resolvedModule)
 	if err != nil {
 		return cmd.fail(1, err)
 	}

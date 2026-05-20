@@ -81,7 +81,7 @@ func runKotlinDslAccessorsReport(_ context.Context, args []string, stdout, stder
 	fs := flag.NewFlagSet("kotlinDslAccessorsReport", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -89,7 +89,7 @@ func runKotlinDslAccessorsReport(_ context.Context, args []string, stdout, stder
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -101,7 +101,7 @@ func runOutgoingVariants(_ context.Context, args []string, stdout, stderr io.Wri
 	fs := flag.NewFlagSet("outgoingVariants", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -109,7 +109,7 @@ func runOutgoingVariants(_ context.Context, args []string, stdout, stderr io.Wri
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
@@ -121,7 +121,7 @@ func runResolvableConfigurations(_ context.Context, args []string, stdout, stder
 	fs := flag.NewFlagSet("resolvableConfigurations", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	repo := fs.String("repo", ".", "Path to repository root")
-	modulePath := fs.String("module", ":app", "Android module path")
+	modulePath := fs.String("module", "", moduleFlagUsage)
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -129,7 +129,7 @@ func runResolvableConfigurations(_ context.Context, args []string, stdout, stder
 	if err != nil {
 		return cmd.fail(1, err)
 	}
-	mod, err := cmd.requireModule(prj, *modulePath)
+	mod, err := cmd.requireResolvedModule(prj, *modulePath)
 	if err != nil {
 		return cmd.fail(1, err)
 	}
