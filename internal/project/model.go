@@ -1488,3 +1488,50 @@ func (prj *Project) FindModule(path string) *Module {
 	}
 	return nil
 }
+
+// ApplicationModulePaths returns the sorted set of module paths whose type
+// is android-application.
+func (prj *Project) ApplicationModulePaths() []string {
+	if prj == nil {
+		return nil
+	}
+	var paths []string
+	for _, mod := range prj.Modules {
+		if mod.Type == "android-application" {
+			paths = append(paths, mod.Path)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// AllModulePaths returns every declared module path in sorted order.
+func (prj *Project) AllModulePaths() []string {
+	if prj == nil {
+		return nil
+	}
+	paths := make([]string, 0, len(prj.Modules))
+	for _, mod := range prj.Modules {
+		paths = append(paths, mod.Path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// DefaultModulePath returns the path of the project's unambiguous default
+// module: the sole android-application module if there is exactly one, or
+// the sole module overall when no application is present. The second
+// return value is false when no unambiguous default exists.
+func (prj *Project) DefaultModulePath() (string, bool) {
+	if prj == nil {
+		return "", false
+	}
+	apps := prj.ApplicationModulePaths()
+	if len(apps) == 1 {
+		return apps[0], true
+	}
+	if len(apps) == 0 && len(prj.Modules) == 1 {
+		return prj.Modules[0].Path, true
+	}
+	return "", false
+}

@@ -48,6 +48,16 @@ func (c commandState) requireModule(prj *project.Project, path string) (*project
 	return c.svc.RequireModule(prj, path)
 }
 
+// requireResolvedModule resolves the requested module path (substituting the
+// repository's default when empty) and returns the corresponding Module.
+func (c commandState) requireResolvedModule(prj *project.Project, requested string) (*project.Module, error) {
+	resolved, err := resolveModulePath(prj, requested)
+	if err != nil {
+		return nil, err
+	}
+	return c.svc.RequireModule(prj, resolved)
+}
+
 func (c commandState) success(result json.RawMessage) int {
 	return writeResponse(c.stdout, response{
 		Success:    true,
