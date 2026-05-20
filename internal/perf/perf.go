@@ -2,6 +2,7 @@ package perf
 
 import (
 	"encoding/json"
+	"maps"
 	"sync"
 	"time"
 
@@ -9,10 +10,12 @@ import (
 )
 
 type TimingEntry struct {
-	Name        string          `json:"name"`
-	DurationMs  int64           `json:"durationMs"`
-	Children    *TimingData     `json:"children,omitempty"`
-	Explanation *explain.Timing `json:"explanation,omitempty"`
+	Name        string            `json:"name"`
+	DurationMs  int64             `json:"durationMs"`
+	Children    *TimingData       `json:"children,omitempty"`
+	Explanation *explain.Timing   `json:"explanation,omitempty"`
+	Attributes  map[string]string `json:"attributes,omitempty"`
+	Metrics     map[string]int64  `json:"metrics,omitempty"`
 }
 
 type timingShape uint8
@@ -68,6 +71,12 @@ func cloneTimingEntry(entry TimingEntry) TimingEntry {
 	if entry.Explanation != nil {
 		explanation := *entry.Explanation
 		entry.Explanation = &explanation
+	}
+	if entry.Attributes != nil {
+		entry.Attributes = maps.Clone(entry.Attributes)
+	}
+	if entry.Metrics != nil {
+		entry.Metrics = maps.Clone(entry.Metrics)
 	}
 	return entry
 }
