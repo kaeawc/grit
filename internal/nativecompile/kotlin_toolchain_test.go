@@ -258,3 +258,40 @@ func TestCompilerPluginsForModuleFallsBackToLegacyModuleFlags(t *testing.T) {
 	}
 
 }
+
+func TestKotlinCompilerPluginJarPrefersExactVersion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	wantJar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", "2.3.20", "abc", "kotlin-compose-compiler-plugin-embeddable-2.3.20.jar")
+	seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", "2.3.21", "def", "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar")
+
+	got := kotlinCompilerPluginJar("kotlin-compose-compiler-plugin-embeddable", "2.3.20")
+	if got != wantJar {
+		t.Fatalf("expected exact-version match\n got: %q\nwant: %q", got, wantJar)
+	}
+}
+
+func TestKotlinCompilerPluginJarFallsBackToLatestCached(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	wantJar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", "2.3.21", "abc", "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar")
+
+	got := kotlinCompilerPluginJar("kotlin-compose-compiler-plugin-embeddable", "2.3.20")
+	if got != wantJar {
+		t.Fatalf("expected fallback to latest cached version\n got: %q\nwant: %q", got, wantJar)
+	}
+}
+
+func TestKotlinCompilerPluginJarReturnsEmptyWhenAbsent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	if got := kotlinCompilerPluginJar("kotlin-compose-compiler-plugin-embeddable", "2.3.20"); got != "" {
+		t.Fatalf("expected empty when no cached plugin jar exists, got %q", got)
+	}
+	if got := kotlinCompilerPluginJar("kotlin-serialization-compiler-plugin-embeddable", "2.3.20"); got != "" {
+		t.Fatalf("expected empty for serialization plugin too, got %q", got)
+	}
+}
