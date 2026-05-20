@@ -55,6 +55,11 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	if len(toolchain.RuntimeJars) == 0 {
 		toolchain.RuntimeJars = kotlinStdlibJarsForVersion(version)
 	}
+	// Optional compiler plugin roles go unfilled when the resolver
+	// substitutes a different version than the toolchain requested; fall
+	// back to the gradle cache so kotlinc still gets a -Xplugin entry.
+	toolchain.ComposePlugin = kotlinCompilerPluginOrCached(toolchain.ComposePlugin, "kotlin-compose-compiler-plugin-embeddable", version)
+	toolchain.SerializationPlugin = kotlinCompilerPluginOrCached(toolchain.SerializationPlugin, "kotlin-serialization-compiler-plugin-embeddable", version)
 	compilerJar := resolvedSet.FirstJar("compiler")
 	if compilerJar == "" {
 		compilerJar = gradlecache.FirstArtifactJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
@@ -104,6 +109,29 @@ func jarsOrCached(resolved []string, group, module, version string) []string {
 		return resolved
 	}
 	return findGradleArtifactJars(group, module, version)
+}
+
+// kotlinCompilerPluginJar locates an org.jetbrains.kotlin compiler plugin in
+// the gradle cache, preferring the exact requested version and falling back
+// to the latest cached version. The latest-cached path is best-effort: a
+// major-version mismatch can still fail at runtime.
+func kotlinCompilerPluginJar(module, version string) string {
+	if jar := gradlecache.FirstArtifactJar("org.jetbrains.kotlin", module, version); jar != "" {
+		return jar
+	}
+	if latest := latestCachedVersionFor("org.jetbrains.kotlin", module); latest != "" {
+		return gradlecache.FirstArtifactJar("org.jetbrains.kotlin", module, latest)
+	}
+	return ""
+}
+
+// kotlinCompilerPluginOrCached preserves the resolver-provided jar when
+// non-empty, otherwise falls back to kotlinCompilerPluginJar.
+func kotlinCompilerPluginOrCached(resolved, module, version string) string {
+	if strings.TrimSpace(resolved) != "" {
+		return resolved
+	}
+	return kotlinCompilerPluginJar(module, version)
 }
 
 // jetbrainsAnnotationsJars locates the org.jetbrains:annotations jar declared
