@@ -1,6 +1,8 @@
 package nativecompile
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,6 +11,106 @@ import (
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
+
+func seedCacheJar(t *testing.T, home, group, module, version, hash, filename string) string {
+	t.Helper()
+	dir := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", group, module, version, hash)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, filename)
+	if err := os.WriteFile(path, []byte("seeded"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestKotlinStdlibJarsForVersionReadsCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	stdlibJar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20", "abc", "kotlin-stdlib-2.3.20.jar")
+	jdk7Jar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-stdlib-jdk7", "2.3.20", "def", "kotlin-stdlib-jdk7-2.3.20.jar")
+	jdk8Jar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-stdlib-jdk8", "2.3.20", "ghi", "kotlin-stdlib-jdk8-2.3.20.jar")
+
+	got := kotlinStdlibJarsForVersion("2.3.20")
+	want := []string{stdlibJar, jdk7Jar, jdk8Jar}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected stdlib jars\ngot  %#v\nwant %#v", got, want)
+	}
+
+	if jars := kotlinStdlibJarsForVersion(""); jars != nil {
+		t.Fatalf("expected nil for empty version, got %#v", jars)
+	}
+}
+
+func TestAnnotationsVersionForStdlibReadsModuleMetadata(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	moduleDir := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", "org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20", "hash")
+	if err := os.MkdirAll(moduleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	payload := `{"variants":[{"attributes":{"org.gradle.usage":"java-runtime"},"dependencies":[{"group":"org.jetbrains","module":"annotations","version":{"requires":"13.0"}}]}]}`
+	if err := os.WriteFile(filepath.Join(moduleDir, "kotlin-stdlib-2.3.20.module"), []byte(payload), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := annotationsVersionForStdlib("2.3.20"); got != "13.0" {
+		t.Fatalf("expected annotations 13.0, got %q", got)
+	}
+}
+
+func TestJetbrainsAnnotationsJarsPrefersStdlibTransitiveVersion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	moduleDir := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", "org.jetbrains.kotlin", "kotlin-stdlib", "2.3.20", "hash")
+	if err := os.MkdirAll(moduleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	payload := `{"variants":[{"attributes":{"org.gradle.usage":"java-runtime"},"dependencies":[{"group":"org.jetbrains","module":"annotations","version":{"requires":"13.0"}}]}]}`
+	if err := os.WriteFile(filepath.Join(moduleDir, "kotlin-stdlib-2.3.20.module"), []byte(payload), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wantJar := seedCacheJar(t, home, "org.jetbrains", "annotations", "13.0", "h1", "annotations-13.0.jar")
+	seedCacheJar(t, home, "org.jetbrains", "annotations", "26.0.2", "h2", "annotations-26.0.2.jar")
+
+	got := jetbrainsAnnotationsJars("2.3.20")
+	if len(got) != 1 || got[0] != wantJar {
+		t.Fatalf("expected stdlib's declared annotations version, got %#v", got)
+	}
+}
+
+func TestJetbrainsAnnotationsJarsFallsBackToLatestCached(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	wantJar := seedCacheJar(t, home, "org.jetbrains", "annotations", "26.0.2", "h", "annotations-26.0.2.jar")
+
+	got := jetbrainsAnnotationsJars("2.3.20")
+	if len(got) != 1 || got[0] != wantJar {
+		t.Fatalf("expected fallback to latest cached annotations, got %#v", got)
+	}
+}
+
+func TestJarsOrCachedPrefersResolvedThenFallsBackToCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	resolved := []string{"/already/resolved.jar"}
+	if got := jarsOrCached(resolved, "org.example", "lib", "1.0"); !reflect.DeepEqual(got, resolved) {
+		t.Fatalf("expected resolved jars to pass through, got %#v", got)
+	}
+
+	wantJar := seedCacheJar(t, home, "org.example", "lib", "1.0", "h", "lib-1.0.jar")
+	got := jarsOrCached(nil, "org.example", "lib", "1.0")
+	if len(got) != 1 || got[0] != wantJar {
+		t.Fatalf("expected cache fallback to surface %q, got %#v", wantJar, got)
+	}
+}
 
 func TestKotlinToolchainValidateRequiresExplicitCompilerArtifacts(t *testing.T) {
 	toolchain := &kotlinToolchain{
