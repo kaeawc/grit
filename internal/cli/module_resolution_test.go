@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -182,6 +184,41 @@ android {
 	}
 	if resp.Result.Module != ":core" {
 		t.Fatalf("expected sole library module to be default, got %q", resp.Result.Module)
+	}
+}
+
+func TestCompileRejectsNegativeTimeout(t *testing.T) {
+	var stdout, stderr strings.Builder
+	exitCode := Run(context.Background(), []string{"compile", "--repo", t.TempDir(), "--timeout", "-1s"}, &stdout, &stderr)
+	if exitCode == 0 {
+		t.Fatalf("expected non-zero exit, got stdout=%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "--timeout must be non-negative") {
+		t.Fatalf("expected non-negative-timeout diagnostic, got %s", stdout.String())
+	}
+}
+
+func TestTimeoutAwareErrorMessageRewritesDeadlineExceeded(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		t.Fatalf("test setup: expected ctx to be deadline exceeded")
+	}
+	msg := timeoutAwareErrorMessage(ctx, 2*time.Second, errors.New("compile cancelled"))
+	if !strings.Contains(msg, "build timed out after 2s") {
+		t.Fatalf("expected timeout message, got %q", msg)
+	}
+	if !strings.Contains(msg, "compile cancelled") {
+		t.Fatalf("expected underlying error preserved, got %q", msg)
+	}
+}
+
+func TestTimeoutAwareErrorMessagePassesThroughOtherErrors(t *testing.T) {
+	if msg := timeoutAwareErrorMessage(context.Background(), 0, errors.New("real compile failure")); msg != "real compile failure" {
+		t.Fatalf("expected unchanged error, got %q", msg)
+	}
+	if msg := timeoutAwareErrorMessage(context.Background(), 0, nil); msg != "" {
+		t.Fatalf("expected empty message for nil error, got %q", msg)
 	}
 }
 
