@@ -3,12 +3,21 @@ package project
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+// DiscoveryRefreshTimeout bounds how long the Gradle init script may run
+// while collecting generated-source paths. Builds against very large
+// repositories sometimes exceed this; the snapshot is best-effort in the
+// hybrid mode, so the deadline frees the caller to proceed without one.
+const DiscoveryRefreshTimeout = 45 * time.Second
 
 type DiscoverySnapshot struct {
 	SchemaVersion int                             `json:"schemaVersion"`
@@ -54,7 +63,7 @@ func ApplyDiscoverySnapshot(prj *Project, snapshot DiscoverySnapshot) {
 	}
 }
 
-func RefreshDiscoverySnapshot(ctx context.Context, prj *Project) error {
+func RefreshDiscoverySnapshot(ctx context.Context, prj *Project, warnings io.Writer) error {
 	if prj == nil || prj.DiscoveryMode == "static" {
 		return nil
 	}
@@ -91,14 +100,34 @@ func RefreshDiscoverySnapshot(ctx context.Context, prj *Project) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	runCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	runCtx, cancel := context.WithTimeout(ctx, DiscoveryRefreshTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, wrapper, "-q", "gritDiscoverySnapshot", "--init-script", initPath)
 	cmd.Dir = prj.RootDir
-	if err := cmd.Run(); err != nil && prj.DiscoveryMode == "snapshot" {
-		return err
+	runErr := cmd.Run()
+	if runErr != nil {
+		if prj.DiscoveryMode == "snapshot" {
+			return runErr
+		}
+		// Hybrid mode treats discovery as best-effort: surface a single
+		// warning line to the caller so timeouts and other failures
+		// don't disappear silently.
+		if warnings != nil {
+			_, _ = fmt.Fprintln(warnings, discoveryWarning(runCtx.Err(), runErr))
+		}
 	}
 	return nil
+}
+
+func discoveryWarning(ctxErr, runErr error) string {
+	switch {
+	case errors.Is(ctxErr, context.DeadlineExceeded):
+		return fmt.Sprintf("warning: gradle discovery snapshot timed out after %s; continuing without refreshed generated-source paths", DiscoveryRefreshTimeout)
+	case errors.Is(ctxErr, context.Canceled):
+		return "warning: gradle discovery snapshot canceled; continuing without refreshed generated-source paths"
+	default:
+		return fmt.Sprintf("warning: gradle discovery snapshot failed (%s); continuing without refreshed generated-source paths", runErr)
+	}
 }
 
 func gradleDiscoveryInitScript(outPath string) string {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	allowMavenCentralFallback := fs.Bool("allow-maven-central-fallback", false, "Allow implicit Google/Maven Central fallback when no declared dependency repository matches")
 	offline := fs.Bool("offline", false, "Fail instead of fetching dependency metadata or artifacts from remote repositories")
 	refreshDiscovery := fs.Bool("refresh-discovery", false, "Refresh cached Gradle discovery snapshots before compiling")
+	timeout := fs.Duration("timeout", 0, "Cancel the build after this duration (0 = unbounded). Returns a structured timeout error naming the last-active phase.")
 	if err := fs.Parse(args); err != nil {
 		return cmd.fail(2, err)
 	}
@@ -36,6 +38,14 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 	if *allModules && strings.TrimSpace(*modulePath) != "" {
 		return cmd.fail(2, fmt.Errorf("--all-modules conflicts with --module"))
+	}
+	if *timeout < 0 {
+		return cmd.fail(2, fmt.Errorf("--timeout must be non-negative"))
+	}
+	if *timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *timeout)
+		defer cancel()
 	}
 
 	prj, err := cmd.loadProject(*repo)
@@ -46,7 +56,7 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 	prj.AllowMavenCentralFallback = *allowMavenCentralFallback
 	prj.Offline = *offline
 	prj.RefreshDiscovery = *refreshDiscovery
-	if err := project.RefreshDiscoverySnapshot(ctx, prj); err != nil {
+	if err := project.RefreshDiscoverySnapshot(ctx, prj, stderr); err != nil {
 		return cmd.fail(1, err)
 	}
 	if snapshot, err := project.LoadDiscoverySnapshot(prj); err == nil {
@@ -67,7 +77,7 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 		if len(paths) == 0 {
 			return cmd.fail(1, fmt.Errorf("no modules discovered; check settings.gradle.kts"))
 		}
-		return runNativeBuildAllModules(ctx, cmd, prj, paths, req, tracker, start)
+		return runNativeBuildAllModules(ctx, cmd, prj, paths, req, *timeout, tracker, start)
 	}
 
 	resolvedModule, err := resolveModulePath(prj, *modulePath)
@@ -100,10 +110,28 @@ func runNativeBuild(ctx context.Context, args []string, stdout, stderr io.Writer
 		PerfTiming: tracker.GetTimings(),
 	}
 	if runErr != nil {
-		resp.Error = &responseError{Message: runErr.Error()}
+		resp.Error = &responseError{Message: timeoutAwareErrorMessage(ctx, *timeout, runErr)}
 		return writeResponse(stdout, resp, 1, stderr)
 	}
 	return writeResponse(stdout, resp, 0, stderr)
+}
+
+// timeoutAwareErrorMessage rewrites a downstream build error into a clear
+// "build timed out" diagnostic when the cancellation came from the
+// caller-supplied --timeout. The original error is preserved as a cause
+// so debug output still has the underlying signal.
+func timeoutAwareErrorMessage(ctx context.Context, timeout time.Duration, runErr error) string {
+	if runErr == nil {
+		return ""
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) && timeout > 0 {
+		return fmt.Sprintf("%s (see perfTiming for last-recorded phases): %s", timeoutPrefix(timeout), runErr.Error())
+	}
+	return runErr.Error()
+}
+
+func timeoutPrefix(timeout time.Duration) string {
+	return fmt.Sprintf("build timed out after %s", timeout)
 }
 
 func nativeResultFromOutcome(repoDir, modulePath string, outcome service.BuildOutcome, logs responseLogs) nativeResult {
@@ -136,7 +164,7 @@ func nativeResultFromOutcome(repoDir, modulePath string, outcome service.BuildOu
 	}
 }
 
-func runNativeBuildAllModules(ctx context.Context, cmd commandState, prj *project.Project, paths []string, req service.BuildRequest, tracker perf.Tracker, start time.Time) int {
+func runNativeBuildAllModules(ctx context.Context, cmd commandState, prj *project.Project, paths []string, req service.BuildRequest, timeout time.Duration, tracker perf.Tracker, start time.Time) int {
 	combinedLogs, err := newLogCapture()
 	if err != nil {
 		return cmd.fail(1, err)
@@ -148,6 +176,12 @@ func runNativeBuildAllModules(ctx context.Context, cmd commandState, prj *projec
 	failed := make([]string, 0)
 	var firstErr error
 	for _, path := range paths {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			if firstErr == nil {
+				firstErr = ctxErr
+			}
+			break
+		}
 		mod, modErr := cmd.requireModule(prj, path)
 		if modErr != nil {
 			results = append(results, moduleBuildResult{
@@ -193,7 +227,12 @@ func runNativeBuildAllModules(ctx context.Context, cmd commandState, prj *projec
 		PerfTiming: execTracker.GetTimings(),
 	}
 	if firstErr != nil {
-		resp.Error = &responseError{Message: fmt.Sprintf("%d of %d modules failed", len(failed), len(paths))}
+		summary := fmt.Sprintf("%d of %d modules failed", len(failed), len(paths))
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) && timeout > 0 {
+			succeeded := len(results) - len(failed)
+			summary = fmt.Sprintf("%s; %d of %d modules completed before deadline", timeoutPrefix(timeout), succeeded, len(paths))
+		}
+		resp.Error = &responseError{Message: summary}
 		return writeResponse(cmd.stdout, resp, 1, cmd.stderr)
 	}
 	return writeResponse(cmd.stdout, resp, 0, cmd.stderr)
