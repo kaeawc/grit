@@ -34,6 +34,16 @@ func FindArtifactJars(group, module, version string) []string {
 	return out
 }
 
+// FirstArtifactJar returns the first jar path from the cache for the given
+// coordinate, or the empty string when none is present.
+func FirstArtifactJar(group, module, version string) string {
+	jars := FindArtifactJars(group, module, version)
+	if len(jars) == 0 {
+		return ""
+	}
+	return jars[0]
+}
+
 // ArtifactVersions returns version directories for the given Gradle coordinate
 // within the local modules-2/files-2.1 cache, sorted by compare.
 func ArtifactVersions(group, module string, compare func(a, b string) int) []string {

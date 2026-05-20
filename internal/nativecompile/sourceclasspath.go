@@ -660,15 +660,7 @@ func runtimeSupportJars() []string {
 }
 
 func kotlinRuntimeJars() []string {
-	version := latestCachedKotlinVersion("kotlin-stdlib")
-	if version == "" {
-		return nil
-	}
-	return mergePaths(
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib", version),
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk7", version),
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk8", version),
-	)
+	return kotlinStdlibJarsForVersion(latestCachedKotlinVersion("kotlin-stdlib"))
 }
 
 func kotlinTestRuntimeJars() []string {

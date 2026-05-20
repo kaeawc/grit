@@ -49,12 +49,26 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 		ComposePlugin:       resolvedSet.FirstJar("compose-plugin"),
 		SerializationPlugin: resolvedSet.FirstJar("serialization-plugin"),
 	}
+	// m2local.Resolver short-circuits kotlin-stdlib and bails when an
+	// artifact has no cached .pom/.module sidecar, so fall back to the
+	// gradle cache for any toolchain role validate() would otherwise reject.
+	if len(toolchain.RuntimeJars) == 0 {
+		toolchain.RuntimeJars = kotlinStdlibJarsForVersion(version)
+	}
+	compilerJar := resolvedSet.FirstJar("compiler")
+	if compilerJar == "" {
+		compilerJar = gradlecache.FirstArtifactJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
+	}
+	scriptRuntimeJars := jarsOrCached(resolvedSet.Jars("script-runtime"), "org.jetbrains.kotlin", "kotlin-script-runtime", version)
+	reflectJars := jarsOrCached(resolvedSet.Jars("reflect"), "org.jetbrains.kotlin", "kotlin-reflect", version)
+	annotationsJars := jetbrainsAnnotationsJars(version)
 	toolchain.CompilerClasspath = filterKotlinCompilerClasspathVersion(version, mergePaths(
-		singlePath(resolvedSet.FirstJar("compiler")),
+		singlePath(compilerJar),
 		resolvedSet.Resolved.RuntimeJars,
 		toolchain.RuntimeJars,
-		resolvedSet.Jars("reflect"),
-		resolvedSet.Jars("script-runtime"),
+		reflectJars,
+		scriptRuntimeJars,
+		annotationsJars,
 	))
 	if metroPlugin := dependencywiring.ResolveMetroCompilerPlugin(prj, resolver); metroPlugin != "" {
 		toolchain.MetroPlugin = metroPlugin
@@ -62,13 +76,63 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	if len(toolchain.CompilerClasspath) == 0 {
 		return fallbackKotlinToolchain(), nil
 	}
-	if len(toolchain.RuntimeJars) == 0 {
-		toolchain.RuntimeJars = fallbackKotlinToolchain().RuntimeJars
-	}
 	if len(toolchain.TestRuntimeJars) == 0 {
 		toolchain.TestRuntimeJars = fallbackKotlinToolchain().TestRuntimeJars
 	}
 	return toolchain, nil
+}
+
+// kotlinStdlibJarsForVersion looks up kotlin-stdlib (+ jdk7/jdk8 siblings) for
+// the exact requested version from the local gradle cache. Returns nil when
+// no matching artifact is present.
+func kotlinStdlibJarsForVersion(version string) []string {
+	if strings.TrimSpace(version) == "" {
+		return nil
+	}
+	return mergePaths(
+		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib", version),
+		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk7", version),
+		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk8", version),
+	)
+}
+
+// jarsOrCached returns resolved when non-empty, otherwise scans the gradle
+// cache for the given coordinate. Used to fill toolchain roles whose
+// metadata-backed resolution failed.
+func jarsOrCached(resolved []string, group, module, version string) []string {
+	if len(resolved) > 0 {
+		return resolved
+	}
+	return findGradleArtifactJars(group, module, version)
+}
+
+// jetbrainsAnnotationsJars locates the org.jetbrains:annotations jar declared
+// as a transitive dependency of kotlin-stdlib at the requested version. The
+// version is read from the cached stdlib module metadata; the latest cached
+// version is used as a fallback so the compiler classpath always has the
+// annotations jar that kotlinc requires.
+func jetbrainsAnnotationsJars(stdlibVersion string) []string {
+	if v := annotationsVersionForStdlib(stdlibVersion); v != "" {
+		if jars := findGradleArtifactJars("org.jetbrains", "annotations", v); len(jars) > 0 {
+			return jars
+		}
+	}
+	if v := latestCachedVersionFor("org.jetbrains", "annotations"); v != "" {
+		return findGradleArtifactJars("org.jetbrains", "annotations", v)
+	}
+	return nil
+}
+
+func annotationsVersionForStdlib(stdlibVersion string) string {
+	if strings.TrimSpace(stdlibVersion) == "" {
+		return ""
+	}
+	for _, dep := range gradlecache.ArtifactDependencies("org.jetbrains.kotlin", "kotlin-stdlib", stdlibVersion) {
+		if dep.Group == "org.jetbrains" && dep.Module == "annotations" {
+			return dep.Version
+		}
+	}
+	return ""
 }
 
 func singlePath(path string) []string {
