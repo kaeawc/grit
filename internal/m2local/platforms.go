@@ -81,6 +81,9 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 				out = append(out, r.normalizeRootCoordinate(coord))
 				continue
 			}
+			if strings.HasPrefix(strings.TrimSpace(ref.Value), "compose.") {
+				return nil, fmt.Errorf("unsupported Compose Multiplatform accessor %q (add a mapping in m2local.ComposeAccessorModule)", ref.Value)
+			}
 			coord, err := parseRawCoordinate(ref.Value)
 			if err != nil {
 				return nil, err
@@ -143,16 +146,44 @@ func ComposeAccessorModule(value string) (string, string, bool) {
 	switch strings.TrimSpace(value) {
 	case "compose.ui":
 		return "org.jetbrains.compose.ui", "ui", true
-	case "compose.runtime":
-		return "org.jetbrains.compose.runtime", "runtime", true
-	case "compose.foundation":
-		return "org.jetbrains.compose.foundation", "foundation", true
-	case "compose.material3":
-		return "androidx.compose.material3", "material3-android", true
-	case "compose.components.resources":
-		return "org.jetbrains.compose.components", "components-resources", true
 	case "compose.uiTest":
 		return "org.jetbrains.compose.ui", "ui-test", true
+	case "compose.uiTooling":
+		return "org.jetbrains.compose.ui", "ui-tooling", true
+	case "compose.preview":
+		return "org.jetbrains.compose.ui", "ui-tooling-preview", true
+	case "compose.runtime":
+		return "org.jetbrains.compose.runtime", "runtime", true
+	case "compose.runtime.saveable":
+		return "org.jetbrains.compose.runtime", "runtime-saveable", true
+	case "compose.foundation":
+		return "org.jetbrains.compose.foundation", "foundation", true
+	case "compose.material":
+		return "org.jetbrains.compose.material", "material", true
+	case "compose.material.icons.core":
+		return "org.jetbrains.compose.material", "material-icons-core", true
+	case "compose.material.icons.extended":
+		return "org.jetbrains.compose.material", "material-icons-extended", true
+	case "compose.material.ripple":
+		return "org.jetbrains.compose.material", "material-ripple", true
+	case "compose.material3":
+		return "androidx.compose.material3", "material3-android", true
+	case "compose.material3.adaptiveNavigationSuite":
+		return "org.jetbrains.compose.material3", "material3-adaptive-navigation-suite", true
+	case "compose.animation":
+		return "org.jetbrains.compose.animation", "animation", true
+	case "compose.animation.graphics":
+		return "org.jetbrains.compose.animation", "animation-graphics", true
+	case "compose.html.core":
+		return "org.jetbrains.compose.html", "html-core", true
+	case "compose.html.svg":
+		return "org.jetbrains.compose.html", "html-svg", true
+	case "compose.html.testUtils":
+		return "org.jetbrains.compose.html", "html-test-utils", true
+	case "compose.components.resources":
+		return "org.jetbrains.compose.components", "components-resources", true
+	case "compose.components.uiToolingPreview":
+		return "org.jetbrains.compose.components", "components-ui-tooling-preview", true
 	default:
 		return "", "", false
 	}
