@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -176,15 +175,15 @@ func (s *FilesystemStore) Provenance(ctx context.Context, h Hash) (Provenance, e
 	if err := ctx.Err(); err != nil {
 		return Provenance{}, err
 	}
-	data, err := os.ReadFile(s.provenancePath(h))
-	if errors.Is(err, fs.ErrNotExist) {
-		return Provenance{}, ErrNotFound
-	}
+	data, err := readOrNotFound(s.provenancePath(h))
 	if err != nil {
 		return Provenance{}, err
 	}
 	var prov Provenance
-	if err := json.Unmarshal(data, &prov); err != nil {
+	if err := decodeEnvelope(data, &prov); err != nil {
+		if errors.Is(err, ErrSchemaMismatch) {
+			return Provenance{}, ErrNotFound
+		}
 		return Provenance{}, fmt.Errorf("cas: decode provenance for %s: %w", h, err)
 	}
 	return prov, nil
@@ -203,7 +202,7 @@ func (s *FilesystemStore) writeProvenanceIfMissing(h Hash, prov Provenance) erro
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	encoded, err := json.MarshalIndent(prov, "", "  ")
+	encoded, err := encodeEnvelope(prov)
 	if err != nil {
 		return err
 	}
@@ -221,7 +220,7 @@ func (s *FilesystemStore) PutActionResult(ctx context.Context, result ActionResu
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	encoded, err := json.MarshalIndent(result, "", "  ")
+	encoded, err := encodeEnvelope(result)
 	if err != nil {
 		return err
 	}
@@ -232,15 +231,15 @@ func (s *FilesystemStore) GetActionResult(ctx context.Context, actionHash Hash) 
 	if err := ctx.Err(); err != nil {
 		return ActionResult{}, err
 	}
-	data, err := os.ReadFile(s.actionResultPath(actionHash))
-	if errors.Is(err, fs.ErrNotExist) {
-		return ActionResult{}, ErrNotFound
-	}
+	data, err := readOrNotFound(s.actionResultPath(actionHash))
 	if err != nil {
 		return ActionResult{}, err
 	}
 	var result ActionResult
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := decodeEnvelope(data, &result); err != nil {
+		if errors.Is(err, ErrSchemaMismatch) {
+			return ActionResult{}, ErrNotFound
+		}
 		return ActionResult{}, fmt.Errorf("cas: decode action result for %s: %w", actionHash, err)
 	}
 	return result, nil

@@ -2,10 +2,8 @@ package cas
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -59,7 +57,7 @@ func (s *FilesystemStore) PutActionSummary(ctx context.Context, summary CacheSum
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	encoded, err := json.MarshalIndent(summary, "", "  ")
+	encoded, err := encodeEnvelope(summary)
 	if err != nil {
 		return err
 	}
@@ -67,20 +65,22 @@ func (s *FilesystemStore) PutActionSummary(ctx context.Context, summary CacheSum
 }
 
 // GetActionSummary returns the sidecar CacheSummary for actionHash, or
-// ErrNotFound if no summary has been written.
+// ErrNotFound if no summary has been written. A summary whose envelope
+// schemaVersion does not match the current SchemaVersion is treated as
+// absent so callers transparently re-run the producing action.
 func (s *FilesystemStore) GetActionSummary(ctx context.Context, actionHash Hash) (CacheSummary, error) {
 	if err := ctx.Err(); err != nil {
 		return CacheSummary{}, err
 	}
-	data, err := os.ReadFile(s.summaryPath(actionHash))
-	if errors.Is(err, fs.ErrNotExist) {
-		return CacheSummary{}, ErrNotFound
-	}
+	data, err := readOrNotFound(s.summaryPath(actionHash))
 	if err != nil {
 		return CacheSummary{}, err
 	}
 	var summary CacheSummary
-	if err := json.Unmarshal(data, &summary); err != nil {
+	if err := decodeEnvelope(data, &summary); err != nil {
+		if errors.Is(err, ErrSchemaMismatch) {
+			return CacheSummary{}, ErrNotFound
+		}
 		return CacheSummary{}, fmt.Errorf("cas: decode summary for %s: %w", actionHash, err)
 	}
 	return summary, nil
