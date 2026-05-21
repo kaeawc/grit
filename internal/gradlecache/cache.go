@@ -10,20 +10,26 @@ import (
 )
 
 // Probe is a read-only view of a Maven-layout artifact cache rooted at
-// a configurable directory. Layouts mirror the modules-2/files-2.1
-// convention used by common build tools. The zero value (and a nil
-// receiver) is a valid no-op probe so callers can omit the empty-case
-// guards when threading the type through optional code paths.
+// a configurable directory. Reads accept artifacts at two depths under
+// the coordinate dir: directly (<root>/<g>/<m>/<v>/<file>) and one
+// subdirectory deep (<root>/<g>/<m>/<v>/<hash>/<file>). The deeper
+// shape mirrors layouts that use a content-hash intermediate; the
+// shallow shape is the canonical landing spot for grit-written files.
+// The zero value (and a nil receiver) is a valid no-op probe so
+// callers can omit the empty-case guards when threading the type
+// through optional code paths.
 //
 // A probe may be chained to a fallback probe via WithFallback. Reads
-// query the primary root first and fall through to the fallback on
-// miss. An optional Stager populates the primary root from the
-// fallback on first hit so subsequent reads find the artifact locally
-// without traversing the chain.
+// query the primary root first, fall through to the fallback chain on
+// miss, and finally invoke the configured Fetcher if every link in
+// the chain comes up empty. An optional Stager populates the primary
+// root from the fallback on first hit so subsequent reads find the
+// artifact locally without traversing the chain.
 type Probe struct {
 	root     string
 	fallback *Probe
 	stager   Stager
+	fetcher  Fetcher
 }
 
 // Dependency captures a direct dependency of a coordinate as recorded
@@ -50,6 +56,26 @@ type StagerFunc func(destDir, sourcePath string) (string, error)
 // Stage satisfies Stager.
 func (f StagerFunc) Stage(destDir, sourcePath string) (string, error) {
 	return f(destDir, sourcePath)
+}
+
+// Fetcher materializes an artifact for a coordinate into destDir from
+// somewhere outside the probe chain (typically a remote Maven repo).
+// On success implementations return the paths to the materialized
+// files; absent artifacts return (nil, nil) so callers can distinguish
+// "remote does not have it" from a real error. The supplied destDir
+// is the coordinate-shaped directory the files should land in; the
+// caller assembles it so implementations don't need to know the cache
+// layout.
+type Fetcher interface {
+	Fetch(destDir, group, module, version string) ([]string, error)
+}
+
+// FetcherFunc adapts a plain function to the Fetcher interface.
+type FetcherFunc func(destDir, group, module, version string) ([]string, error)
+
+// Fetch satisfies Fetcher.
+func (f FetcherFunc) Fetch(destDir, group, module, version string) ([]string, error) {
+	return f(destDir, group, module, version)
 }
 
 // NewProbe returns a probe rooted at root. An empty root makes every
@@ -86,6 +112,20 @@ func (p *Probe) WithStaging(stager Stager) *Probe {
 	return &cp
 }
 
+// WithFetcher returns a shallow copy of p that invokes fetcher when
+// the fallback chain is exhausted with no hit. The fetcher materializes
+// the artifact directly into the primary root so subsequent reads find
+// it without leaving the local cache. Passing a nil fetcher clears any
+// existing one.
+func (p *Probe) WithFetcher(fetcher Fetcher) *Probe {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	cp.fetcher = fetcher
+	return &cp
+}
+
 // Root returns the directory the probe reads from.
 func (p *Probe) Root() string {
 	if p == nil {
@@ -106,14 +146,21 @@ func (p *Probe) FindJars(group, module, version string) []string {
 	if jars := p.localFindJars(group, module, version); len(jars) > 0 {
 		return jars
 	}
-	if p.fallback == nil {
+	if p.fallback != nil {
+		if jars := p.fallback.FindJars(group, module, version); len(jars) > 0 {
+			if p.stager != nil && p.root != "" {
+				return p.stageJars(group, module, version, jars)
+			}
+			return jars
+		}
+	}
+	if p.fetcher == nil || p.root == "" {
 		return nil
 	}
-	jars := p.fallback.FindJars(group, module, version)
-	if len(jars) == 0 || p.stager == nil || p.root == "" {
-		return jars
+	if p.runFetcher(group, module, version) {
+		return p.localFindJars(group, module, version)
 	}
-	return p.stageJars(group, module, version, jars)
+	return nil
 }
 
 func (p *Probe) localFindJars(group, module, version string) []string {
@@ -121,7 +168,7 @@ func (p *Probe) localFindJars(group, module, version string) []string {
 		return nil
 	}
 	base := filepath.Join(p.root, group, module, version)
-	matches, _ := filepath.Glob(filepath.Join(base, "*", module+"-"+version+"*.jar"))
+	matches := globAtBothDepths(base, module+"-"+version+"*.jar")
 	var out []string
 	for _, match := range matches {
 		name := filepath.Base(match)
@@ -130,8 +177,25 @@ func (p *Probe) localFindJars(group, module, version string) []string {
 		}
 		out = append(out, match)
 	}
-	sort.Strings(out)
 	return out
+}
+
+// runFetcher materializes the coordinate into the primary root via
+// the configured fetcher. Returns true if at least one file landed,
+// so callers know it's worth re-reading the local layout. The coord
+// directory is removed again on a no-file fetch so empty stubs don't
+// leak into the Versions listing.
+func (p *Probe) runFetcher(group, module, version string) bool {
+	destDir := filepath.Join(p.root, group, module, version)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return false
+	}
+	files, err := p.fetcher.Fetch(destDir, group, module, version)
+	if err != nil || len(files) == 0 {
+		_ = os.Remove(destDir)
+		return false
+	}
+	return true
 }
 
 // stageJars materializes each jar via the configured stager, falling
@@ -238,10 +302,18 @@ func (p *Probe) Dependencies(group, module, version string) []Dependency {
 	if deps := p.localDependencies(group, module, version); len(deps) > 0 {
 		return deps
 	}
-	if p.fallback == nil {
+	if p.fallback != nil {
+		if deps := p.fallback.Dependencies(group, module, version); len(deps) > 0 {
+			return deps
+		}
+	}
+	if p.fetcher == nil || p.root == "" {
 		return nil
 	}
-	return p.fallback.Dependencies(group, module, version)
+	if p.runFetcher(group, module, version) {
+		return p.localDependencies(group, module, version)
+	}
+	return nil
 }
 
 func (p *Probe) localDependencies(group, module, version string) []Dependency {
@@ -249,21 +321,29 @@ func (p *Probe) localDependencies(group, module, version string) []Dependency {
 		return nil
 	}
 	base := filepath.Join(p.root, group, module, version)
-	moduleMatches, _ := filepath.Glob(filepath.Join(base, "*", module+"-"+version+".module"))
-	sort.Strings(moduleMatches)
+	moduleMatches := globAtBothDepths(base, module+"-"+version+".module")
 	for _, match := range moduleMatches {
 		if deps := parseGradleModuleDependencies(match); len(deps) != 0 {
 			return deps
 		}
 	}
-	pomMatches, _ := filepath.Glob(filepath.Join(base, "*", module+"-"+version+".pom"))
-	sort.Strings(pomMatches)
+	pomMatches := globAtBothDepths(base, module+"-"+version+".pom")
 	for _, match := range pomMatches {
 		if deps := parsePOMDependencies(match); len(deps) != 0 {
 			return deps
 		}
 	}
 	return nil
+}
+
+// globAtBothDepths matches name directly under base and one
+// subdirectory deep, returning the union sorted by path.
+func globAtBothDepths(base, name string) []string {
+	shallow, _ := filepath.Glob(filepath.Join(base, name))
+	nested, _ := filepath.Glob(filepath.Join(base, "*", name))
+	matches := append(shallow, nested...)
+	sort.Strings(matches)
+	return matches
 }
 
 // Root returns the default cache root that DefaultProbe is rooted at.
