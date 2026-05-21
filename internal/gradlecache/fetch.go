@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kaeawc/grit/internal/fsutil"
+	"github.com/kaeawc/grit/internal/httpheaders"
 	"github.com/kaeawc/grit/internal/pathutil"
 	"github.com/kaeawc/grit/internal/random"
 	"github.com/kaeawc/grit/internal/retry"
@@ -63,15 +64,9 @@ func defaultRetryPolicy() retry.Policy {
 type HTTPFetcher struct {
 	baseURL    *url.URL
 	httpClient *http.Client
-	headers    map[string]string
-	envHeaders []envHeader
+	headers    httpheaders.Set
 	retry      retry.Policy
 	executor   *retry.Executor
-}
-
-type envHeader struct {
-	header string
-	envVar string
 }
 
 // HTTPFetcherOption configures an HTTPFetcher at construction.
@@ -94,15 +89,7 @@ func WithHTTPClient(client *http.Client) HTTPFetcherOption {
 // callers can pass placeholder maps without leaking blank headers.
 func WithHeaders(headers map[string]string) HTTPFetcherOption {
 	return func(f *HTTPFetcher) {
-		if len(headers) == 0 {
-			return
-		}
-		if f.headers == nil {
-			f.headers = make(map[string]string, len(headers))
-		}
-		for k, v := range headers {
-			f.headers[k] = v
-		}
+		f.headers.AddStaticMap(headers)
 	}
 }
 
@@ -111,10 +98,7 @@ func WithHeaders(headers map[string]string) HTTPFetcherOption {
 // without being captured in the constructor closure.
 func WithEnvHeader(header, envVar string) HTTPFetcherOption {
 	return func(f *HTTPFetcher) {
-		if header == "" || envVar == "" {
-			return
-		}
-		f.envHeaders = append(f.envHeaders, envHeader{header: header, envVar: envVar})
+		f.headers.AddEnv(header, envVar)
 	}
 }
 
@@ -232,7 +216,7 @@ func (f *HTTPFetcher) attemptFetch(ctx context.Context, dest, target string) err
 		return fmt.Errorf("gradlecache: build request: %w", err)
 	}
 	req.Header.Set("User-Agent", "grit-gradlecache/1")
-	f.applyHeaders(req.Header)
+	f.headers.Apply(req.Header)
 
 	resp, err := f.httpClient.Do(req)
 	if err != nil {
@@ -258,19 +242,6 @@ func (f *HTTPFetcher) attemptFetch(ctx context.Context, dest, target string) err
 		return fmt.Errorf("gradlecache: write %s: %w", dest, err)
 	}
 	return nil
-}
-
-func (f *HTTPFetcher) applyHeaders(h http.Header) {
-	for k, v := range f.headers {
-		if v != "" {
-			h.Set(k, v)
-		}
-	}
-	for _, binding := range f.envHeaders {
-		if v, ok := os.LookupEnv(binding.envVar); ok && v != "" {
-			h.Set(binding.header, v)
-		}
-	}
 }
 
 // destLocks holds one mutex per active destDir. Entries are not
