@@ -695,14 +695,39 @@ func kspSourceRoots(mod *project.Module, variantName string) []string {
 	return out
 }
 
-// runKSP2ForModule runs the KSP2 driver for one module/variant. Returns
-// a zero-value compilation (with Ran=false) when the module declares no
-// processors. Caller must append GeneratedKotlinFiles to the kotlinc
-// source list and invoke javac on JavaGenDir afterward.
+// kspMode reports which KSP runner to invoke. Default is mode 2 (the
+// standalone KSP2 JVM driver). Set GRIT_KSP_MODE=1 to request the
+// legacy KSP1 path — a kotlinc compiler plugin invocation that
+// avoids the KSP2 standalone-driver coroutine live-lock observed on
+// some large processor graphs. Mode 1 is reserved scaffolding; the
+// body is not yet implemented and returns a structured error so
+// callers see the intent without silent fallback.
+func kspMode() int {
+	switch strings.TrimSpace(os.Getenv("GRIT_KSP_MODE")) {
+	case "1":
+		return 1
+	case "2", "":
+		return 2
+	}
+	return 2
+}
+
+// runKSP2ForModule runs the configured KSP runner for one module/
+// variant. Returns a zero-value compilation (with Ran=false) when the
+// module declares no processors. Caller must append
+// GeneratedKotlinFiles to the kotlinc source list and invoke javac on
+// JavaGenDir afterward.
+//
+// Despite its name (kept for caller compatibility) this entry point
+// dispatches via kspMode(). The KSP2 standalone driver is the
+// default; GRIT_KSP_MODE=1 routes to runKSP1ForModule.
 func (c *Compiler) runKSP2ForModule(ctx context.Context, state *compileState, prj *project.Project, mod *project.Module, variantName, classOutputDir string, compileCP []string, stdout, stderr *os.File) (kspCompilation, error) {
 	var out kspCompilation
 	if mod == nil || !mod.UsesKSP || len(mod.KSP.Processors) == 0 {
 		return out, nil
+	}
+	if kspMode() == 1 {
+		return c.runKSP1ForModule(ctx, state, prj, mod, variantName, classOutputDir, compileCP, stdout, stderr)
 	}
 	version := projectKSPVersion(prj)
 	if strings.TrimSpace(version) == "" {
@@ -868,4 +893,24 @@ func kspHashTokens(version string, refs []modulebuild.Ref, opts map[string]strin
 		}
 	}
 	return out
+}
+
+// runKSP1ForModule is the entry point for the KSP1 (kotlinc compiler
+// plugin) fallback path requested via GRIT_KSP_MODE=1. KSP1 differs
+// from KSP2 in two important ways: the symbol-processing plugin runs
+// inside the kotlinc process (not a separate JVM), and processors
+// observe the same in-flight compilation rather than a pre-resolved
+// source set. That avoids the standalone KSP2 driver's coroutine
+// live-lock at the cost of a more complex kotlinc invocation.
+//
+// The opt-in surface lives now so callers can flip the switch and
+// receive a structured error instead of silent fallback to KSP2. The
+// body — resolving com.google.devtools.ksp:symbol-processing at the
+// project's KSP version, building the kotlinc plugin arg list with
+// the right option keys, and merging the integrated kotlinc
+// invocation back into compileMainInternal — needs end-to-end
+// validation on a real KSP-using project and is filed as a separate
+// piece of work.
+func (c *Compiler) runKSP1ForModule(_ context.Context, _ *compileState, _ *project.Project, mod *project.Module, _ string, _ string, _ []string, _, _ *os.File) (kspCompilation, error) {
+	return kspCompilation{}, fmt.Errorf("ksp1 fallback requested for %s but not yet implemented; unset GRIT_KSP_MODE or set GRIT_KSP_MODE=2 to use the default KSP2 driver, or extend GRIT_KSP_TIMEOUT for the current invocation", mod.Path)
 }
