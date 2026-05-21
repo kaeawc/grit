@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kaeawc/grit/internal/buildprogress"
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/depcache"
@@ -512,8 +513,12 @@ func (m *stackMaterializer) Materialize(ctx context.Context, resolved *m2local.R
 	if err != nil || len(lockfilePins) == 0 {
 		return resolved, err
 	}
+	progress := buildprogress.Default()
+	progress.Phase("materialize-pins", len(lockfilePins))
+	defer progress.PhaseDone("materialize-pins")
 	pinsByCoordinate := map[string]lockfile.Pin{}
 	for _, pin := range lockfilePins {
+		progress.Item("materialize-pins", pin.Coordinate.String())
 		if err := m.stack.Fetch(ctx, pin); err != nil {
 			return nil, err
 		}

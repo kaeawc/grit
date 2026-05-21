@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kaeawc/grit/internal/buildprogress"
 	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
@@ -31,9 +32,13 @@ type resolvedCacheKeyData struct {
 func (r *Resolver) Resolve(deps *modulebuild.Dependencies) (*Resolved, error) {
 	r.resetReport()
 	r.resetReplay()
+	progress := buildprogress.Default()
+	progress.Phase("resolve-dependencies", 0)
+	defer progress.PhaseDone("resolve-dependencies")
 	if cached, err := r.trackResolved("loadResolvedCache", func() (*Resolved, error) {
 		return r.loadResolvedCache(deps)
 	}); err == nil && cached != nil {
+		progress.Item("resolve-dependencies", "cache-hit")
 		return cached, nil
 	}
 	platforms := r.seedPlatforms()
@@ -78,14 +83,17 @@ func (r *Resolver) Resolve(deps *modulebuild.Dependencies) (*Resolved, error) {
 	wg.Add(3)
 	go func() {
 		defer wg.Done()
+		progress.Item("resolve-dependencies", "main-closure")
 		results[0].jars, results[0].libs, results[0].err = r.trackResolveClosure("resolveMainClosure", mainRoots)
 	}()
 	go func() {
 		defer wg.Done()
+		progress.Item("resolve-dependencies", "test-closure")
 		results[1].jars, results[1].libs, results[1].err = r.trackResolveClosure("resolveTestClosure", testRoots)
 	}()
 	go func() {
 		defer wg.Done()
+		progress.Item("resolve-dependencies", "desugar-closure")
 		results[2].jars, results[2].libs, results[2].err = r.trackResolveClosure("resolveDesugarClosure", desugarRoots)
 	}()
 	wg.Wait()
