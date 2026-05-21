@@ -18,7 +18,7 @@ func TestArtifactDependenciesReadsGradleModuleMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := ArtifactDependencies("org.junit.platform", "junit-platform-launcher", "1.10.2")
+	got := DefaultProbe().Dependencies("org.junit.platform", "junit-platform-launcher", "1.10.2")
 	if len(got) != 2 {
 		t.Fatalf("expected two deps, got %#v", got)
 	}
@@ -39,7 +39,7 @@ func TestArtifactDependenciesFallsBackToPOM(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := ArtifactDependencies("org.junit.jupiter", "junit-jupiter-engine", "5.10.2")
+	got := DefaultProbe().Dependencies("org.junit.jupiter", "junit-jupiter-engine", "5.10.2")
 	if len(got) != 1 || got[0].Group != "org.junit.jupiter" || got[0].Module != "junit-jupiter-api" || got[0].Version != "5.10.2" {
 		t.Fatalf("unexpected deps: %#v", got)
 	}
@@ -188,15 +188,15 @@ func TestNilProbeMethodsReturnZeroValues(t *testing.T) {
 	}
 }
 
-func TestPackageGlobalsDelegateToDefaultProbe(t *testing.T) {
+func TestDefaultProbeReadsHomeGradleCache(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	wantJar := seedJar(t, filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1"), "com.example", "lib", "1.0", "h", "lib-1.0.jar")
 
-	if got := FirstArtifactJar("com.example", "lib", "1.0"); got != wantJar {
-		t.Fatalf("package global should resolve via default probe: got %q want %q", got, wantJar)
+	if got := DefaultProbe().FirstJar("com.example", "lib", "1.0"); got != wantJar {
+		t.Fatalf("default probe should read the home cache: got %q want %q", got, wantJar)
 	}
-	if got := LatestVersion("com.example", "lib"); got != "1.0" {
-		t.Fatalf("package global LatestVersion: got %q", got)
+	if got := DefaultProbe().LatestVersion("com.example", "lib"); got != "1.0" {
+		t.Fatalf("default probe LatestVersion: got %q", got)
 	}
 }

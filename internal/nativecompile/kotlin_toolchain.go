@@ -62,7 +62,7 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	toolchain.SerializationPlugin = kotlinCompilerPluginOrCached(toolchain.SerializationPlugin, "kotlin-serialization-compiler-plugin-embeddable", version)
 	compilerJar := resolvedSet.FirstJar("compiler")
 	if compilerJar == "" {
-		compilerJar = gradlecache.FirstArtifactJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
+		compilerJar = gradlecache.DefaultProbe().FirstJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
 	}
 	scriptRuntimeJars := jarsOrCached(resolvedSet.Jars("script-runtime"), "org.jetbrains.kotlin", "kotlin-script-runtime", version)
 	reflectJars := jarsOrCached(resolvedSet.Jars("reflect"), "org.jetbrains.kotlin", "kotlin-reflect", version)
@@ -116,11 +116,12 @@ func jarsOrCached(resolved []string, group, module, version string) []string {
 // to the latest cached version. The latest-cached path is best-effort: a
 // major-version mismatch can still fail at runtime.
 func kotlinCompilerPluginJar(module, version string) string {
-	if jar := gradlecache.FirstArtifactJar("org.jetbrains.kotlin", module, version); jar != "" {
+	probe := gradlecache.DefaultProbe()
+	if jar := probe.FirstJar("org.jetbrains.kotlin", module, version); jar != "" {
 		return jar
 	}
 	if latest := latestCachedVersionFor("org.jetbrains.kotlin", module); latest != "" {
-		return gradlecache.FirstArtifactJar("org.jetbrains.kotlin", module, latest)
+		return probe.FirstJar("org.jetbrains.kotlin", module, latest)
 	}
 	return ""
 }
@@ -155,7 +156,7 @@ func annotationsVersionForStdlib(stdlibVersion string) string {
 	if strings.TrimSpace(stdlibVersion) == "" {
 		return ""
 	}
-	for _, dep := range gradlecache.ArtifactDependencies("org.jetbrains.kotlin", "kotlin-stdlib", stdlibVersion) {
+	for _, dep := range gradlecache.DefaultProbe().Dependencies("org.jetbrains.kotlin", "kotlin-stdlib", stdlibVersion) {
 		if dep.Group == "org.jetbrains" && dep.Module == "annotations" {
 			return dep.Version
 		}
@@ -225,7 +226,7 @@ func projectKotlinVersion(prj *project.Project) string {
 }
 
 func findGradleArtifactJars(group, module, version string) []string {
-	return gradlecache.FindArtifactJars(group, module, version)
+	return gradlecache.DefaultProbe().FindJars(group, module, version)
 }
 
 func latestCachedKotlinVersion(module string) string {
@@ -233,7 +234,7 @@ func latestCachedKotlinVersion(module string) string {
 }
 
 func latestCachedVersionFor(group, module string) string {
-	return gradlecache.LatestVersion(group, module)
+	return gradlecache.DefaultProbe().LatestVersion(group, module)
 }
 
 func fallbackKotlinToolchain() *kotlinToolchain {

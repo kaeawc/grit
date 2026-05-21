@@ -154,12 +154,13 @@ func kspRuntimeContainsCoroutines(paths []string) bool {
 }
 
 func kotlinxCoroutinesCoreCachedJar() string {
+	probe := gradlecache.DefaultProbe()
 	for _, module := range []string{"kotlinx-coroutines-core-jvm", "kotlinx-coroutines-core"} {
 		latest := latestCachedVersionFor("org.jetbrains.kotlinx", module)
 		if latest == "" {
 			continue
 		}
-		if jar := gradlecache.FirstArtifactJar("org.jetbrains.kotlinx", module, latest); jar != "" {
+		if jar := probe.FirstJar("org.jetbrains.kotlinx", module, latest); jar != "" {
 			return jar
 		}
 	}
@@ -229,8 +230,9 @@ func kspVersionCoversAllRuntimeModules(version string) bool {
 }
 
 func kspModuleCachedJar(module, version string) string {
+	probe := gradlecache.DefaultProbe()
 	for _, candidate := range []string{module, module + "-jvm"} {
-		if jar := gradlecache.FirstArtifactJar("com.google.devtools.ksp", candidate, version); jar != "" {
+		if jar := probe.FirstJar("com.google.devtools.ksp", candidate, version); jar != "" {
 			return jar
 		}
 	}
@@ -240,10 +242,11 @@ func kspModuleCachedJar(module, version string) string {
 // cachedKSPVersions returns the union of version directories cached under
 // any of the KSP runtime modules' coordinates. The result is unsorted.
 func cachedKSPVersions() []string {
+	probe := gradlecache.DefaultProbe()
 	seen := make(map[string]bool)
 	for _, module := range kspRuntimeModules {
 		for _, candidate := range []string{module, module + "-jvm"} {
-			for _, v := range gradlecache.ArtifactVersions("com.google.devtools.ksp", candidate, nil) {
+			for _, v := range probe.Versions("com.google.devtools.ksp", candidate, nil) {
 				seen[v] = true
 			}
 		}

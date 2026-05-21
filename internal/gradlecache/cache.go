@@ -134,43 +134,21 @@ func (p *Probe) Dependencies(group, module, version string) []Dependency {
 	return nil
 }
 
-// Root returns the default cache root used by the package-level
-// helpers. Callers that need a different root should construct a Probe
-// directly.
+// Root returns the default cache root that DefaultProbe is rooted at.
+// Callers that need a different root should construct a Probe via
+// NewProbe.
 func Root() string {
 	return filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1")
 }
 
-// FindArtifactJars is a thin wrapper over the default-rooted probe.
-func FindArtifactJars(group, module, version string) []string {
-	return defaultProbe().FindJars(group, module, version)
-}
-
-// FirstArtifactJar is a thin wrapper over the default-rooted probe.
-func FirstArtifactJar(group, module, version string) string {
-	return defaultProbe().FirstJar(group, module, version)
-}
-
-// ArtifactVersions is a thin wrapper over the default-rooted probe.
-func ArtifactVersions(group, module string, compare func(a, b string) int) []string {
-	return defaultProbe().Versions(group, module, compare)
-}
-
-// LatestVersion is a thin wrapper over the default-rooted probe.
-func LatestVersion(group, module string) string {
-	return defaultProbe().LatestVersion(group, module)
-}
-
-// ArtifactDependencies is a thin wrapper over the default-rooted
-// probe.
-func ArtifactDependencies(group, module, version string) []Dependency {
-	return defaultProbe().Dependencies(group, module, version)
-}
-
-// defaultProbe returns a Probe rooted at the package default; the root
-// is resolved on each call so HOME changes (e.g. t.Setenv in tests) are
-// honored without further plumbing.
-func defaultProbe() *Probe {
+// DefaultProbe returns a Probe rooted at the package default cache.
+// Callers that previously reached for the package-level wrappers
+// should migrate to this helper (or accept a *Probe argument) so the
+// cache root remains a single threadable value.
+//
+// The root is resolved on each call so HOME changes (e.g. t.Setenv in
+// tests) are honored without further plumbing.
+func DefaultProbe() *Probe {
 	return NewProbe(Root())
 }
 
