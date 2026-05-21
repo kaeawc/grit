@@ -207,7 +207,12 @@ func (c *Compiler) prepareMainCompile(ctx context.Context, prj *project.Project,
 	if mod.UsesMetro && (toolchain == nil || strings.TrimSpace(toolchain.MetroPlugin) == "") {
 		return out, fmt.Errorf("metro compiler plugin is required by %s but dev.zacsweers.metro:compiler could not be resolved from declared repositories", mod.Path)
 	}
-	kspResult, err := c.runKSP2ForModule(ctx, state, prj, mod, variantName, out.mainOut, out.compileCP, stdout, stderr)
+	var kspResult kspCompilation
+	err = c.track("runKSP", func() error {
+		var innerErr error
+		kspResult, innerErr = c.runKSP2ForModule(ctx, state, prj, mod, variantName, out.mainOut, out.compileCP, stdout, stderr)
+		return innerErr
+	})
 	if err != nil {
 		return out, err
 	}
