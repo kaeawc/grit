@@ -3,12 +3,14 @@ package nativecompile
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kaeawc/grit/internal/proc"
 	"github.com/kaeawc/grit/internal/project"
@@ -63,12 +65,40 @@ func runKotlinc(ctx context.Context, toolchain *kotlinToolchain, sources []strin
 	return err
 }
 
+// defaultKSPTimeout caps how long a single KSP2 child invocation may
+// run. KSP processors on large modules can legitimately need many
+// minutes; the cap is meant to bound pathological live-locks (some
+// processors deadlock on coroutine pools at scale) without breaking
+// healthy long runs. Override via GRIT_KSP_TIMEOUT (a Go duration
+// string like "30m" or "1h"); a value of 0 disables the cap entirely.
+const defaultKSPTimeout = 15 * time.Minute
+
+// kspTimeout resolves the configured per-invocation KSP timeout. The
+// env var is parsed at every call so users can rerun with a longer
+// budget without restarting other in-flight grit processes.
+func kspTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("GRIT_KSP_TIMEOUT"))
+	if raw == "" {
+		return defaultKSPTimeout
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		return defaultKSPTimeout
+	}
+	return d
+}
+
 // runKSP2 invokes the KSP2 driver as a separate JVM process. The
 // runtimeJars list must contain symbol-processing-aa-embeddable plus
 // its api/common-deps companions (and stdlib if not already on the
 // system classpath). All processor jars are passed positionally inside
 // args. KSP2 prints diagnostics to stderr; we mirror that to grit's
 // stderr while also buffering for tooldiag categorization.
+//
+// The invocation is bounded by kspTimeout (default 15m). On timeout
+// the child is SIGKILLed by exec.CommandContext and the returned
+// error names the elapsed duration so the run summary makes the hang
+// obvious instead of letting it look like a generic exec failure.
 func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, stderr *os.File) error {
 	stdlib := kotlinRuntimeJars()
 	classpath := mergePaths(runtimeJars, stdlib)
@@ -89,13 +119,27 @@ func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, s
 			_, _ = fmt.Fprintf(stderr, "  %s\n", a)
 		}
 	}
-	cmd := exec.CommandContext(ctx, "java", javaArgs...)
+
+	runCtx := ctx
+	timeout := kspTimeout()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	cmd := exec.CommandContext(runCtx, "java", javaArgs...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(stdout, &stdoutBuf)
 	cmd.Stderr = io.MultiWriter(stderr, &stderrBuf)
+	startedAt := time.Now()
 	err = cmd.Run()
 	recordToolDiagnostics(ctx, "ksp2", stderrBuf.String(), stdoutBuf.String())
+	if err != nil && timeout > 0 && errors.Is(runCtx.Err(), context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		elapsed := time.Since(startedAt).Round(time.Second)
+		return fmt.Errorf("ksp2 timed out after %s (configurable via GRIT_KSP_TIMEOUT; default %s): %w", elapsed, timeout, err)
+	}
 	return err
 }
 
