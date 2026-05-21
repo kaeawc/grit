@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kaeawc/grit/internal/buildprogress"
 	"github.com/kaeawc/grit/internal/perf"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -27,6 +28,9 @@ func (c *Compiler) SetTracker(tracker perf.Tracker) {
 }
 
 func (c *Compiler) track(name string, fn func() error) error {
+	progress := buildprogress.Default()
+	progress.Phase(name, 0)
+	defer progress.PhaseDone(name)
 	if c.tracker == nil {
 		return fn()
 	}
