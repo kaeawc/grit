@@ -15,12 +15,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"sort"
 	"strings"
 
 	"github.com/kaeawc/grit/internal/cas"
+	"github.com/kaeawc/grit/internal/httpheaders"
 	"github.com/kaeawc/grit/internal/lockfile"
 	"github.com/kaeawc/grit/internal/publish"
 )
@@ -40,14 +40,8 @@ type Publisher struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	id         string
-	headers    map[string]string
-	envHeaders []headerEnv
+	headers    httpheaders.Set
 	offline    bool
-}
-
-type headerEnv struct {
-	header string
-	envVar string
 }
 
 // Option configures a Publisher at construction.
@@ -74,14 +68,7 @@ func WithID(id string) Option {
 // WithHeaders supplies static headers that are added to every upload request.
 func WithHeaders(headers map[string]string) Option {
 	return func(p *Publisher) {
-		if len(headers) == 0 {
-			return
-		}
-		out := make(map[string]string, len(headers))
-		for k, v := range headers {
-			out[k] = v
-		}
-		p.headers = out
+		p.headers.AddStaticMap(headers)
 	}
 }
 
@@ -89,10 +76,7 @@ func WithHeaders(headers map[string]string) Option {
 // environment variable at PublishPin time.
 func WithEnvHeader(header, envVar string) Option {
 	return func(p *Publisher) {
-		if header == "" || envVar == "" {
-			return
-		}
-		p.envHeaders = append(p.envHeaders, headerEnv{header: header, envVar: envVar})
+		p.headers.AddEnv(header, envVar)
 	}
 }
 
@@ -229,14 +213,7 @@ func (p *Publisher) targetURL(coord lockfile.Coordinate, name string) string {
 
 func (p *Publisher) applyRequestHeaders(headers http.Header) {
 	headers.Set("User-Agent", userAgent)
-	for _, binding := range p.envHeaders {
-		if value, ok := os.LookupEnv(binding.envVar); ok && value != "" {
-			headers.Set(binding.header, value)
-		}
-	}
-	for k, v := range p.headers {
-		headers.Set(k, v)
-	}
+	p.headers.Apply(headers)
 }
 
 func redactURLUserinfo(raw string) string {

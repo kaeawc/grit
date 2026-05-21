@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/kaeawc/grit/internal/cas"
 	"github.com/kaeawc/grit/internal/downloader"
+	"github.com/kaeawc/grit/internal/httpheaders"
 	"github.com/kaeawc/grit/internal/lockfile"
 )
 
@@ -61,14 +61,8 @@ type Downloader struct {
 	baseURL    *url.URL
 	httpClient *http.Client
 	id         string
-	headers    map[string]string
-	envHeaders []headerEnv
+	headers    httpheaders.Set
 	offline    bool
-}
-
-type headerEnv struct {
-	header string
-	envVar string
 }
 
 // Option configures a Downloader at construction.
@@ -104,14 +98,7 @@ func WithID(id string) Option {
 // affect the downloader.
 func WithHeaders(headers map[string]string) Option {
 	return func(d *Downloader) {
-		if len(headers) == 0 {
-			return
-		}
-		out := make(map[string]string, len(headers))
-		for k, v := range headers {
-			out[k] = v
-		}
-		d.headers = out
+		d.headers.AddStaticMap(headers)
 	}
 }
 
@@ -121,10 +108,7 @@ func WithHeaders(headers map[string]string) Option {
 // source auth tokens from the process environment.
 func WithEnvHeader(header, envVar string) Option {
 	return func(d *Downloader) {
-		if header == "" || envVar == "" {
-			return
-		}
-		d.envHeaders = append(d.envHeaders, headerEnv{header: header, envVar: envVar})
+		d.headers.AddEnv(header, envVar)
 	}
 }
 
@@ -247,14 +231,7 @@ func (d *Downloader) fetchFile(ctx context.Context, pin lockfile.Pin, file lockf
 
 func (d *Downloader) applyRequestHeaders(headers http.Header) {
 	headers.Set("User-Agent", userAgent)
-	for _, binding := range d.envHeaders {
-		if value, ok := os.LookupEnv(binding.envVar); ok && value != "" {
-			headers.Set(binding.header, value)
-		}
-	}
-	for k, v := range d.headers {
-		headers.Set(k, v)
-	}
+	d.headers.Apply(headers)
 }
 
 func redactURLUserinfo(raw string) string {
