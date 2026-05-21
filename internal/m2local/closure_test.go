@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kaeawc/grit/internal/catalog"
@@ -124,6 +125,37 @@ func TestExpandRefsNormalizesMetadataOnlyRootToJVMSibling(t *testing.T) {
 	}
 	if coords[0].Module != "kotlinx-datetime-jvm" {
 		t.Fatalf("expected jvm sibling, got %#v", coords[0])
+	}
+}
+
+func TestResolveOneSkipsAndroidFallbackForAlreadySuffixedModule(t *testing.T) {
+	t.Parallel()
+
+	// A coordinate whose module already ends in -jvm or -android must
+	// never reroute to <module>-android — otherwise an offline KMP
+	// graph that already lives at the -jvm sibling will accidentally
+	// adopt an unrelated <module>-jvm-android directory left over from
+	// a prior probe.
+	cacheRoot := t.TempDir()
+	workRoot := t.TempDir()
+	for _, base := range []string{
+		"io.modelcontextprotocol/kotlin-sdk-jvm/0.8.1",
+		"io.modelcontextprotocol/kotlin-sdk-jvm-android/0.8.1",
+	} {
+		if err := os.MkdirAll(filepath.Join(cacheRoot, base), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resolver := New(cacheRoot, workRoot, nil, nil)
+	resolver.Offline = true
+
+	coord := Coordinate{Group: "io.modelcontextprotocol", Module: "kotlin-sdk-jvm", Version: "0.8.1"}
+	_, _, _, _ = resolver.resolveOneDepth(coord, 0)
+
+	for _, sel := range resolver.snapshotReport().Selections {
+		if sel.Kind == "module_redirect" && strings.Contains(sel.Chosen, "kotlin-sdk-jvm-android") {
+			t.Fatalf("unexpected -android redirect from already-suffixed coord: %+v", sel)
+		}
 	}
 }
 

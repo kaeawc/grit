@@ -290,7 +290,7 @@ func (r *Resolver) resolveOneDepth(coord Coordinate, depth int) (string, *Androi
 			}
 		}
 	}
-	if moduleFile == "" && pomFile == "" {
+	if moduleFile == "" && pomFile == "" && !strings.HasSuffix(coord.Module, "-jvm") && !strings.HasSuffix(coord.Module, "-android") {
 		alt := coord
 		alt.Module = coord.Module + "-android"
 		if normalized, ok := r.normalizeFallbackCoordinate(alt); ok {
