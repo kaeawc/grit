@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kaeawc/grit/internal/buildprogress"
@@ -15,6 +16,7 @@ import (
 	"github.com/kaeawc/grit/internal/depcache"
 	"github.com/kaeawc/grit/internal/downloader/gradlecache"
 	mavenread "github.com/kaeawc/grit/internal/downloader/mavenlocal"
+	"github.com/kaeawc/grit/internal/errgroup"
 	artifactcache "github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/lockfile"
 	"github.com/kaeawc/grit/internal/lockfile/produce"
@@ -516,16 +518,9 @@ func (m *stackMaterializer) Materialize(ctx context.Context, resolved *m2local.R
 	progress := buildprogress.Default()
 	progress.Phase("materialize-pins", len(lockfilePins))
 	defer progress.PhaseDone("materialize-pins")
-	pinsByCoordinate := map[string]lockfile.Pin{}
-	for _, pin := range lockfilePins {
-		progress.Item("materialize-pins", pin.Coordinate.String())
-		if err := m.stack.Fetch(ctx, pin); err != nil {
-			return nil, err
-		}
-		if err := m.stack.Publish(ctx, pin); err != nil {
-			return nil, err
-		}
-		pinsByCoordinate[pin.Coordinate.String()] = pin
+	pinsByCoordinate, err := m.materializePins(ctx, lockfilePins, progress)
+	if err != nil {
+		return nil, err
 	}
 	projected := *resolved
 	projected.CompileJars = m.rewriteJarPaths(resolved.CompileJars)
@@ -536,6 +531,52 @@ func (m *stackMaterializer) Materialize(ctx context.Context, resolved *m2local.R
 	projected.RuntimeJars = m.rewriteAndroidClasspaths(projected.RuntimeJars, projected.AndroidLibraries)
 	projected.TestJars = m.rewriteAndroidClasspaths(projected.TestJars, projected.AndroidLibraries)
 	return &projected, nil
+}
+
+// materializePinsConcurrency caps how many pins materialize in flight
+// at once. Materialization is I/O-bound (file copies, hash sidecars,
+// metadata writes) so a small fixed limit keeps disk contention
+// bounded while still hiding per-pin latency.
+const materializePinsConcurrency = 8
+
+// materializePins runs Stack.Fetch + Stack.Publish for every pin
+// concurrently, capped at materializePinsConcurrency. Publish steps
+// for pins sharing the same (group, artifact) serialize on a keyed
+// mutex so concurrent updates to maven-metadata-local.xml don't
+// stomp on each other.
+func (m *stackMaterializer) materializePins(ctx context.Context, pins []lockfile.Pin, progress *buildprogress.Reporter) (map[string]lockfile.Pin, error) {
+	pinsByCoordinate := make(map[string]lockfile.Pin, len(pins))
+	var mu sync.Mutex
+	var publishLocks sync.Map
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(materializePinsConcurrency)
+	for _, pin := range pins {
+		pin := pin
+		g.Go(func() error {
+			progress.Item("materialize-pins", pin.Coordinate.String())
+			if err := m.stack.Fetch(gctx, pin); err != nil {
+				return err
+			}
+			key := pin.Coordinate.Group + ":" + pin.Coordinate.Artifact
+			lockIface, _ := publishLocks.LoadOrStore(key, &sync.Mutex{})
+			pubMu := lockIface.(*sync.Mutex)
+			pubMu.Lock()
+			err := m.stack.Publish(gctx, pin)
+			pubMu.Unlock()
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			pinsByCoordinate[pin.Coordinate.String()] = pin
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return pinsByCoordinate, nil
 }
 
 func (m *stackMaterializer) lockfilePins(resolved *m2local.Resolved) ([]lockfile.Pin, error) {
