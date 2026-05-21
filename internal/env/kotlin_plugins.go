@@ -30,7 +30,7 @@ func KotlincLibDir() string {
 
 // LocateComposeCompilerPlugin returns the path to the compose compiler plugin
 // jar, preferring the kotlinc/lib distribution and falling back to the local
-// Gradle cache. Returns "" if neither is available.
+// artifact cache. Returns "" if neither is available.
 func LocateComposeCompilerPlugin() string {
 	if dir := KotlincLibDir(); dir != "" {
 		path := filepath.Join(dir, "compose-compiler-plugin.jar")
@@ -38,19 +38,12 @@ func LocateComposeCompilerPlugin() string {
 			return path
 		}
 	}
-	const group = "org.jetbrains.kotlin"
-	const module = "kotlin-compose-compiler-plugin-embeddable"
-	if version := gradlecache.LatestVersion(group, module); version != "" {
-		if jars := gradlecache.FindArtifactJars(group, module, version); len(jars) > 0 {
-			return jars[0]
-		}
-	}
-	return ""
+	return latestCachedPluginJar("kotlin-compose-compiler-plugin-embeddable")
 }
 
 // LocateSerializationCompilerPlugin returns the path to the kotlinx
 // serialization compiler plugin jar, preferring kotlinc/lib then the local
-// Gradle cache. Returns "" if not available.
+// artifact cache. Returns "" if not available.
 func LocateSerializationCompilerPlugin() string {
 	if dir := KotlincLibDir(); dir != "" {
 		path := filepath.Join(dir, "kotlin-serialization-compiler-plugin.jar")
@@ -58,27 +51,40 @@ func LocateSerializationCompilerPlugin() string {
 			return path
 		}
 	}
-	const group = "org.jetbrains.kotlin"
-	const module = "kotlin-serialization-compiler-plugin-embeddable"
-	if version := gradlecache.LatestVersion(group, module); version != "" {
-		if jars := gradlecache.FindArtifactJars(group, module, version); len(jars) > 0 {
-			return jars[0]
-		}
-	}
-	return ""
+	return latestCachedPluginJar("kotlin-serialization-compiler-plugin-embeddable")
 }
 
 // LocateKotlinCompiler returns either the project-requested Kotlin compiler
-// embeddable jar from the Gradle cache or the latest cached compiler jar.
+// embeddable jar from the local artifact cache or the latest cached compiler
+// jar.
 func LocateKotlinCompiler(prj *project.Project) string {
+	probe := gradlecache.DefaultProbe()
+	const group = "org.jetbrains.kotlin"
+	const module = "kotlin-compiler-embeddable"
 	version := projectKotlinVersion(prj)
 	if version == "" {
-		version = gradlecache.LatestVersion("org.jetbrains.kotlin", "kotlin-compiler-embeddable")
+		version = probe.LatestVersion(group, module)
 	}
 	if version == "" {
 		return ""
 	}
-	jars := gradlecache.FindArtifactJars("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
+	jars := probe.FindJars(group, module, version)
+	if len(jars) == 0 {
+		return ""
+	}
+	return jars[0]
+}
+
+// latestCachedPluginJar returns the jar path for the latest cached version
+// of an org.jetbrains.kotlin compiler plugin module, or "" when none is
+// present.
+func latestCachedPluginJar(module string) string {
+	probe := gradlecache.DefaultProbe()
+	version := probe.LatestVersion("org.jetbrains.kotlin", module)
+	if version == "" {
+		return ""
+	}
+	jars := probe.FindJars("org.jetbrains.kotlin", module, version)
 	if len(jars) == 0 {
 		return ""
 	}

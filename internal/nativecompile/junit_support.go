@@ -173,7 +173,7 @@ type junitArtifactCache interface {
 type gradleJUnitArtifactCache struct{}
 
 func (gradleJUnitArtifactCache) Versions(group, module string) []string {
-	return gradlecache.ArtifactVersions(group, module, compareVersion)
+	return gradlecache.DefaultProbe().Versions(group, module, compareVersion)
 }
 
 func (gradleJUnitArtifactCache) Jar(group, module, version string) string {
@@ -181,7 +181,7 @@ func (gradleJUnitArtifactCache) Jar(group, module, version string) string {
 }
 
 func (gradleJUnitArtifactCache) Dependencies(group, module, version string) []gradlecache.Dependency {
-	return gradlecache.ArtifactDependencies(group, module, version)
+	return gradlecache.DefaultProbe().Dependencies(group, module, version)
 }
 
 func alignedJUnitRuntimeVersionsFor(deps *modulebuild.Dependencies, cat *catalog.Catalog) junitRuntimeVersions {
@@ -360,7 +360,7 @@ func junitSupportDependencyJar(versions junitRuntimeVersions, group, module stri
 }
 
 func latestCachedArtifactJar(group, module string) string {
-	version := gradlecache.LatestVersion(group, module)
+	version := gradlecache.DefaultProbe().LatestVersion(group, module)
 	if version == "" {
 		return ""
 	}
