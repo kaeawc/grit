@@ -313,6 +313,127 @@ func TestMultiRepoFetcherCollapsesSingleAndEmpty(t *testing.T) {
 	}
 }
 
+func TestRoutedMultiRepoFetcherTriesPreferredFirst(t *testing.T) {
+	calls := []string{}
+	central := FetcherFunc(func(_, _, _, _ string) ([]string, error) {
+		calls = append(calls, "central")
+		return nil, nil
+	})
+	google := FetcherFunc(func(destDir, _, m, v string) ([]string, error) {
+		calls = append(calls, "google")
+		dest := filepath.Join(destDir, m+"-"+v+".jar")
+		_ = os.WriteFile(dest, []byte("from-google"), 0o644)
+		return []string{dest}, nil
+	})
+	chain := NewRoutedMultiRepoFetcher(func(group string) int {
+		if strings.HasPrefix(group, "androidx.") {
+			return 1
+		}
+		return -1
+	}, central, google)
+
+	got, err := chain.Fetch(t.TempDir(), "androidx.compose.ui", "ui", "1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected one file, got %#v", got)
+	}
+	if strings.Join(calls, ",") != "google" {
+		t.Fatalf("expected only google consulted, got %v", calls)
+	}
+}
+
+func TestRoutedMultiRepoFetcherFallsBackToOthersOnEmpty(t *testing.T) {
+	calls := []string{}
+	central := FetcherFunc(func(destDir, _, m, v string) ([]string, error) {
+		calls = append(calls, "central")
+		dest := filepath.Join(destDir, m+"-"+v+".jar")
+		_ = os.WriteFile(dest, []byte("from-central"), 0o644)
+		return []string{dest}, nil
+	})
+	google := FetcherFunc(func(_, _, _, _ string) ([]string, error) {
+		calls = append(calls, "google")
+		return nil, nil
+	})
+	chain := NewRoutedMultiRepoFetcher(func(group string) int {
+		if strings.HasPrefix(group, "androidx.") {
+			return 1
+		}
+		return -1
+	}, central, google)
+
+	got, err := chain.Fetch(t.TempDir(), "androidx.unknown", "x", "1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected fallback hit, got %#v", got)
+	}
+	if strings.Join(calls, ",") != "google,central" {
+		t.Fatalf("expected google then central, got %v", calls)
+	}
+}
+
+func TestRoutedMultiRepoFetcherUsesDeclarationOrderWhenNoPreference(t *testing.T) {
+	calls := []string{}
+	central := FetcherFunc(func(destDir, _, m, v string) ([]string, error) {
+		calls = append(calls, "central")
+		dest := filepath.Join(destDir, m+"-"+v+".jar")
+		_ = os.WriteFile(dest, []byte("from-central"), 0o644)
+		return []string{dest}, nil
+	})
+	google := FetcherFunc(func(_, _, _, _ string) ([]string, error) {
+		calls = append(calls, "google")
+		return nil, nil
+	})
+	chain := NewRoutedMultiRepoFetcher(func(group string) int {
+		if strings.HasPrefix(group, "androidx.") {
+			return 1
+		}
+		return -1
+	}, central, google)
+
+	got, err := chain.Fetch(t.TempDir(), "org.jetbrains.kotlin", "kotlin-stdlib", "2.3.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected one file, got %#v", got)
+	}
+	if strings.Join(calls, ",") != "central" {
+		t.Fatalf("non-routed group should hit central only, got %v", calls)
+	}
+}
+
+func TestHostedByGoogleRecognizesAndroidGroups(t *testing.T) {
+	hits := []string{
+		"androidx.compose.ui",
+		"androidx.core",
+		"com.android.tools",
+		"com.android.tools.build",
+		"com.google.android.material",
+		"com.google.android.gms",
+	}
+	for _, group := range hits {
+		if !hostedByGoogle(group) {
+			t.Errorf("expected hostedByGoogle(%q) = true", group)
+		}
+	}
+	misses := []string{
+		"androidxample.foo", // not androidx.* (no trailing dot)
+		"com.android",       // bare, no trailing dot
+		"com.google",        // not com.google.android.*
+		"org.jetbrains.kotlin",
+		"com.squareup.okhttp3",
+	}
+	for _, group := range misses {
+		if hostedByGoogle(group) {
+			t.Errorf("expected hostedByGoogle(%q) = false", group)
+		}
+	}
+}
+
 func TestIsOfflineDefaultsToTestBinary(t *testing.T) {
 	t.Setenv("GRIT_OFFLINE", "")
 	if !isOffline() {

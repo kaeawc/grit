@@ -258,9 +258,13 @@ func lockDestDir(destDir string) func() {
 
 // multiRepoFetcher tries each child fetcher in order, returning the
 // first non-empty result. A child returning an error aborts the
-// chain — callers decide whether to treat it as terminal.
+// chain — callers decide whether to treat it as terminal. When
+// preferIdx is non-nil it is consulted before falling back to
+// declaration order, letting callers route coordinates to the
+// canonical mirror first.
 type multiRepoFetcher struct {
-	fetchers []Fetcher
+	fetchers  []Fetcher
+	preferIdx func(group string) int
 }
 
 // NewMultiRepoFetcher composes child fetchers into a chain that tries
@@ -269,12 +273,7 @@ type multiRepoFetcher struct {
 // are filtered out; an empty or all-nil set returns nil so callers
 // can pass the result directly to Probe.WithFetcher.
 func NewMultiRepoFetcher(fetchers ...Fetcher) Fetcher {
-	live := make([]Fetcher, 0, len(fetchers))
-	for _, f := range fetchers {
-		if f != nil {
-			live = append(live, f)
-		}
-	}
+	live := liveFetchers(fetchers)
 	switch len(live) {
 	case 0:
 		return nil
@@ -284,8 +283,47 @@ func NewMultiRepoFetcher(fetchers ...Fetcher) Fetcher {
 	return &multiRepoFetcher{fetchers: live}
 }
 
+// NewRoutedMultiRepoFetcher is NewMultiRepoFetcher with a router that
+// returns the preferred child index for a given group, or -1 to use
+// declaration order. The router is consulted on every Fetch so
+// coordinates whose canonical home is downstream in the chain
+// (AndroidX → Google Maven, for example) skip the upstream 404.
+func NewRoutedMultiRepoFetcher(preferIdx func(group string) int, fetchers ...Fetcher) Fetcher {
+	live := liveFetchers(fetchers)
+	switch len(live) {
+	case 0:
+		return nil
+	case 1:
+		return live[0]
+	}
+	return &multiRepoFetcher{fetchers: live, preferIdx: preferIdx}
+}
+
+func liveFetchers(fetchers []Fetcher) []Fetcher {
+	out := make([]Fetcher, 0, len(fetchers))
+	for _, f := range fetchers {
+		if f != nil {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func (m *multiRepoFetcher) Fetch(destDir, group, module, version string) ([]string, error) {
-	for _, child := range m.fetchers {
+	preferred := -1
+	if m.preferIdx != nil {
+		preferred = m.preferIdx(group)
+	}
+	if preferred >= 0 && preferred < len(m.fetchers) {
+		out, err := m.fetchers[preferred].Fetch(destDir, group, module, version)
+		if err != nil || len(out) > 0 {
+			return out, err
+		}
+	}
+	for i, child := range m.fetchers {
+		if i == preferred {
+			continue
+		}
 		out, err := child.Fetch(destDir, group, module, version)
 		if err != nil {
 			return nil, err
@@ -295,6 +333,27 @@ func (m *multiRepoFetcher) Fetch(destDir, group, module, version string) ([]stri
 		}
 	}
 	return nil, nil
+}
+
+// googleHostedGroupPrefixes lists the canonical group-id prefixes
+// served by Google Maven. Coordinates whose group has one of these
+// prefixes skip Maven Central first (typical 3× 404) and hit Google
+// directly.
+var googleHostedGroupPrefixes = []string{
+	"androidx.",
+	"com.android.",
+	"com.google.android.",
+}
+
+// hostedByGoogle reports whether group is canonically served by
+// Google Maven.
+func hostedByGoogle(group string) bool {
+	for _, prefix := range googleHostedGroupPrefixes {
+		if strings.HasPrefix(group, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 var (
@@ -315,7 +374,13 @@ func defaultFetcher() Fetcher {
 	sharedFetcherOnce.Do(func() {
 		central, _ := NewHTTPFetcher(MavenCentralBaseURL)
 		google, _ := NewHTTPFetcher(GoogleMavenBaseURL)
-		sharedFetcher = NewMultiRepoFetcher(central, google)
+		const googleIdx = 1
+		sharedFetcher = NewRoutedMultiRepoFetcher(func(group string) int {
+			if hostedByGoogle(group) {
+				return googleIdx
+			}
+			return -1
+		}, central, google)
 	})
 	return sharedFetcher
 }
