@@ -30,13 +30,15 @@ type Server struct {
 	binaryHash string
 	startedAt  time.Time
 
-	// mu guards handlers and listener. Handlers is read-only after
-	// Start in practice (Register is for setup), but both fields are
-	// touched by Start, Stop, and concurrent connection-handler
-	// goroutines, so a single mutex covers them.
+	// mu guards handlers, listener, startedAt, and stopping. The accept
+	// loop checks stopping under mu before wg.Add so Stop's wg.Wait
+	// can never start before a pending Add lands — a violation of the
+	// WaitGroup contract that the race detector flags as a data race
+	// on the internal counter.
 	mu       sync.Mutex
 	handlers map[string]Handler
 	listener net.Listener
+	stopping bool
 
 	wg       sync.WaitGroup
 	stopOnce sync.Once
@@ -141,7 +143,14 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 			return fmt.Errorf("daemon: accept: %w", err)
 		}
+		s.mu.Lock()
+		if s.stopping {
+			s.mu.Unlock()
+			_ = conn.Close()
+			continue
+		}
 		s.wg.Add(1)
+		s.mu.Unlock()
 		go s.handleConn(ctx, conn)
 	}
 }
@@ -152,6 +161,7 @@ func (s *Server) Stop() error {
 	var stopErr error
 	s.stopOnce.Do(func() {
 		s.mu.Lock()
+		s.stopping = true
 		listener := s.listener
 		s.mu.Unlock()
 		if listener != nil {
@@ -225,11 +235,14 @@ func errorResponse(err error) Response {
 
 func (s *Server) registerBuiltins() {
 	s.handlers[VerbStatus] = func(context.Context, json.RawMessage) (any, error) {
+		s.mu.Lock()
+		startedAt := s.startedAt
+		s.mu.Unlock()
 		return StatusResult{
 			Version:    s.version,
 			BinaryHash: s.binaryHash,
-			StartedAt:  s.startedAt,
-			UptimeMs:   time.Since(s.startedAt).Milliseconds(),
+			StartedAt:  startedAt,
+			UptimeMs:   time.Since(startedAt).Milliseconds(),
 		}, nil
 	}
 	s.handlers[VerbShutdown] = func(context.Context, json.RawMessage) (any, error) {
