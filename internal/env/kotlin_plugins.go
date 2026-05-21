@@ -58,7 +58,7 @@ func LocateSerializationCompilerPlugin() string {
 // embeddable jar from the local artifact cache or the latest cached compiler
 // jar.
 func LocateKotlinCompiler(prj *project.Project) string {
-	probe := gradlecache.DefaultProbe()
+	probe := gradlecache.ProjectProbe(prj)
 	const group = "org.jetbrains.kotlin"
 	const module = "kotlin-compiler-embeddable"
 	version := projectKotlinVersion(prj)

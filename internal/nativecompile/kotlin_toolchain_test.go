@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
@@ -33,13 +34,14 @@ func TestKotlinStdlibJarsForVersionReadsCache(t *testing.T) {
 	jdk7Jar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-stdlib-jdk7", "2.3.20", "def", "kotlin-stdlib-jdk7-2.3.20.jar")
 	jdk8Jar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-stdlib-jdk8", "2.3.20", "ghi", "kotlin-stdlib-jdk8-2.3.20.jar")
 
-	got := kotlinStdlibJarsForVersion("2.3.20")
+	probe := gradlecache.DefaultProbe()
+	got := kotlinStdlibJarsForVersion(probe, "2.3.20")
 	want := []string{stdlibJar, jdk7Jar, jdk8Jar}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected stdlib jars\ngot  %#v\nwant %#v", got, want)
 	}
 
-	if jars := kotlinStdlibJarsForVersion(""); jars != nil {
+	if jars := kotlinStdlibJarsForVersion(probe, ""); jars != nil {
 		t.Fatalf("expected nil for empty version, got %#v", jars)
 	}
 }
@@ -57,7 +59,7 @@ func TestAnnotationsVersionForStdlibReadsModuleMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := annotationsVersionForStdlib("2.3.20"); got != "13.0" {
+	if got := annotationsVersionForStdlib(gradlecache.DefaultProbe(), "2.3.20"); got != "13.0" {
 		t.Fatalf("expected annotations 13.0, got %q", got)
 	}
 }
@@ -78,7 +80,7 @@ func TestJetbrainsAnnotationsJarsPrefersStdlibTransitiveVersion(t *testing.T) {
 	wantJar := seedCacheJar(t, home, "org.jetbrains", "annotations", "13.0", "h1", "annotations-13.0.jar")
 	seedCacheJar(t, home, "org.jetbrains", "annotations", "26.0.2", "h2", "annotations-26.0.2.jar")
 
-	got := jetbrainsAnnotationsJars("2.3.20")
+	got := jetbrainsAnnotationsJars(gradlecache.DefaultProbe(), "2.3.20")
 	if len(got) != 1 || got[0] != wantJar {
 		t.Fatalf("expected stdlib's declared annotations version, got %#v", got)
 	}
@@ -90,7 +92,7 @@ func TestJetbrainsAnnotationsJarsFallsBackToLatestCached(t *testing.T) {
 
 	wantJar := seedCacheJar(t, home, "org.jetbrains", "annotations", "26.0.2", "h", "annotations-26.0.2.jar")
 
-	got := jetbrainsAnnotationsJars("2.3.20")
+	got := jetbrainsAnnotationsJars(gradlecache.DefaultProbe(), "2.3.20")
 	if len(got) != 1 || got[0] != wantJar {
 		t.Fatalf("expected fallback to latest cached annotations, got %#v", got)
 	}
@@ -100,13 +102,14 @@ func TestJarsOrCachedPrefersResolvedThenFallsBackToCache(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
+	probe := gradlecache.DefaultProbe()
 	resolved := []string{"/already/resolved.jar"}
-	if got := jarsOrCached(resolved, "org.example", "lib", "1.0"); !reflect.DeepEqual(got, resolved) {
+	if got := jarsOrCached(probe, resolved, "org.example", "lib", "1.0"); !reflect.DeepEqual(got, resolved) {
 		t.Fatalf("expected resolved jars to pass through, got %#v", got)
 	}
 
 	wantJar := seedCacheJar(t, home, "org.example", "lib", "1.0", "h", "lib-1.0.jar")
-	got := jarsOrCached(nil, "org.example", "lib", "1.0")
+	got := jarsOrCached(probe, nil, "org.example", "lib", "1.0")
 	if len(got) != 1 || got[0] != wantJar {
 		t.Fatalf("expected cache fallback to surface %q, got %#v", wantJar, got)
 	}
@@ -266,7 +269,7 @@ func TestKotlinCompilerPluginJarPrefersExactVersion(t *testing.T) {
 	wantJar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", "2.3.20", "abc", "kotlin-compose-compiler-plugin-embeddable-2.3.20.jar")
 	seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", "2.3.21", "def", "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar")
 
-	got := kotlinCompilerPluginJar("kotlin-compose-compiler-plugin-embeddable", "2.3.20")
+	got := kotlinCompilerPluginJar(gradlecache.DefaultProbe(), "kotlin-compose-compiler-plugin-embeddable", "2.3.20")
 	if got != wantJar {
 		t.Fatalf("expected exact-version match\n got: %q\nwant: %q", got, wantJar)
 	}
@@ -278,7 +281,7 @@ func TestKotlinCompilerPluginJarFallsBackToLatestCached(t *testing.T) {
 
 	wantJar := seedCacheJar(t, home, "org.jetbrains.kotlin", "kotlin-compose-compiler-plugin-embeddable", "2.3.21", "abc", "kotlin-compose-compiler-plugin-embeddable-2.3.21.jar")
 
-	got := kotlinCompilerPluginJar("kotlin-compose-compiler-plugin-embeddable", "2.3.20")
+	got := kotlinCompilerPluginJar(gradlecache.DefaultProbe(), "kotlin-compose-compiler-plugin-embeddable", "2.3.20")
 	if got != wantJar {
 		t.Fatalf("expected fallback to latest cached version\n got: %q\nwant: %q", got, wantJar)
 	}
@@ -288,10 +291,11 @@ func TestKotlinCompilerPluginJarReturnsEmptyWhenAbsent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if got := kotlinCompilerPluginJar("kotlin-compose-compiler-plugin-embeddable", "2.3.20"); got != "" {
+	probe := gradlecache.DefaultProbe()
+	if got := kotlinCompilerPluginJar(probe, "kotlin-compose-compiler-plugin-embeddable", "2.3.20"); got != "" {
 		t.Fatalf("expected empty when no cached plugin jar exists, got %q", got)
 	}
-	if got := kotlinCompilerPluginJar("kotlin-serialization-compiler-plugin-embeddable", "2.3.20"); got != "" {
+	if got := kotlinCompilerPluginJar(probe, "kotlin-serialization-compiler-plugin-embeddable", "2.3.20"); got != "" {
 		t.Fatalf("expected empty for serialization plugin too, got %q", got)
 	}
 }

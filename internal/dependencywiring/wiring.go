@@ -387,7 +387,7 @@ func ResolveMetroCompilerPlugin(prj *project.Project, resolver ArtifactResolver)
 			}
 		}
 	}
-	if paths := artifactcache.DefaultProbe().FindJars("dev.zacsweers.metro", "compiler", version); len(paths) > 0 {
+	if paths := artifactcache.ProjectProbe(prj).FindJars("dev.zacsweers.metro", "compiler", version); len(paths) > 0 {
 		return paths[0]
 	}
 	return ""

@@ -98,6 +98,7 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 	if err != nil {
 		return nil, err
 	}
+	probe := gradlecache.ProjectProbe(prj)
 	deps := &modulebuild.Dependencies{
 		Main: []modulebuild.Ref{
 			{Kind: "raw", Value: "com.google.devtools.ksp:symbol-processing-aa-embeddable:" + version},
@@ -116,12 +117,12 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 	// (aa-embeddable@2.3.7 calling api@2.3.6 methods that don't exist
 	// yet). Pick one coherent KSP version covered by the local cache and
 	// add that whole set, instead of trusting per-module substitutions.
-	coherent := pickCoherentKSPVersion(version)
+	coherent := pickCoherentKSPVersion(probe, version)
 	if coherent == "" {
 		return nil, fmt.Errorf("ksp2 runtime jars not resolved for version %s; gradle cache has no coherent set for any nearby version", version)
 	}
 	for _, module := range kspRuntimeModules {
-		if jar := kspModuleCachedJar(module, coherent); jar != "" {
+		if jar := kspModuleCachedJar(probe, module, coherent); jar != "" {
 			jars = append(jars, jar)
 		}
 	}
@@ -130,7 +131,7 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 	// transitive edge, so backfill from the gradle cache when it isn't
 	// already present.
 	if !kspRuntimeContainsCoroutines(jars) {
-		if jar := kotlinxCoroutinesCoreCachedJar(); jar != "" {
+		if jar := kotlinxCoroutinesCoreCachedJar(probe); jar != "" {
 			jars = append(jars, jar)
 		}
 	}
@@ -153,10 +154,9 @@ func kspRuntimeContainsCoroutines(paths []string) bool {
 	return false
 }
 
-func kotlinxCoroutinesCoreCachedJar() string {
-	probe := gradlecache.DefaultProbe()
+func kotlinxCoroutinesCoreCachedJar(probe *gradlecache.Probe) string {
 	for _, module := range []string{"kotlinx-coroutines-core-jvm", "kotlinx-coroutines-core"} {
-		latest := latestCachedVersionFor("org.jetbrains.kotlinx", module)
+		latest := probe.LatestVersion("org.jetbrains.kotlinx", module)
 		if latest == "" {
 			continue
 		}
@@ -192,13 +192,13 @@ func stripKSPRuntimeJars(paths []string) []string {
 // preferring the requested version and otherwise downgrading: processor
 // jars compiled for older KSP releases routinely break against a newer
 // runtime. Returns "" when no covered version exists.
-func pickCoherentKSPVersion(requested string) string {
-	if requested != "" && kspVersionCoversAllRuntimeModules(requested) {
+func pickCoherentKSPVersion(probe *gradlecache.Probe, requested string) string {
+	if requested != "" && kspVersionCoversAllRuntimeModules(probe, requested) {
 		return requested
 	}
 	var covered []string
-	for _, v := range cachedKSPVersions() {
-		if kspVersionCoversAllRuntimeModules(v) {
+	for _, v := range cachedKSPVersions(probe) {
+		if kspVersionCoversAllRuntimeModules(probe, v) {
 			covered = append(covered, v)
 		}
 	}
@@ -220,17 +220,16 @@ func pickCoherentKSPVersion(requested string) string {
 	return covered[0]
 }
 
-func kspVersionCoversAllRuntimeModules(version string) bool {
+func kspVersionCoversAllRuntimeModules(probe *gradlecache.Probe, version string) bool {
 	for _, module := range kspRuntimeModules {
-		if kspModuleCachedJar(module, version) == "" {
+		if kspModuleCachedJar(probe, module, version) == "" {
 			return false
 		}
 	}
 	return true
 }
 
-func kspModuleCachedJar(module, version string) string {
-	probe := gradlecache.DefaultProbe()
+func kspModuleCachedJar(probe *gradlecache.Probe, module, version string) string {
 	for _, candidate := range []string{module, module + "-jvm"} {
 		if jar := probe.FirstJar("com.google.devtools.ksp", candidate, version); jar != "" {
 			return jar
@@ -241,8 +240,7 @@ func kspModuleCachedJar(module, version string) string {
 
 // cachedKSPVersions returns the union of version directories cached under
 // any of the KSP runtime modules' coordinates. The result is unsorted.
-func cachedKSPVersions() []string {
-	probe := gradlecache.DefaultProbe()
+func cachedKSPVersions(probe *gradlecache.Probe) []string {
 	seen := make(map[string]bool)
 	for _, module := range kspRuntimeModules {
 		for _, candidate := range []string{module, module + "-jvm"} {
