@@ -9,18 +9,46 @@ import (
 	"strings"
 )
 
-// Root returns the root of the user's Gradle modules-2 files-2.1 cache.
-func Root() string {
-	return filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1")
+// Probe is a read-only view of a Maven-layout artifact cache rooted at
+// a configurable directory. Layouts mirror the modules-2/files-2.1
+// convention used by common build tools. The zero value (and a nil
+// receiver) is a valid no-op probe so callers can omit the empty-case
+// guards when threading the type through optional code paths.
+type Probe struct {
+	root string
 }
 
-// FindArtifactJars returns jar paths for the given Gradle coordinate within
-// the local modules-2/files-2.1 cache. It excludes -sources and -javadoc jars.
-func FindArtifactJars(group, module, version string) []string {
-	if group == "" || module == "" || version == "" {
+// Dependency captures a direct dependency of a coordinate as recorded
+// in module metadata or a POM.
+type Dependency struct {
+	Group   string
+	Module  string
+	Version string
+}
+
+// NewProbe returns a probe rooted at root. An empty root makes every
+// method return the zero value, which lets callers wire a probe that
+// is intentionally a no-op (e.g. when no cache directory has been
+// staged yet).
+func NewProbe(root string) *Probe {
+	return &Probe{root: root}
+}
+
+// Root returns the directory the probe reads from.
+func (p *Probe) Root() string {
+	if p == nil {
+		return ""
+	}
+	return p.root
+}
+
+// FindJars returns jar paths for the given coordinate, excluding
+// -sources and -javadoc jars.
+func (p *Probe) FindJars(group, module, version string) []string {
+	if p == nil || p.root == "" || group == "" || module == "" || version == "" {
 		return nil
 	}
-	base := filepath.Join(Root(), group, module, version)
+	base := filepath.Join(p.root, group, module, version)
 	matches, _ := filepath.Glob(filepath.Join(base, "*", module+"-"+version+"*.jar"))
 	var out []string
 	for _, match := range matches {
@@ -34,23 +62,23 @@ func FindArtifactJars(group, module, version string) []string {
 	return out
 }
 
-// FirstArtifactJar returns the first jar path from the cache for the given
-// coordinate, or the empty string when none is present.
-func FirstArtifactJar(group, module, version string) string {
-	jars := FindArtifactJars(group, module, version)
+// FirstJar returns the first jar from FindJars, or "" when none is
+// present.
+func (p *Probe) FirstJar(group, module, version string) string {
+	jars := p.FindJars(group, module, version)
 	if len(jars) == 0 {
 		return ""
 	}
 	return jars[0]
 }
 
-// ArtifactVersions returns version directories for the given Gradle coordinate
-// within the local modules-2/files-2.1 cache, sorted by compare.
-func ArtifactVersions(group, module string, compare func(a, b string) int) []string {
-	if group == "" || module == "" {
+// Versions returns version directories for the coordinate, sorted by
+// compare (lexicographic when compare is nil).
+func (p *Probe) Versions(group, module string, compare func(a, b string) int) []string {
+	if p == nil || p.root == "" || group == "" || module == "" {
 		return nil
 	}
-	root := filepath.Join(Root(), group, module)
+	root := filepath.Join(p.root, group, module)
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil
@@ -71,19 +99,24 @@ func ArtifactVersions(group, module string, compare func(a, b string) int) []str
 	return versions
 }
 
-type Dependency struct {
-	Group   string
-	Module  string
-	Version string
+// LatestVersion returns the lexicographically last version directory
+// for the coordinate, or "" when none is present.
+func (p *Probe) LatestVersion(group, module string) string {
+	versions := p.Versions(group, module, nil)
+	if len(versions) == 0 {
+		return ""
+	}
+	return versions[len(versions)-1]
 }
 
-// ArtifactDependencies returns direct dependency metadata for a cached
-// artifact. It prefers Gradle module metadata, then falls back to Maven POMs.
-func ArtifactDependencies(group, module, version string) []Dependency {
-	if group == "" || module == "" || version == "" {
+// Dependencies returns direct dependency metadata for the coordinate,
+// preferring module metadata (richer variant-aware info) and falling
+// back to POMs when no module file is present.
+func (p *Probe) Dependencies(group, module, version string) []Dependency {
+	if p == nil || p.root == "" || group == "" || module == "" || version == "" {
 		return nil
 	}
-	base := filepath.Join(Root(), group, module, version)
+	base := filepath.Join(p.root, group, module, version)
 	moduleMatches, _ := filepath.Glob(filepath.Join(base, "*", module+"-"+version+".module"))
 	sort.Strings(moduleMatches)
 	for _, match := range moduleMatches {
@@ -101,28 +134,44 @@ func ArtifactDependencies(group, module, version string) []Dependency {
 	return nil
 }
 
-// LatestVersion returns the lexicographically last version directory present
-// for the given group/module within the cache, or "" if none.
+// Root returns the default cache root used by the package-level
+// helpers. Callers that need a different root should construct a Probe
+// directly.
+func Root() string {
+	return filepath.Join(os.Getenv("HOME"), ".gradle", "caches", "modules-2", "files-2.1")
+}
+
+// FindArtifactJars is a thin wrapper over the default-rooted probe.
+func FindArtifactJars(group, module, version string) []string {
+	return defaultProbe().FindJars(group, module, version)
+}
+
+// FirstArtifactJar is a thin wrapper over the default-rooted probe.
+func FirstArtifactJar(group, module, version string) string {
+	return defaultProbe().FirstJar(group, module, version)
+}
+
+// ArtifactVersions is a thin wrapper over the default-rooted probe.
+func ArtifactVersions(group, module string, compare func(a, b string) int) []string {
+	return defaultProbe().Versions(group, module, compare)
+}
+
+// LatestVersion is a thin wrapper over the default-rooted probe.
 func LatestVersion(group, module string) string {
-	if group == "" || module == "" {
-		return ""
-	}
-	root := filepath.Join(Root(), group, module)
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return ""
-	}
-	var versions []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			versions = append(versions, entry.Name())
-		}
-	}
-	sort.Strings(versions)
-	if len(versions) == 0 {
-		return ""
-	}
-	return versions[len(versions)-1]
+	return defaultProbe().LatestVersion(group, module)
+}
+
+// ArtifactDependencies is a thin wrapper over the default-rooted
+// probe.
+func ArtifactDependencies(group, module, version string) []Dependency {
+	return defaultProbe().Dependencies(group, module, version)
+}
+
+// defaultProbe returns a Probe rooted at the package default; the root
+// is resolved on each call so HOME changes (e.g. t.Setenv in tests) are
+// honored without further plumbing.
+func defaultProbe() *Probe {
+	return NewProbe(Root())
 }
 
 func parseGradleModuleDependencies(path string) []Dependency {
