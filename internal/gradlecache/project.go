@@ -22,15 +22,20 @@ func ProjectStagingRoot(prj *project.Project) string {
 }
 
 // ProjectProbe returns a probe rooted at the project's staging cache
-// with a fallback to the default user cache. When prj is nil or has
-// no root the function returns DefaultProbe so callers don't have to
-// special-case the early-startup case. Callers that want fetch-on-miss
-// (download from a remote Maven repo when the local chain misses)
-// should chain WithFetcher onto the returned probe.
+// with a fallback to the default user cache and a fetch-on-miss path
+// pointing at the public Maven repos. When prj is nil or has no root
+// the function returns DefaultProbe so callers don't have to
+// special-case the early-startup case. Set GRIT_OFFLINE=1 to disable
+// the fetch step (the fallback chain still runs). Test binaries
+// default to offline so tests don't accidentally hit the network.
 func ProjectProbe(prj *project.Project) *Probe {
 	staging := ProjectStagingRoot(prj)
 	if staging == "" {
 		return DefaultProbe()
 	}
-	return NewProbe(staging).WithStaging(StageByHardlink).WithFallback(DefaultProbe())
+	probe := NewProbe(staging).WithStaging(StageByHardlink).WithFallback(DefaultProbe())
+	if fetcher := defaultFetcher(); fetcher != nil {
+		probe = probe.WithFetcher(fetcher)
+	}
+	return probe
 }
