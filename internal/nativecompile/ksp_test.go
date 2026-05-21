@@ -44,13 +44,18 @@ func TestProjectKSPVersionDoesNotGuessFromGradleCache(t *testing.T) {
 	}
 }
 
-func TestResolveKSP2RuntimeUsesOnlyResolverRequests(t *testing.T) {
+func TestResolveKSP2RuntimeIssuesAllThreeRefsAndKeepsNonKSPJars(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedKSPCacheVersion(t, home, "2.1.20-1.0.32")
+
+	const transitive = "/repo/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.jar"
 	resolver := &kspResolverFake{
 		results: []*m2local.Resolved{{
 			CompileJars: []string{
 				"/repo/com/google/devtools/ksp/symbol-processing-aa-embeddable/2.1.20-1.0.32/symbol-processing-aa-embeddable-2.1.20-1.0.32.jar",
 			},
-			RuntimeJars: []string{"/repo/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.9.0/kotlinx-coroutines-core-jvm-1.9.0.jar"},
+			RuntimeJars: []string{transitive},
 		}},
 	}
 	state := compileStateWithResolver(resolver)
@@ -58,8 +63,14 @@ func TestResolveKSP2RuntimeUsesOnlyResolverRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("expected resolver classpath only, got %v", got)
+	hasTransitive := false
+	for _, p := range got {
+		if p == transitive {
+			hasTransitive = true
+		}
+	}
+	if !hasTransitive {
+		t.Fatalf("non-KSP transitive should survive stripKSPRuntimeJars, got %#v", got)
 	}
 	calls := resolver.callsSnapshot()
 	if len(calls) != 1 {
@@ -73,20 +84,112 @@ func TestResolveKSP2RuntimeUsesOnlyResolverRequests(t *testing.T) {
 	assertMainRefs(t, calls[0], want)
 }
 
-func TestResolveKSP2RuntimeDoesNotFallBackToGradleCache(t *testing.T) {
+func TestResolveKSP2RuntimeBackfillsFromGradleCacheWhenResolverSubstitutesVersion(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	cached := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", "com.google.devtools.ksp", "symbol-processing-aa-embeddable", "2.1.20-1.0.32", "sha")
-	if err := os.MkdirAll(cached, 0o755); err != nil {
-		t.Fatal(err)
+	// Cache has 2.1.20-1.0.32 fully covered; the resolver intentionally
+	// returns nothing here so the backfill path is exercised.
+	seedKSPCacheVersion(t, home, "2.1.20-1.0.32")
+
+	state := compileStateWithResolver(&kspResolverFake{results: []*m2local.Resolved{{}}})
+	got, err := resolveKSP2Runtime(state, &project.Project{Name: "app"}, "2.1.20-1.0.32")
+	if err != nil {
+		t.Fatalf("expected coherent cache to satisfy ksp2 runtime, got %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(cached, "symbol-processing-aa-embeddable-2.1.20-1.0.32.jar"), nil, 0o644); err != nil {
-		t.Fatal(err)
+	required := []string{"symbol-processing-aa-embeddable", "symbol-processing-api", "symbol-processing-common-deps"}
+	for _, module := range required {
+		if !kspRuntimeContainsModuleForTest(got, module) {
+			t.Fatalf("expected %s in returned classpath, got %#v", module, got)
+		}
 	}
+}
+
+func TestResolveKSP2RuntimeDowngradesToCoherentVersion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Requested version is missing aa-embeddable; an older version
+	// covers all three modules and should be picked over a newer version
+	// (downgrading is safer because processor jars compiled for older KSP
+	// releases routinely break against a newer runtime).
+	seedKSPCacheModuleVersions(t, home, "symbol-processing-aa-embeddable", []string{"2.3.4", "2.3.7"})
+	seedKSPCacheModuleVersions(t, home, "symbol-processing-api", []string{"2.3.4", "2.3.6", "2.3.7"})
+	seedKSPCacheModuleVersions(t, home, "symbol-processing-common-deps", []string{"2.3.4", "2.3.6", "2.3.7"})
+
+	state := compileStateWithResolver(&kspResolverFake{results: []*m2local.Resolved{{}}})
+	got, err := resolveKSP2Runtime(state, &project.Project{Name: "app"}, "2.3.6")
+	if err != nil {
+		t.Fatalf("expected downgrade to coherent version, got %v", err)
+	}
+	for _, path := range got {
+		if strings.Contains(path, "/2.3.6/") || strings.Contains(path, "/2.3.7/") {
+			t.Fatalf("expected 2.3.4 (coherent ≤ requested), got %s", path)
+		}
+	}
+	for _, module := range []string{"symbol-processing-aa-embeddable", "symbol-processing-api", "symbol-processing-common-deps"} {
+		if !kspRuntimeContainsModuleForTest(got, module) {
+			t.Fatalf("missing %s in coherent set: %#v", module, got)
+		}
+	}
+}
+
+func TestResolveKSP2RuntimeFailsWhenNoCoherentCoverage(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Only aa-embeddable is cached — no version covers the full triple.
+	seedKSPCacheModuleVersions(t, home, "symbol-processing-aa-embeddable", []string{"2.1.20-1.0.32"})
+
 	state := compileStateWithResolver(&kspResolverFake{results: []*m2local.Resolved{{}}})
 	if got, err := resolveKSP2Runtime(state, &project.Project{Name: "app"}, "2.1.20-1.0.32"); err == nil {
-		t.Fatalf("expected empty resolver result to fail instead of using Gradle cache, got %v", got)
+		t.Fatalf("expected error when cache has no coherent set, got %v", got)
 	}
+}
+
+func TestPickCoherentKSPVersionPrefersRequestedThenDowngrades(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedKSPCacheVersion(t, home, "2.3.4")
+	seedKSPCacheModuleVersions(t, home, "symbol-processing-api", []string{"2.3.6"})
+
+	if got := pickCoherentKSPVersion("2.3.4"); got != "2.3.4" {
+		t.Fatalf("requested version should win when covered: got %q", got)
+	}
+	if got := pickCoherentKSPVersion("2.3.6"); got != "2.3.4" {
+		t.Fatalf("expected 2.3.4 downgrade (only coherent ≤ 2.3.6), got %q", got)
+	}
+}
+
+func seedKSPCacheVersion(t *testing.T, home, version string) {
+	t.Helper()
+	for _, module := range []string{
+		"symbol-processing-aa-embeddable",
+		"symbol-processing-api",
+		"symbol-processing-common-deps",
+	} {
+		seedKSPCacheModuleVersions(t, home, module, []string{version})
+	}
+}
+
+func seedKSPCacheModuleVersions(t *testing.T, home, module string, versions []string) {
+	t.Helper()
+	for _, v := range versions {
+		dir := filepath.Join(home, ".gradle", "caches", "modules-2", "files-2.1", "com.google.devtools.ksp", module, v, "sha")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, module+"-"+v+".jar"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func kspRuntimeContainsModuleForTest(paths []string, module string) bool {
+	for _, p := range paths {
+		base := filepath.Base(p)
+		if strings.HasPrefix(base, module+"-") || strings.HasPrefix(base, module+"-jvm-") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestResolveKSPProcessorsUsesResolverJVMFallback(t *testing.T) {

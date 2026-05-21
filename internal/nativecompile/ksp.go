@@ -10,10 +10,20 @@ import (
 
 	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
 )
+
+// kspRuntimeModules names the KSP2 jars that must reach the driver's
+// classpath. aa-embeddable carries the engine + CLI main class; api and
+// common-deps round out the contract types and arg parser.
+var kspRuntimeModules = []string{
+	"symbol-processing-aa-embeddable",
+	"symbol-processing-api",
+	"symbol-processing-common-deps",
+}
 
 // KSP2 ships processors as a standalone JVM tool, not a kotlinc plugin.
 // The driver lives in symbol-processing-aa-embeddable; it consumes source
@@ -100,36 +110,147 @@ func resolveKSP2Runtime(state *compileState, prj *project.Project, version strin
 		return nil, fmt.Errorf("resolve ksp2 runtime %s: %w", version, err)
 	}
 	jars := mergePaths(resolved.CompileJars, resolved.RuntimeJars)
-	jars = filterKSPRuntimeClasspathVersion(version, jars)
+	jars = stripKSPRuntimeJars(jars)
+	// m2local may substitute a nearby version per KSP runtime module
+	// when exact-version sidecars are missing, which mixes ABI versions
+	// (aa-embeddable@2.3.7 calling api@2.3.6 methods that don't exist
+	// yet). Pick one coherent KSP version covered by the local cache and
+	// add that whole set, instead of trusting per-module substitutions.
+	coherent := pickCoherentKSPVersion(version)
+	if coherent == "" {
+		return nil, fmt.Errorf("ksp2 runtime jars not resolved for version %s; gradle cache has no coherent set for any nearby version", version)
+	}
+	for _, module := range kspRuntimeModules {
+		if jar := kspModuleCachedJar(module, coherent); jar != "" {
+			jars = append(jars, jar)
+		}
+	}
+	// KSP2's standalone analysis engine pulls kotlinx-coroutines off the
+	// runtime classpath; the resolver doesn't always traverse the
+	// transitive edge, so backfill from the gradle cache when it isn't
+	// already present.
+	if !kspRuntimeContainsCoroutines(jars) {
+		if jar := kotlinxCoroutinesCoreCachedJar(); jar != "" {
+			jars = append(jars, jar)
+		}
+	}
 	if len(jars) == 0 {
 		return nil, fmt.Errorf("ksp2 runtime jars not resolved for version %s; ensure dependency repositories and lock/provenance include the KSP runtime", version)
 	}
 	return jars, nil
 }
 
-func filterKSPRuntimeClasspathVersion(version string, paths []string) []string {
-	version = strings.TrimSpace(version)
-	if version == "" {
-		return paths
-	}
-	marker := string(filepath.Separator) + filepath.Join("com", "google", "devtools", "ksp") + string(filepath.Separator)
-	var out []string
+func kspRuntimeContainsCoroutines(paths []string) bool {
 	for _, path := range paths {
-		if !strings.Contains(path, marker) {
-			out = append(out, path)
+		base := filepath.Base(path)
+		if !strings.HasSuffix(base, ".jar") {
 			continue
 		}
-		parts := strings.Split(filepath.ToSlash(path), "/")
-		keep := false
-		for _, part := range parts {
-			if part == version {
-				keep = true
+		if strings.HasPrefix(base, "kotlinx-coroutines-core-jvm-") || strings.HasPrefix(base, "kotlinx-coroutines-core-") {
+			return true
+		}
+	}
+	return false
+}
+
+func kotlinxCoroutinesCoreCachedJar() string {
+	for _, module := range []string{"kotlinx-coroutines-core-jvm", "kotlinx-coroutines-core"} {
+		latest := latestCachedVersionFor("org.jetbrains.kotlinx", module)
+		if latest == "" {
+			continue
+		}
+		if jar := gradlecache.FirstArtifactJar("org.jetbrains.kotlinx", module, latest); jar != "" {
+			return jar
+		}
+	}
+	return ""
+}
+
+// stripKSPRuntimeJars removes any jar belonging to a KSP runtime module
+// (including the `-jvm` published variants) from paths so callers can
+// rebuild a version-coherent set.
+func stripKSPRuntimeJars(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		base := filepath.Base(path)
+		drop := false
+		for _, module := range kspRuntimeModules {
+			if strings.HasPrefix(base, module+"-") || strings.HasPrefix(base, module+"-jvm-") {
+				drop = true
 				break
 			}
 		}
-		if keep {
+		if !drop {
 			out = append(out, path)
 		}
+	}
+	return out
+}
+
+// pickCoherentKSPVersion returns a KSP version cached in full locally,
+// preferring the requested version and otherwise downgrading: processor
+// jars compiled for older KSP releases routinely break against a newer
+// runtime. Returns "" when no covered version exists.
+func pickCoherentKSPVersion(requested string) string {
+	if requested != "" && kspVersionCoversAllRuntimeModules(requested) {
+		return requested
+	}
+	var covered []string
+	for _, v := range cachedKSPVersions() {
+		if kspVersionCoversAllRuntimeModules(v) {
+			covered = append(covered, v)
+		}
+	}
+	if len(covered) == 0 {
+		return ""
+	}
+	sort.Slice(covered, func(i, j int) bool {
+		return compareVersion(covered[i], covered[j]) < 0
+	})
+	var best string
+	for _, v := range covered {
+		if requested == "" || compareVersion(v, requested) <= 0 {
+			best = v
+		}
+	}
+	if best != "" {
+		return best
+	}
+	return covered[0]
+}
+
+func kspVersionCoversAllRuntimeModules(version string) bool {
+	for _, module := range kspRuntimeModules {
+		if kspModuleCachedJar(module, version) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+func kspModuleCachedJar(module, version string) string {
+	for _, candidate := range []string{module, module + "-jvm"} {
+		if jar := gradlecache.FirstArtifactJar("com.google.devtools.ksp", candidate, version); jar != "" {
+			return jar
+		}
+	}
+	return ""
+}
+
+// cachedKSPVersions returns the union of version directories cached under
+// any of the KSP runtime modules' coordinates. The result is unsorted.
+func cachedKSPVersions() []string {
+	seen := make(map[string]bool)
+	for _, module := range kspRuntimeModules {
+		for _, candidate := range []string{module, module + "-jvm"} {
+			for _, v := range gradlecache.ArtifactVersions("com.google.devtools.ksp", candidate, nil) {
+				seen[v] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for v := range seen {
+		out = append(out, v)
 	}
 	return out
 }

@@ -44,8 +44,13 @@ func modeledGeneratedDirs(mod *project.Module, set project.GeneratedSourceSet, v
 	}
 	switch set.Provider {
 	case "metro":
+		// AGP's build/generated/ksp/<variant>/kotlin is the output of
+		// Gradle's KSP run, which grit replaces with its own in-tree
+		// KSP2 invocation (sources reach kotlinc via
+		// kspResult.GeneratedKotlinFiles). Including the AGP dir here
+		// double-registers every generated file and trips kotlinc with
+		// "redeclaration" errors when both dirs hold the same output.
 		return []string{
-			filepath.Join(mod.Dir, "build", "generated", "ksp", variantName, "kotlin"),
 			filepath.Join(mod.Dir, "build", "generated", "metro", variantName, "kotlin"),
 			filepath.Join(mod.Dir, "build", "generated", "source", "metro", variantName),
 		}
