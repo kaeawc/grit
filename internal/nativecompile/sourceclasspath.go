@@ -13,6 +13,7 @@ import (
 
 	"github.com/kaeawc/grit/internal/catalog"
 	"github.com/kaeawc/grit/internal/dependencywiring"
+	"github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/project"
@@ -660,7 +661,7 @@ func runtimeSupportJars() []string {
 }
 
 func kotlinRuntimeJars() []string {
-	return kotlinStdlibJarsForVersion(latestCachedKotlinVersion("kotlin-stdlib"))
+	return kotlinStdlibJarsForVersion(gradlecache.DefaultProbe(), latestCachedKotlinVersion("kotlin-stdlib"))
 }
 
 func kotlinTestRuntimeJars() []string {

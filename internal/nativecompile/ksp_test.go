@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kaeawc/grit/internal/gradlecache"
 	"github.com/kaeawc/grit/internal/m2local"
 	"github.com/kaeawc/grit/internal/modulebuild"
 	"github.com/kaeawc/grit/internal/perf"
@@ -150,10 +151,11 @@ func TestPickCoherentKSPVersionPrefersRequestedThenDowngrades(t *testing.T) {
 	seedKSPCacheVersion(t, home, "2.3.4")
 	seedKSPCacheModuleVersions(t, home, "symbol-processing-api", []string{"2.3.6"})
 
-	if got := pickCoherentKSPVersion("2.3.4"); got != "2.3.4" {
+	probe := gradlecache.DefaultProbe()
+	if got := pickCoherentKSPVersion(probe, "2.3.4"); got != "2.3.4" {
 		t.Fatalf("requested version should win when covered: got %q", got)
 	}
-	if got := pickCoherentKSPVersion("2.3.6"); got != "2.3.4" {
+	if got := pickCoherentKSPVersion(probe, "2.3.6"); got != "2.3.4" {
 		t.Fatalf("expected 2.3.4 downgrade (only coherent ≤ 2.3.6), got %q", got)
 	}
 }

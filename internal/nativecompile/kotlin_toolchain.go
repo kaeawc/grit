@@ -38,6 +38,7 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	if err != nil {
 		return nil, err
 	}
+	probe := gradlecache.ProjectProbe(prj)
 	resolvedSet, err := dependencywiring.ResolveToolDependencySet(resolver, kotlinToolDependencySet(version))
 	if err != nil {
 		return nil, err
@@ -53,20 +54,20 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 	// artifact has no cached .pom/.module sidecar, so fall back to the
 	// gradle cache for any toolchain role validate() would otherwise reject.
 	if len(toolchain.RuntimeJars) == 0 {
-		toolchain.RuntimeJars = kotlinStdlibJarsForVersion(version)
+		toolchain.RuntimeJars = kotlinStdlibJarsForVersion(probe, version)
 	}
 	// Optional compiler plugin roles go unfilled when the resolver
 	// substitutes a different version than the toolchain requested; fall
 	// back to the gradle cache so kotlinc still gets a -Xplugin entry.
-	toolchain.ComposePlugin = kotlinCompilerPluginOrCached(toolchain.ComposePlugin, "kotlin-compose-compiler-plugin-embeddable", version)
-	toolchain.SerializationPlugin = kotlinCompilerPluginOrCached(toolchain.SerializationPlugin, "kotlin-serialization-compiler-plugin-embeddable", version)
+	toolchain.ComposePlugin = kotlinCompilerPluginOrCached(probe, toolchain.ComposePlugin, "kotlin-compose-compiler-plugin-embeddable", version)
+	toolchain.SerializationPlugin = kotlinCompilerPluginOrCached(probe, toolchain.SerializationPlugin, "kotlin-serialization-compiler-plugin-embeddable", version)
 	compilerJar := resolvedSet.FirstJar("compiler")
 	if compilerJar == "" {
-		compilerJar = gradlecache.DefaultProbe().FirstJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
+		compilerJar = probe.FirstJar("org.jetbrains.kotlin", "kotlin-compiler-embeddable", version)
 	}
-	scriptRuntimeJars := jarsOrCached(resolvedSet.Jars("script-runtime"), "org.jetbrains.kotlin", "kotlin-script-runtime", version)
-	reflectJars := jarsOrCached(resolvedSet.Jars("reflect"), "org.jetbrains.kotlin", "kotlin-reflect", version)
-	annotationsJars := jetbrainsAnnotationsJars(version)
+	scriptRuntimeJars := jarsOrCached(probe, resolvedSet.Jars("script-runtime"), "org.jetbrains.kotlin", "kotlin-script-runtime", version)
+	reflectJars := jarsOrCached(probe, resolvedSet.Jars("reflect"), "org.jetbrains.kotlin", "kotlin-reflect", version)
+	annotationsJars := jetbrainsAnnotationsJars(probe, version)
 	toolchain.CompilerClasspath = filterKotlinCompilerClasspathVersion(version, mergePaths(
 		singlePath(compilerJar),
 		resolvedSet.Resolved.RuntimeJars,
@@ -88,39 +89,38 @@ func loadKotlinToolchain(prj *project.Project, state *compileState) (*kotlinTool
 }
 
 // kotlinStdlibJarsForVersion looks up kotlin-stdlib (+ jdk7/jdk8 siblings) for
-// the exact requested version from the local gradle cache. Returns nil when
+// the exact requested version through the supplied probe. Returns nil when
 // no matching artifact is present.
-func kotlinStdlibJarsForVersion(version string) []string {
+func kotlinStdlibJarsForVersion(probe *gradlecache.Probe, version string) []string {
 	if strings.TrimSpace(version) == "" {
 		return nil
 	}
 	return mergePaths(
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib", version),
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk7", version),
-		findGradleArtifactJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk8", version),
+		probe.FindJars("org.jetbrains.kotlin", "kotlin-stdlib", version),
+		probe.FindJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk7", version),
+		probe.FindJars("org.jetbrains.kotlin", "kotlin-stdlib-jdk8", version),
 	)
 }
 
-// jarsOrCached returns resolved when non-empty, otherwise scans the gradle
-// cache for the given coordinate. Used to fill toolchain roles whose
+// jarsOrCached returns resolved when non-empty, otherwise scans the
+// probe for the given coordinate. Used to fill toolchain roles whose
 // metadata-backed resolution failed.
-func jarsOrCached(resolved []string, group, module, version string) []string {
+func jarsOrCached(probe *gradlecache.Probe, resolved []string, group, module, version string) []string {
 	if len(resolved) > 0 {
 		return resolved
 	}
-	return findGradleArtifactJars(group, module, version)
+	return probe.FindJars(group, module, version)
 }
 
-// kotlinCompilerPluginJar locates an org.jetbrains.kotlin compiler plugin in
-// the gradle cache, preferring the exact requested version and falling back
-// to the latest cached version. The latest-cached path is best-effort: a
-// major-version mismatch can still fail at runtime.
-func kotlinCompilerPluginJar(module, version string) string {
-	probe := gradlecache.DefaultProbe()
+// kotlinCompilerPluginJar locates an org.jetbrains.kotlin compiler plugin
+// through the supplied probe, preferring the exact requested version and
+// falling back to the latest cached version. The latest-cached path is
+// best-effort: a major-version mismatch can still fail at runtime.
+func kotlinCompilerPluginJar(probe *gradlecache.Probe, module, version string) string {
 	if jar := probe.FirstJar("org.jetbrains.kotlin", module, version); jar != "" {
 		return jar
 	}
-	if latest := latestCachedVersionFor("org.jetbrains.kotlin", module); latest != "" {
+	if latest := probe.LatestVersion("org.jetbrains.kotlin", module); latest != "" {
 		return probe.FirstJar("org.jetbrains.kotlin", module, latest)
 	}
 	return ""
@@ -128,11 +128,11 @@ func kotlinCompilerPluginJar(module, version string) string {
 
 // kotlinCompilerPluginOrCached preserves the resolver-provided jar when
 // non-empty, otherwise falls back to kotlinCompilerPluginJar.
-func kotlinCompilerPluginOrCached(resolved, module, version string) string {
+func kotlinCompilerPluginOrCached(probe *gradlecache.Probe, resolved, module, version string) string {
 	if strings.TrimSpace(resolved) != "" {
 		return resolved
 	}
-	return kotlinCompilerPluginJar(module, version)
+	return kotlinCompilerPluginJar(probe, module, version)
 }
 
 // jetbrainsAnnotationsJars locates the org.jetbrains:annotations jar declared
@@ -140,23 +140,23 @@ func kotlinCompilerPluginOrCached(resolved, module, version string) string {
 // version is read from the cached stdlib module metadata; the latest cached
 // version is used as a fallback so the compiler classpath always has the
 // annotations jar that kotlinc requires.
-func jetbrainsAnnotationsJars(stdlibVersion string) []string {
-	if v := annotationsVersionForStdlib(stdlibVersion); v != "" {
-		if jars := findGradleArtifactJars("org.jetbrains", "annotations", v); len(jars) > 0 {
+func jetbrainsAnnotationsJars(probe *gradlecache.Probe, stdlibVersion string) []string {
+	if v := annotationsVersionForStdlib(probe, stdlibVersion); v != "" {
+		if jars := probe.FindJars("org.jetbrains", "annotations", v); len(jars) > 0 {
 			return jars
 		}
 	}
-	if v := latestCachedVersionFor("org.jetbrains", "annotations"); v != "" {
-		return findGradleArtifactJars("org.jetbrains", "annotations", v)
+	if v := probe.LatestVersion("org.jetbrains", "annotations"); v != "" {
+		return probe.FindJars("org.jetbrains", "annotations", v)
 	}
 	return nil
 }
 
-func annotationsVersionForStdlib(stdlibVersion string) string {
+func annotationsVersionForStdlib(probe *gradlecache.Probe, stdlibVersion string) string {
 	if strings.TrimSpace(stdlibVersion) == "" {
 		return ""
 	}
-	for _, dep := range gradlecache.DefaultProbe().Dependencies("org.jetbrains.kotlin", "kotlin-stdlib", stdlibVersion) {
+	for _, dep := range probe.Dependencies("org.jetbrains.kotlin", "kotlin-stdlib", stdlibVersion) {
 		if dep.Group == "org.jetbrains" && dep.Module == "annotations" {
 			return dep.Version
 		}
