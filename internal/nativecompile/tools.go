@@ -220,6 +220,8 @@ func findJstack() string {
 	}
 	if javaHome := strings.TrimSpace(os.Getenv("JAVA_HOME")); javaHome != "" {
 		candidate := filepath.Join(javaHome, "bin", "jstack")
+		// #nosec G304 G703 -- JAVA_HOME is operator-controlled; we
+		// only stat for existence and never open the file.
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
