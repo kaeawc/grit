@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,10 +96,10 @@ func kspTimeout() time.Duration {
 // args. KSP2 prints diagnostics to stderr; we mirror that to grit's
 // stderr while also buffering for tooldiag categorization.
 //
-// The invocation is bounded by kspTimeout (default 15m). On timeout
-// the child is SIGKILLed by exec.CommandContext and the returned
-// error names the elapsed duration so the run summary makes the hang
-// obvious instead of letting it look like a generic exec failure.
+// The invocation is bounded by kspTimeout (default 15m). On timeout a
+// jstack thread dump of the still-live child is captured before the
+// child is SIGKILLed, and the returned error names the elapsed
+// duration and the dump file path so the hang is diagnosable cold.
 func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, stderr *os.File) error {
 	stdlib := kotlinRuntimeJars()
 	classpath := mergePaths(runtimeJars, stdlib)
@@ -128,19 +129,102 @@ func runKSP2(ctx context.Context, runtimeJars []string, args []string, stdout, s
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(runCtx, "java", javaArgs...)
+	cmd := exec.Command("java", javaArgs...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(stdout, &stdoutBuf)
 	cmd.Stderr = io.MultiWriter(stderr, &stderrBuf)
 	startedAt := time.Now()
-	err = cmd.Run()
-	recordToolDiagnostics(ctx, "ksp2", stderrBuf.String(), stdoutBuf.String())
-	if err != nil && timeout > 0 && errors.Is(runCtx.Err(), context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		elapsed := time.Since(startedAt).Round(time.Second)
-		return fmt.Errorf("ksp2 timed out after %s (configurable via GRIT_KSP_TIMEOUT; default %s): %w", elapsed, timeout, err)
+	if err := cmd.Start(); err != nil {
+		recordToolDiagnostics(ctx, "ksp2", stderrBuf.String(), stdoutBuf.String())
+		return err
 	}
-	return err
+
+	// Watchdog: on runCtx cancellation (timeout or outer cancel),
+	// capture a thread dump from the still-live child before sending
+	// SIGKILL. waitDone is closed when cmd.Wait returns so the
+	// watchdog can exit without dumping a healthy run.
+	var dumpPath string
+	waitDone := make(chan struct{})
+	go func() {
+		select {
+		case <-runCtx.Done():
+			if cmd.Process == nil {
+				return
+			}
+			if !errors.Is(runCtx.Err(), context.DeadlineExceeded) {
+				_ = cmd.Process.Kill()
+				return
+			}
+			dumpPath = captureJVMThreadDump(cmd.Process.Pid)
+			_ = cmd.Process.Kill()
+		case <-waitDone:
+		}
+	}()
+	waitErr := cmd.Wait()
+	close(waitDone)
+	recordToolDiagnostics(ctx, "ksp2", stderrBuf.String(), stdoutBuf.String())
+	if waitErr != nil && timeout > 0 && errors.Is(runCtx.Err(), context.DeadlineExceeded) && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		elapsed := time.Since(startedAt).Round(time.Second)
+		msg := fmt.Sprintf("ksp2 timed out after %s (configurable via GRIT_KSP_TIMEOUT; default %s)", elapsed, timeout)
+		if dumpPath != "" {
+			msg += "; thread dump: " + dumpPath
+		}
+		return fmt.Errorf("%s: %w", msg, waitErr)
+	}
+	return waitErr
+}
+
+// captureJVMThreadDump shells out to jstack to grab a thread snapshot
+// of the live JVM at pid and writes it to a temp file. Returns the
+// file path on success, "" on any failure (jstack not on PATH, child
+// already exited, etc.) — a missing dump is never a hard error
+// because the surrounding code is already on the timeout failure
+// path.
+func captureJVMThreadDump(pid int) string {
+	jstack := findJstack()
+	if jstack == "" {
+		return ""
+	}
+	file, err := os.CreateTemp("", fmt.Sprintf("grit-ksp-threads-%d-*.txt", pid))
+	if err != nil {
+		return ""
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = file.Close()
+		}
+	}()
+
+	// jstack must run before SIGKILL closes the child — bound it to
+	// 10s so a misbehaving jstack can't hold up the rest of the
+	// timeout cleanup.
+	dumpCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(dumpCtx, jstack, "-l", strconv.Itoa(pid))
+	cmd.Stdout = file
+	cmd.Stderr = file
+	_ = cmd.Run()
+	_ = file.Close()
+	closed = true
+	return file.Name()
+}
+
+// findJstack returns the path to jstack on this system, or "" if it
+// can't be found. Checks PATH first, then $JAVA_HOME/bin/jstack —
+// most JDKs ship it alongside java.
+func findJstack() string {
+	if path, err := exec.LookPath("jstack"); err == nil {
+		return path
+	}
+	if javaHome := strings.TrimSpace(os.Getenv("JAVA_HOME")); javaHome != "" {
+		candidate := filepath.Join(javaHome, "bin", "jstack")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func runJUnit(ctx context.Context, tests []string, classpath []string, stdout, stderr *os.File) error {
