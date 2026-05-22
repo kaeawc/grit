@@ -228,16 +228,57 @@ func (r *Resolver) lookupVersion(platforms map[string]map[string]string, group, 
 		return version
 	}
 	if strings.HasPrefix(group, "androidx.compose") {
-		lib, err := r.Catalog.ResolveLibrary("compose.bom")
-		if err == nil {
-			managed, err := r.loadBOM(Coordinate{Group: lib.Group, Module: lib.Name, Version: lib.Version})
-			if err == nil {
-				return managed[group+":"+module]
-			}
+		if version := r.lookupComposeBOMVersion(group, module); version != "" {
+			return version
 		}
 	}
 	if r != nil && r.AllowCachedVersionFallback {
 		if version := r.findCachedVersion(group, module); version != "" {
+			return version
+		}
+	}
+	return ""
+}
+
+// composeBOMAliases is the canonical list of catalog aliases Android
+// projects use for the Compose BOM. Projects differ on whether they
+// scope the alias under `androidx` (nowinandroid: `androidx-compose-bom`,
+// accessed as libs.androidx.compose.bom) or keep it short
+// (`compose-bom`, accessed as libs.compose.bom). The version
+// resolver tries every common spelling so the user's catalog naming
+// choice doesn't break Compose-managed coords.
+var composeBOMAliases = []string{
+	"compose.bom",
+	"androidx.compose.bom",
+	"compose-bom",
+	"androidx-compose-bom",
+	"androidxComposeBom",
+}
+
+// lookupComposeBOMVersion walks the known Compose BOM aliases and
+// returns the first managed version for group:module declared in the
+// resolved BOM. Returns "" when no alias resolves to a usable BOM or
+// the BOM doesn't manage the coordinate.
+func (r *Resolver) lookupComposeBOMVersion(group, module string) string {
+	if r == nil || r.Catalog == nil {
+		return ""
+	}
+	tried := map[string]struct{}{}
+	for _, alias := range composeBOMAliases {
+		lib, err := r.Catalog.ResolveLibrary(alias)
+		if err != nil {
+			continue
+		}
+		coordKey := lib.Group + ":" + lib.Name + ":" + lib.Version
+		if _, seen := tried[coordKey]; seen {
+			continue
+		}
+		tried[coordKey] = struct{}{}
+		managed, err := r.loadBOM(Coordinate{Group: lib.Group, Module: lib.Name, Version: lib.Version})
+		if err != nil {
+			continue
+		}
+		if version := managed[group+":"+module]; version != "" {
 			return version
 		}
 	}
