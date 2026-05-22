@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/kaeawc/grit/internal/modulebuild"
 )
 
 func TestParsePluginRegistrationsExtractsIDAndImplClass(t *testing.T) {
@@ -26,10 +28,10 @@ gradlePlugin {
     }
 }
 `
-	got := parsePluginRegistrations(body)
-	want := []pluginRegistration{
-		{id: "demo.android.application", implClass: "AndroidApplicationConventionPlugin"},
-		{id: "demo.android.library", implClass: "AndroidLibraryConventionPlugin"},
+	got := modulebuild.ParsePluginRegistrations(body)
+	want := []modulebuild.PluginRegistration{
+		{ID: "demo.android.application", ImplClass: "AndroidApplicationConventionPlugin"},
+		{ID: "demo.android.library", ImplClass: "AndroidLibraryConventionPlugin"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("registrations:\n got  %#v\n want %#v", got, want)

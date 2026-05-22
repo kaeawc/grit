@@ -359,6 +359,19 @@ func ParseDependenciesForModule(buildFile, rootDir string, pluginIDs []string) (
 		}
 		mergeDependencies(deps, pluginDeps)
 	}
+	// Class-based convention plugins (.kt sources registered via a
+	// build-logic gradlePlugin { plugins { register(...) } } block)
+	// declare their dependencies imperatively, via `add("scope", expr)`
+	// inside a `dependencies { ... }` block. ParseDependencies only
+	// understands the script-style property accessors, so a parallel
+	// extractor handles the .kt form.
+	for _, ktFile := range classConventionPluginFiles(rootDir, pluginIDs) {
+		data, ktErr := os.ReadFile(ktFile) // #nosec G304 -- build-logic source under project root
+		if ktErr != nil {
+			continue
+		}
+		parseClassConventionDependencies(string(data), deps)
+	}
 	return deps, nil
 }
 
