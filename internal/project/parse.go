@@ -44,8 +44,6 @@ func Load(root string) (*Project, error) {
 		RootPlugins:        collectPluginIDs(string(rootBuildData)),
 		RecommendedBackend: "native",
 	}
-	conventions := conventionPluginMap(abs)
-	prj.RootPlugins = expandPlugins(prj.RootPlugins, conventions)
 	if len(prj.VersionCatalogs) > 0 {
 		prj.VersionCatalog = pickPrimaryCatalog(prj.VersionCatalogs)
 		prj.VersionCatalogData, err = loadVersionCatalogs(prj.VersionCatalogs)
@@ -56,6 +54,14 @@ func Load(root string) (*Project, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	// Convention-plugin discovery needs the catalog's plugin aliases so
+	// class-based conventions that resolve plugin ids through accessors
+	// (target.libs.plugins.X.Y.pluginId) can be followed back to their
+	// applied plugin id.
+	conventions := conventionPluginMap(abs, prj.PluginAliases)
+	prj.RootPlugins = expandPlugins(prj.RootPlugins, conventions)
+	if len(prj.PluginAliases) > 0 {
 		prj.RootPlugins = expandPluginAliases(prj.RootPlugins, prj.PluginAliases)
 	}
 

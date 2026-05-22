@@ -50,7 +50,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
     }
 }
 `
-	got := parseAppliedPluginIDs(body)
+	got := parseAppliedPluginIDs(body, nil)
 	sort.Strings(got)
 	want := []string{"com.android.application", "org.jetbrains.kotlin.android"}
 	if !reflect.DeepEqual(got, want) {
@@ -105,7 +105,7 @@ class JvmLibraryConventionPlugin : Plugin<Project> {
 	}
 
 	out := map[string][]string{}
-	mergeRegisteredConventions(filepath.Join(root, "build-logic"), out)
+	mergeRegisteredConventions(filepath.Join(root, "build-logic"), nil, out)
 
 	wantApp := []string{"com.android.application", "org.jetbrains.kotlin.android"}
 	if got := out["demo.android.application"]; !reflect.DeepEqual(sortedCopy(got), sortedCopy(wantApp)) {

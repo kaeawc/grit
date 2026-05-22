@@ -13,7 +13,7 @@ import (
 // path). Each script's basename (minus .gradle.kts / .gradle) is treated as
 // the plugin id, and its plugins{} block is parsed for the plugin ids it
 // applies. Returns conventionID -> applied plugin ids.
-func conventionPluginMap(rootDir string) map[string][]string {
+func conventionPluginMap(rootDir string, pluginAliases map[string]string) map[string][]string {
 	out := map[string][]string{}
 	for _, root := range conventionBuildRoots(rootDir) {
 		if info, err := os.Stat(root); err != nil || !info.IsDir() {
@@ -42,7 +42,7 @@ func conventionPluginMap(rootDir string) map[string][]string {
 			out[id] = collectPluginIDs(string(data))
 			return nil
 		})
-		mergeRegisteredConventions(root, out)
+		mergeRegisteredConventions(root, pluginAliases, out)
 	}
 	return out
 }
@@ -52,6 +52,17 @@ func conventionPluginMap(rootDir string) map[string][]string {
 type pluginRegistration struct {
 	id        string
 	implClass string
+}
+
+// simpleClassName returns the last segment of a dotted class name,
+// e.g. "com.example.Foo.Bar" -> "Bar". Used to match a registered
+// implementationClass to its source file on disk, since the file is
+// named for the simple class name regardless of package.
+func simpleClassName(fqcn string) string {
+	if idx := strings.LastIndex(fqcn, "."); idx >= 0 {
+		return fqcn[idx+1:]
+	}
+	return fqcn
 }
 
 // mergeRegisteredConventions handles the class-based convention
@@ -64,7 +75,7 @@ type pluginRegistration struct {
 //
 // Script-based convention plugins (foo.gradle.kts under src/main)
 // stay with the outer walker; this only adds class-based entries.
-func mergeRegisteredConventions(buildLogicRoot string, out map[string][]string) {
+func mergeRegisteredConventions(buildLogicRoot string, pluginAliases map[string]string, out map[string][]string) {
 	var registrations []pluginRegistration
 	implIndex := map[string]string{} // class basename -> kotlin source path
 
@@ -91,7 +102,11 @@ func mergeRegisteredConventions(buildLogicRoot string, out map[string][]string) 
 		if reg.id == "" || reg.implClass == "" {
 			continue
 		}
-		src, ok := implIndex[reg.implClass]
+		// The registration's implementationClass is the fully qualified
+		// class name; the impl source file is named for the simple
+		// class name (the last `.`-separated segment). Match on the
+		// simple name so packages don't matter.
+		src, ok := implIndex[simpleClassName(reg.implClass)]
 		if !ok {
 			continue
 		}
@@ -99,7 +114,7 @@ func mergeRegisteredConventions(buildLogicRoot string, out map[string][]string) 
 		if err != nil {
 			continue
 		}
-		applied := parseAppliedPluginIDs(string(data))
+		applied := parseAppliedPluginIDs(string(data), pluginAliases)
 		if len(applied) == 0 {
 			continue
 		}
@@ -137,25 +152,69 @@ func parsePluginRegistrations(body string) []pluginRegistration {
 // `with(pluginManager) { ... }` or `pluginManager.apply(...)` block.
 var appliedPluginRe = regexp.MustCompile(`apply\s*\(\s*"([^"]+)"\s*\)`)
 
-func parseAppliedPluginIDs(body string) []string {
-	matches := appliedPluginRe.FindAllStringSubmatch(body, -1)
-	if len(matches) == 0 {
-		return nil
-	}
+// appliedAccessorRe matches `apply(<accessor>.pluginId)` forms.
+// Class-based convention plugins in many real projects look up plugin
+// ids through the version-catalog accessor — e.g.
+// `target.plugins.apply(target.libs.plugins.kotlin.jvm.pluginId)`.
+// The accessor is captured as a dotted path; we then look up the
+// pluginAliases map to resolve "libs.plugins.kotlin.jvm.pluginId"
+// (or trailing segments thereof) back to an "org.jetbrains.kotlin.jvm"
+// plugin id.
+var appliedAccessorRe = regexp.MustCompile(`apply\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\.pluginId\s*\)`)
+
+func parseAppliedPluginIDs(body string, pluginAliases map[string]string) []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, m := range matches {
-		if len(m) < 2 {
-			continue
-		}
-		id := strings.TrimSpace(m[1])
+	add := func(id string) {
+		id = strings.TrimSpace(id)
 		if id == "" || seen[id] {
-			continue
+			return
 		}
 		seen[id] = true
 		out = append(out, id)
 	}
+
+	for _, m := range appliedPluginRe.FindAllStringSubmatch(body, -1) {
+		if len(m) >= 2 {
+			add(m[1])
+		}
+	}
+	if len(pluginAliases) > 0 {
+		for _, m := range appliedAccessorRe.FindAllStringSubmatch(body, -1) {
+			if len(m) < 2 {
+				continue
+			}
+			if id := resolvePluginAccessor(m[1], pluginAliases); id != "" {
+				add(id)
+			}
+		}
+	}
 	return out
+}
+
+// resolvePluginAccessor maps a dotted accessor expression like
+// "target.libs.plugins.kotlin.jvm" or "libs.plugins.kotlin.jvm" to
+// the underlying plugin id by stripping the receiver prefix
+// (everything up to and including "plugins.") and looking up the
+// remaining alias in pluginAliases (keyed in dot form — the same
+// shape loadVersionCatalogPluginAliases produces).
+func resolvePluginAccessor(accessor string, pluginAliases map[string]string) string {
+	segments := strings.Split(accessor, ".")
+	pluginsIdx := -1
+	for i, seg := range segments {
+		if seg == "plugins" {
+			pluginsIdx = i
+			break
+		}
+	}
+	if pluginsIdx < 0 || pluginsIdx == len(segments)-1 {
+		return ""
+	}
+	alias := strings.Join(segments[pluginsIdx+1:], ".")
+	if id := pluginAliases[alias]; id != "" {
+		return id
+	}
+	return ""
 }
 
 func conventionBuildRoots(rootDir string) []string {

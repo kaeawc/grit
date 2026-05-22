@@ -52,7 +52,7 @@ func TestConventionPluginMapExpandsTransitively(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(conv, "convention-library.gradle.kts"), []byte(library), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	conventions := conventionPluginMap(root)
+	conventions := conventionPluginMap(root, nil)
 	got, ok := conventions["convention-library"]
 	if !ok {
 		t.Fatalf("convention-library convention plugin not detected")
@@ -88,7 +88,7 @@ func TestConventionPluginMapScansIncludedBuilds(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(conv, "included-library.gradle.kts"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	conventions := conventionPluginMap(root)
+	conventions := conventionPluginMap(root, nil)
 	got := conventions["included-library"]
 	if len(got) != 1 || got[0] != "com.android.library" {
 		t.Fatalf("included build convention plugins not detected: %#v", conventions)
