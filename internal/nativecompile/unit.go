@@ -33,6 +33,18 @@ func (c *Compiler) RunDebugUnit(ctx context.Context, prj *project.Project, modul
 	testOut := filepath.Join(prj.RootDir, "build", "grit", moduleOutputRelPath(mod.Path), variantName+"UnitTest", "classes")
 	testCompileStampPath := filepath.Join(filepath.Dir(testOut), "compile.stamp")
 	if !hasOutputFiles(testOut) {
+		// A prior compileDebugUnitTestSources succeeds-without-writing
+		// when the module has no test sources. Treat that as
+		// "nothing to run" rather than a missing-output error so the
+		// run summary reflects what actually happened (no compile
+		// step skipped, no tests). Modules that DO have test sources
+		// but somehow lack outputs still hit the original error.
+		sources, srcErr := collectUnitTestSources(mod, variantName)
+		if srcErr == nil && len(sources) == 0 {
+			recordCacheProbe(c.tracker, "compileTests", true, "no-sources", "module has no unit test sources to run")
+			_, _ = fmt.Fprintln(stdout, "no unit test sources found")
+			return nil
+		}
 		recordCacheProbe(c.tracker, "compileTests", false, "cache-miss", "compiled test outputs were not available to the test action")
 		return fmt.Errorf("compiled unit test outputs for %s %s are missing; run compileDebugUnitTestSources before testDebugUnitTest", mod.Path, variantName)
 	}
