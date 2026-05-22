@@ -10,8 +10,6 @@ import (
 	"sort"
 
 	readadapter "github.com/kaeawc/grit/internal/downloader/mavenlocal"
-
-	"github.com/kaeawc/grit/internal/lockfile"
 )
 
 type artifactMetadata struct {
@@ -27,8 +25,11 @@ type artifactMetadataVersions struct {
 	Versions []string `xml:"versions>version,omitempty"`
 }
 
-func (p *Publisher) publishArtifactMetadata(coord lockfile.Coordinate) error {
-	artifactDir := filepath.Join(p.root, readadapter.GroupPath(coord.Group), coord.Artifact)
+// PublishArtifactMetadataVersions rewrites maven-metadata-local.xml for
+// (group, artifact) so it lists every version in versions in addition to
+// any versions the existing file already names.
+func (p *Publisher) PublishArtifactMetadataVersions(group, artifact string, versions []string) error {
+	artifactDir := filepath.Join(p.root, readadapter.GroupPath(group), artifact)
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		return err
 	}
@@ -37,26 +38,26 @@ func (p *Publisher) publishArtifactMetadata(coord lockfile.Coordinate) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	payload, err := mergeArtifactMetadata(existing, coord)
+	payload, err := mergeArtifactMetadataVersions(existing, group, artifact, versions)
 	if err != nil {
 		return err
 	}
 	return writeBytesWithSidecars(metadataPath, payload)
 }
 
-func mergeArtifactMetadata(existing []byte, coord lockfile.Coordinate) ([]byte, error) {
+func mergeArtifactMetadataVersions(existing []byte, group, artifact string, versions []string) ([]byte, error) {
 	metadata, err := decodeArtifactMetadata(existing)
 	if err != nil {
 		return nil, err
 	}
-	if metadata.GroupID != "" && metadata.GroupID != coord.Group {
-		return nil, fmt.Errorf("metadata group mismatch: %q != %q", metadata.GroupID, coord.Group)
+	if metadata.GroupID != "" && metadata.GroupID != group {
+		return nil, fmt.Errorf("metadata group mismatch: %q != %q", metadata.GroupID, group)
 	}
-	if metadata.ArtifactID != "" && metadata.ArtifactID != coord.Artifact {
-		return nil, fmt.Errorf("metadata artifact mismatch: %q != %q", metadata.ArtifactID, coord.Artifact)
+	if metadata.ArtifactID != "" && metadata.ArtifactID != artifact {
+		return nil, fmt.Errorf("metadata artifact mismatch: %q != %q", metadata.ArtifactID, artifact)
 	}
-	metadata.GroupID = coord.Group
-	metadata.ArtifactID = coord.Artifact
+	metadata.GroupID = group
+	metadata.ArtifactID = artifact
 
 	versionSet := map[string]struct{}{}
 	for _, version := range metadata.Versioning.Versions {
@@ -65,18 +66,21 @@ func mergeArtifactMetadata(existing []byte, coord lockfile.Coordinate) ([]byte, 
 		}
 		versionSet[version] = struct{}{}
 	}
-	if coord.Version != "" {
-		versionSet[coord.Version] = struct{}{}
+	for _, version := range versions {
+		if version == "" {
+			continue
+		}
+		versionSet[version] = struct{}{}
 	}
-	versions := make([]string, 0, len(versionSet))
+	merged := make([]string, 0, len(versionSet))
 	for version := range versionSet {
-		versions = append(versions, version)
+		merged = append(merged, version)
 	}
-	sort.Strings(versions)
-	metadata.Versioning.Versions = versions
-	if len(versions) != 0 {
-		metadata.Versioning.Latest = versions[len(versions)-1]
-		metadata.Versioning.Release = versions[len(versions)-1]
+	sort.Strings(merged)
+	metadata.Versioning.Versions = merged
+	if len(merged) != 0 {
+		metadata.Versioning.Latest = merged[len(merged)-1]
+		metadata.Versioning.Release = merged[len(merged)-1]
 	}
 
 	payload, err := xml.MarshalIndent(metadata, "", "  ")

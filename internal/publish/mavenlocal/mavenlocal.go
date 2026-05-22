@@ -67,10 +67,31 @@ func (p *Publisher) Root() string { return p.root }
 // ID implements publish.Publisher.
 func (p *Publisher) ID() string { return ID }
 
-// PublishPin writes every file named in pin to the repository. Each file
-// is written atomically (temp + rename) and accompanied by .sha1 and .md5
-// checksum sidecars computed in the same streaming pass.
+// PublishPin writes every file named in pin to the repository and updates
+// the artifact's maven-metadata-local.xml. Each file is written atomically
+// (temp + rename) and accompanied by .sha1 and .md5 checksum sidecars
+// computed in the same streaming pass.
+//
+// Callers materializing many pins for the same (group, artifact) should
+// prefer PublishPinFiles + a single PublishArtifactMetadataVersions call
+// per (group, artifact) so the metadata read+rewrite happens once instead
+// of once per pin.
 func (p *Publisher) PublishPin(ctx context.Context, pin lockfile.Pin, store cas.Store) error {
+	if err := p.PublishPinFiles(ctx, pin, store); err != nil {
+		return err
+	}
+	if err := p.PublishArtifactMetadataVersions(pin.Coordinate.Group, pin.Coordinate.Artifact, []string{pin.Coordinate.Version}); err != nil {
+		return fmt.Errorf("mavenlocal publish metadata %s: %w", pin.Coordinate, err)
+	}
+	return nil
+}
+
+// PublishPinFiles writes every file named in pin (blobs + generated POM +
+// generated Gradle module + _remote.repositories marker), but does NOT
+// touch maven-metadata-local.xml. Callers must follow up with
+// PublishArtifactMetadataVersions for each unique (group, artifact) so
+// version-range and LATEST/RELEASE lookups can find the new versions.
+func (p *Publisher) PublishPinFiles(ctx context.Context, pin lockfile.Pin, store cas.Store) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -92,9 +113,6 @@ func (p *Publisher) PublishPin(ctx context.Context, pin lockfile.Pin, store cas.
 	}
 	if err := p.publishGeneratedModule(pin); err != nil {
 		return fmt.Errorf("mavenlocal publish gradle module %s: %w", pin.Coordinate, err)
-	}
-	if err := p.publishArtifactMetadata(pin.Coordinate); err != nil {
-		return fmt.Errorf("mavenlocal publish metadata %s: %w", pin.Coordinate, err)
 	}
 	if err := p.publishRemoteRepositoriesMarker(pin); err != nil {
 		return fmt.Errorf("mavenlocal publish marker %s: %w", pin.Coordinate, err)

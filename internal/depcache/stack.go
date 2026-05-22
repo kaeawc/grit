@@ -81,6 +81,28 @@ func (s *Stack) Publish(ctx context.Context, pin lockfile.Pin) error {
 	return s.Publisher.PublishPin(ctx, pin, s.Store)
 }
 
+// PublishFiles writes a pin's blobs and generated metadata files but does
+// not update the artifact-level maven-metadata-local.xml. Use this when
+// you intend to publish many pins for the same (group, artifact) and
+// batch the metadata update into a single PublishArtifactMetadata call
+// after all pins have been published.
+func (s *Stack) PublishFiles(ctx context.Context, pin lockfile.Pin) error {
+	if s == nil || s.Publisher == nil || s.Store == nil {
+		return nil
+	}
+	return s.Publisher.PublishPinFiles(ctx, pin, s.Store)
+}
+
+// PublishArtifactMetadata rewrites maven-metadata-local.xml for the
+// given (group, artifact) so it lists every version in versions on top of
+// what the file already contains.
+func (s *Stack) PublishArtifactMetadata(group, artifact string, versions []string) error {
+	if s == nil || s.Publisher == nil {
+		return nil
+	}
+	return s.Publisher.PublishArtifactMetadataVersions(group, artifact, versions)
+}
+
 // Extract runs the aar-extract action through the tiered cache when one
 // is configured (every extract gets a CacheSummary sidecar and probes/
 // promotes via the tier chain), and falls back to a direct extract
