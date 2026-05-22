@@ -117,3 +117,29 @@ func detectModuleType(body string) string {
 		return ""
 	}
 }
+
+// inferTypeFromPlugins classifies a module from a post-expansion
+// plugin id list. Use it as the fallback when detectModuleType
+// returns "" because the literal build.gradle.kts text holds only an
+// alias to a class-based convention plugin (e.g. an Android-canonical
+// build that routes all module config through build-logic).
+func inferTypeFromPlugins(plugins []string) string {
+	var hasLibrary, hasJVM bool
+	for _, id := range plugins {
+		switch id {
+		case "com.android.application", "com.android.test":
+			return "android-application"
+		case "com.android.library":
+			hasLibrary = true
+		case "org.jetbrains.kotlin.jvm", "java-library":
+			hasJVM = true
+		}
+	}
+	if hasLibrary {
+		return "android-library"
+	}
+	if hasJVM {
+		return "jvm-library"
+	}
+	return ""
+}
