@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/kaeawc/grit/internal/modulebuild"
 )
 
 // conventionPluginMap walks <rootDir>/build-logic looking for precompiled
@@ -47,24 +49,6 @@ func conventionPluginMap(rootDir string, pluginAliases map[string]string) map[st
 	return out
 }
 
-// pluginRegistration is a single (id, implementationClass) pair from
-// a build-logic gradlePlugin{plugins{register(...)}} block.
-type pluginRegistration struct {
-	id        string
-	implClass string
-}
-
-// simpleClassName returns the last segment of a dotted class name,
-// e.g. "com.example.Foo.Bar" -> "Bar". Used to match a registered
-// implementationClass to its source file on disk, since the file is
-// named for the simple class name regardless of package.
-func simpleClassName(fqcn string) string {
-	if idx := strings.LastIndex(fqcn, "."); idx >= 0 {
-		return fqcn[idx+1:]
-	}
-	return fqcn
-}
-
 // mergeRegisteredConventions handles the class-based convention
 // plugin pattern: a build-logic sub-project's build.gradle.kts
 // declares `gradlePlugin { plugins { register("foo") { id = "X"; implementationClass = "Y" } } }`
@@ -76,7 +60,7 @@ func simpleClassName(fqcn string) string {
 // Script-based convention plugins (foo.gradle.kts under src/main)
 // stay with the outer walker; this only adds class-based entries.
 func mergeRegisteredConventions(buildLogicRoot string, pluginAliases map[string]string, out map[string][]string) {
-	var registrations []pluginRegistration
+	var registrations []modulebuild.PluginRegistration
 	implIndex := map[string]string{} // class basename -> kotlin source path
 
 	_ = filepath.WalkDir(buildLogicRoot, func(path string, d fs.DirEntry, err error) error {
@@ -91,7 +75,7 @@ func mergeRegisteredConventions(buildLogicRoot string, pluginAliases map[string]
 			if readErr != nil {
 				return nil
 			}
-			registrations = append(registrations, parsePluginRegistrations(string(data))...)
+			registrations = append(registrations, modulebuild.ParsePluginRegistrations(string(data))...)
 		case strings.HasSuffix(d.Name(), ".kt"):
 			implIndex[strings.TrimSuffix(d.Name(), ".kt")] = path
 		}
@@ -99,14 +83,14 @@ func mergeRegisteredConventions(buildLogicRoot string, pluginAliases map[string]
 	})
 
 	for _, reg := range registrations {
-		if reg.id == "" || reg.implClass == "" {
+		if reg.ID == "" || reg.ImplClass == "" {
 			continue
 		}
 		// The registration's implementationClass is the fully qualified
 		// class name; the impl source file is named for the simple
 		// class name (the last `.`-separated segment). Match on the
 		// simple name so packages don't matter.
-		src, ok := implIndex[simpleClassName(reg.implClass)]
+		src, ok := implIndex[modulebuild.SimpleClassName(reg.ImplClass)]
 		if !ok {
 			continue
 		}
@@ -118,33 +102,8 @@ func mergeRegisteredConventions(buildLogicRoot string, pluginAliases map[string]
 		if len(applied) == 0 {
 			continue
 		}
-		out[reg.id] = mergeStrings(out[reg.id], applied)
+		out[reg.ID] = mergeStrings(out[reg.ID], applied)
 	}
-}
-
-// pluginRegistrationRe matches a single `register("name") { ... }`
-// block in a gradlePlugin { plugins { ... } } body. The id and
-// implementationClass fields are extracted from the inner body in a
-// second pass so we tolerate either ordering.
-var pluginRegistrationRe = regexp.MustCompile(`register\s*\(\s*"([^"]*)"\s*\)\s*\{([^}]*)\}`)
-var pluginIDFieldRe = regexp.MustCompile(`(?m)\s*id\s*=\s*"([^"]+)"`)
-var pluginImplClassRe = regexp.MustCompile(`(?m)\s*implementationClass\s*=\s*"([^"]+)"`)
-
-func parsePluginRegistrations(body string) []pluginRegistration {
-	var out []pluginRegistration
-	for _, match := range pluginRegistrationRe.FindAllStringSubmatch(body, -1) {
-		if len(match) < 3 {
-			continue
-		}
-		inner := match[2]
-		idMatch := pluginIDFieldRe.FindStringSubmatch(inner)
-		implMatch := pluginImplClassRe.FindStringSubmatch(inner)
-		if len(idMatch) < 2 || len(implMatch) < 2 {
-			continue
-		}
-		out = append(out, pluginRegistration{id: idMatch[1], implClass: implMatch[1]})
-	}
-	return out
 }
 
 // appliedPluginRe matches the `apply("plugin.id")` form that

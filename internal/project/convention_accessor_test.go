@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/kaeawc/grit/internal/modulebuild"
 )
 
 func TestSimpleClassNameStripsPackage(t *testing.T) {
@@ -16,8 +18,8 @@ func TestSimpleClassNameStripsPackage(t *testing.T) {
 		".leading": "leading",
 	}
 	for in, want := range cases {
-		if got := simpleClassName(in); got != want {
-			t.Errorf("simpleClassName(%q): got %q want %q", in, got, want)
+		if got := modulebuild.SimpleClassName(in); got != want {
+			t.Errorf("SimpleClassName(%q): got %q want %q", in, got, want)
 		}
 	}
 }
