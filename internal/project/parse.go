@@ -76,6 +76,15 @@ func Load(root string) (*Project, error) {
 			refreshDerivedCompilerPluginState(mod, string(data))
 			prj.Repositories = append(prj.Repositories, collectProjectRepositoriesWithOrigin(string(data), prj.GradleProperties, "module-build")...)
 		}
+		// detectModuleType only looks at the literal build.gradle.kts
+		// body. Projects that route every Android plugin through a
+		// class-based convention plugin leave the body with only an
+		// alias to the convention, so detectModuleType can't classify
+		// them. Re-infer from the post-expansion plugin list so those
+		// modules land in prj.Modules.
+		if mod.Type == "" {
+			mod.Type = inferTypeFromPlugins(mod.Plugins)
+		}
 		if mod.Type != "" {
 			prj.Modules = append(prj.Modules, *mod)
 		}
