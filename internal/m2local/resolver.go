@@ -99,6 +99,7 @@ type ResolutionConflict struct {
 	Module      string   `json:"module,omitempty"`
 	Selected    string   `json:"selected,omitempty"`
 	Discarded   string   `json:"discarded,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
 	Coordinates []string `json:"coordinates,omitempty"`
 }
 

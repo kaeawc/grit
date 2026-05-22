@@ -13,6 +13,51 @@ import (
 func (r *Resolver) resolveClosure(roots []Coordinate) ([]string, []AndroidLibrary, error) {
 	seen := map[string]bool{}
 	selectedByModule := map[string]string{}
+	// rootPinned remembers the exact version each root coord declared.
+	// Roots are the project's direct catalog / build-script declarations;
+	// Gradle's default conflict policy treats them as strict-version
+	// requests that transitive deps may not bump higher. Without the pin
+	// grit would pick the highest transitive version, which regularly
+	// lands on a newer Kotlin-metadata-version jar that the project's
+	// pinned Kotlin compiler can't read (e.g. coroutines 1.11.0 metadata
+	// 2.2.0 on a project on Kotlin 2.0.20).
+	rootPinned := map[string]string{}
+	for _, root := range roots {
+		rootPinned[root.Group+":"+root.Module] = root.Version
+	}
+	// Catalog-declared library pins act as project-global root pins, even
+	// for modules where the library appears only as a transitive dep.
+	// This mirrors Gradle's behavior: a versions-catalog pin is the
+	// project's strict version, and transitives can't bump above it. Without
+	// this, a module that only sees kotlinx-coroutines-core transitively
+	// (e.g. via androidx.lifecycle) would resolve to whatever higher
+	// version that transitive declared, picking a Kotlin-metadata
+	// version newer than the project's pinned Kotlin compiler can read.
+	//
+	// We also pin the conventional KMP variant module keys (-jvm, -android)
+	// derived from each umbrella, since the resolver sometimes encounters
+	// those directly as transitive coords. The Catalog only knows about
+	// the umbrella (kotlinx-coroutines-core) but the closure may see both
+	// the umbrella and the platform variant (kotlinx-coroutines-core-jvm)
+	// as separate module keys, and we want both to pin to the same
+	// catalog-declared version.
+	if r != nil && r.Catalog != nil {
+		pin := func(group, module, version string) {
+			if group == "" || module == "" || version == "" {
+				return
+			}
+			key := group + ":" + module
+			if _, already := rootPinned[key]; already {
+				return
+			}
+			rootPinned[key] = version
+		}
+		for _, lib := range r.Catalog.Libraries {
+			pin(lib.Group, lib.Name, lib.Version)
+			pin(lib.Group, lib.Name+"-jvm", lib.Version)
+			pin(lib.Group, lib.Name+"-android", lib.Version)
+		}
+	}
 	type artifactEntry struct {
 		coord          Coordinate
 		artifact       string
@@ -21,31 +66,41 @@ func (r *Resolver) resolveClosure(roots []Coordinate) ([]string, []AndroidLibrar
 	var entries []artifactEntry
 	queue := append([]Coordinate{}, roots...)
 
-	recordConflict := func(moduleKey, selected, discarded string) {
+	recordConflict := func(moduleKey, selected, discarded, reason string) {
 		r.addConflict(ResolutionConflict{
 			Kind:        "version_conflict",
 			Module:      moduleKey,
 			Selected:    selected,
 			Discarded:   discarded,
+			Reason:      reason,
 			Coordinates: []string{moduleKey + ":" + selected, moduleKey + ":" + discarded},
 		})
 	}
-	updateSelected := func(coord Coordinate) {
+	// updateSelected may rewrite coord's Version to the catalog-pinned
+	// version before deciding what to select. The (possibly rewritten)
+	// coord is returned; callers must use it for the seen-set and queue
+	// so the pinned version is what actually gets resolved.
+	updateSelected := func(coord Coordinate) Coordinate {
 		moduleKey := coord.Group + ":" + coord.Module
+		if pinned, hasPin := rootPinned[moduleKey]; hasPin && coord.Version != pinned {
+			recordConflict(moduleKey, pinned, coord.Version, "root_pin")
+			coord.Version = pinned
+		}
 		current, ok := selectedByModule[moduleKey]
 		if !ok {
 			selectedByModule[moduleKey] = coord.Version
-			return
+			return coord
 		}
 		if current == coord.Version {
-			return
+			return coord
 		}
 		if compareVersionStrings(coord.Version, current) > 0 {
 			selectedByModule[moduleKey] = coord.Version
-			recordConflict(moduleKey, coord.Version, current)
-			return
+			recordConflict(moduleKey, coord.Version, current, "highest_version")
+			return coord
 		}
-		recordConflict(moduleKey, current, coord.Version)
+		recordConflict(moduleKey, current, coord.Version, "highest_version")
+		return Coordinate{Group: coord.Group, Module: coord.Module, Version: current}
 	}
 
 	for len(queue) > 0 {
@@ -53,7 +108,7 @@ func (r *Resolver) resolveClosure(roots []Coordinate) ([]string, []AndroidLibrar
 		queue = nil
 		var pending []Coordinate
 		for _, coord := range frontier {
-			updateSelected(coord)
+			coord = updateSelected(coord)
 			key := coord.Group + ":" + coord.Module + ":" + coord.Version
 			if seen[key] {
 				continue
