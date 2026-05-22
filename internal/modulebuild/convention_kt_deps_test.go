@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -100,6 +101,38 @@ class Plugin : Plugin<Project> {
 	ksp := refValues(deps.Scoped["ksp"], "library")
 	if !reflect.DeepEqual(ksp, []string{"hilt.compiler"}) {
 		t.Fatalf("single-line ksp: got %v want [hilt.compiler]", ksp)
+	}
+}
+
+// TestParseClassConventionDependenciesSkipsBareIdentifierRefs covers
+// the NIA-style pattern where a convention binds a catalog accessor to
+// a local val and then passes it to add(...). Without filtering we'd
+// emit Ref{Kind:"platform-raw", Value:"bom"} which the downstream
+// resolver rejects with "invalid raw coordinate".
+func TestParseClassConventionDependenciesSkipsBareIdentifierRefs(t *testing.T) {
+	body := `
+class FirebasePlugin : Plugin<Project> {
+    override fun apply(target: Project) {
+        target.dependencies {
+            val bom = libs.findLibrary("firebase-bom").get()
+            add("implementation", platform(bom))
+            add("implementation", libs.findLibrary("firebase.analytics").get())
+        }
+    }
+}
+`
+	deps := &Dependencies{}
+	parseClassConventionDependencies(body, deps)
+	libs := refValues(deps.Main, "library")
+	if !reflect.DeepEqual(libs, []string{"firebase.analytics"}) {
+		t.Fatalf("library refs: got %v want [firebase.analytics]", libs)
+	}
+	for scope, refs := range deps.Scoped {
+		for _, ref := range refs {
+			if strings.HasSuffix(ref.Kind, "raw") && ref.Value == "bom" {
+				t.Fatalf("bare-identifier raw ref leaked into scope %q: %#v", scope, ref)
+			}
+		}
 	}
 }
 

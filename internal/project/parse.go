@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/kaeawc/grit/internal/modulebuild"
 )
 
 func Load(root string) (*Project, error) {
@@ -81,6 +83,14 @@ func Load(root string) (*Project, error) {
 			}
 			refreshDerivedCompilerPluginState(mod, string(data))
 			prj.Repositories = append(prj.Repositories, collectProjectRepositoriesWithOrigin(string(data), prj.GradleProperties, "module-build")...)
+		}
+		// KSP processor refs declared inside class-based convention plugin
+		// .kt sources (e.g. HiltConventionPlugin's `add("ksp",
+		// libs.findLibrary("hilt.compiler").get())`) aren't visible to
+		// parseKSPConfig, which only sees the module's own build file.
+		// Merge those in so the processor classpath gets every contribution.
+		if extra := modulebuild.ParseConventionKSPProcessors(prj.RootDir, mod.Plugins); len(extra) > 0 {
+			mod.KSP.Processors = mergeKSPProcessorRefs(mod.KSP.Processors, extra)
 		}
 		// detectModuleType only looks at the literal build.gradle.kts
 		// body. Projects that route every Android plugin through a
