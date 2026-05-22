@@ -198,14 +198,93 @@ gradlePlugin {
 		t.Fatal(err)
 	}
 
+	// Applying demo.hilt returns only the registered impl class .kt —
+	// AndroidLibraryConventionPlugin.kt has no call from HiltConventionPlugin.kt
+	// so it isn't pulled into the closure.
 	got := classConventionPluginFiles(root, []string{"demo.hilt"})
 	if !reflect.DeepEqual(got, []string{hiltPath}) {
-		t.Fatalf("class convention files: got %v want [%s]", got, hiltPath)
+		t.Fatalf("class convention files (no call-graph): got %v want [%s]", got, hiltPath)
 	}
 
 	// Unrelated plugin ids return no matches.
 	if got := classConventionPluginFiles(root, []string{"demo.other"}); len(got) != 0 {
 		t.Fatalf("unrelated plugin: got %v want []", got)
+	}
+}
+
+// TestParseDependenciesForModulePicksUpHelperFileDeps covers the
+// NIA-style pattern where the registered convention plugin delegates
+// dependency contributions to a top-level helper function defined in a
+// sibling .kt file. Concretely: AndroidLibraryComposeConventionPlugin
+// calls configureAndroidCompose(extension), and configureAndroidCompose
+// (in AndroidCompose.kt) is what actually writes
+// `add("implementation", libs.findLibrary("compose-ui-tooling-preview")...)`.
+func TestParseDependenciesForModulePicksUpHelperFileDeps(t *testing.T) {
+	root := t.TempDir()
+	buildLogic := filepath.Join(root, "build-logic", "convention")
+	srcDir := filepath.Join(buildLogic, "src", "main", "kotlin")
+	helperDir := filepath.Join(srcDir, "com", "example")
+	if err := os.MkdirAll(helperDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(buildLogic, "build.gradle.kts"), []byte(`
+gradlePlugin {
+    plugins {
+        register("compose") { id = "demo.compose"; implementationClass = "ComposeConventionPlugin" }
+    }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Registered convention plugin only applies sibling plugins and calls
+	// the helper — no add(...) of its own.
+	if err := os.WriteFile(filepath.Join(srcDir, "ComposeConventionPlugin.kt"), []byte(`
+class ComposeConventionPlugin : Plugin<Project> {
+    override fun apply(target: Project) {
+        target.pluginManager.apply("com.android.library")
+        configureAndroidCompose(target)
+    }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Helper in a sibling .kt that's never registered as a plugin class.
+	if err := os.WriteFile(filepath.Join(helperDir, "AndroidCompose.kt"), []byte(`
+internal fun Project.configureAndroidCompose() {
+    dependencies {
+        add("implementation", libs.findLibrary("compose-ui-tooling-preview").get())
+        add("debugImplementation", libs.findLibrary("compose-ui-tooling").get())
+    }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	moduleDir := filepath.Join(root, "app")
+	if err := os.MkdirAll(moduleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	buildFile := filepath.Join(moduleDir, "build.gradle.kts")
+	if err := os.WriteFile(buildFile, []byte(`
+plugins {
+    id("demo.compose")
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	deps, err := ParseDependenciesForModule(buildFile, root, []string{"demo.compose"})
+	if err != nil {
+		t.Fatalf("ParseDependenciesForModule: %v", err)
+	}
+	mainLibs := refValues(deps.Main, "library")
+	sort.Strings(mainLibs)
+	wantMain := []string{"compose-ui-tooling-preview"}
+	if !reflect.DeepEqual(mainLibs, wantMain) {
+		t.Fatalf("main libs from helper: got %v want %v", mainLibs, wantMain)
+	}
+	debugLibs := refValues(deps.Scoped["debugImplementation"], "library")
+	if !reflect.DeepEqual(debugLibs, []string{"compose-ui-tooling"}) {
+		t.Fatalf("debugImpl libs from helper: got %v want [compose-ui-tooling]", debugLibs)
 	}
 }
 

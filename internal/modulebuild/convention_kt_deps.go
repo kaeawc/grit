@@ -8,12 +8,32 @@ import (
 	"strings"
 )
 
-// classConventionPluginFiles returns the Kotlin source paths of class-based
-// convention plugins whose registered plugin id is in pluginIDs. The
-// registration comes from a build-logic sub-project's build.gradle.kts
-// gradlePlugin { plugins { register(...) } } block; the implementationClass
-// is matched against .kt file basenames under build-logic so any package
-// layout is accepted.
+// classConventionPluginFiles returns the Kotlin source paths grit must read
+// to recover dependency contributions made by class-based convention plugins
+// applied by a module (identified by its post-expansion pluginIDs).
+//
+// Two kinds of source are returned:
+//
+//   - The registered convention plugin .kt itself, located via the
+//     gradlePlugin { plugins { register("X") { id = "Y";
+//     implementationClass = "Z" } } } block in a build-logic sub-project's
+//     build.gradle.kts. Matched on the simple class name of Z so package
+//     layout doesn't matter.
+//
+//   - Helper .kt files that the applied plugin body actually calls into.
+//     Convention plugins routinely delegate dep contributions to
+//     top-level helper functions in sibling files (the NIA
+//     AndroidLibraryComposeConventionPlugin -> configureAndroidCompose
+//     pattern), and those helpers declare deps like compose-ui-tooling
+//     that no consumer module ever names directly. Reachability is
+//     determined by string-matching helper function names (parsed out of
+//     `(?:internal\s+)?fun\s+...funcName\(` declarations) against the
+//     transitive bodies of every applied plugin + every helper already
+//     included. This stops short of a real Kotlin call graph but pins
+//     each helper to a plugin that demonstrably calls it, avoiding the
+//     over-inclusion that otherwise pulls deps from sibling conventions
+//     (e.g. AndroidFeatureConventionPlugin's project(":core:designsystem")
+//     reaching :core:designsystem itself and creating a self-cycle).
 func classConventionPluginFiles(rootDir string, pluginIDs []string) []string {
 	if strings.TrimSpace(rootDir) == "" || len(pluginIDs) == 0 {
 		return nil
@@ -30,13 +50,28 @@ func classConventionPluginFiles(rootDir string, pluginIDs []string) []string {
 	}
 
 	var out []string
+	seen := map[string]struct{}{}
+	addPath := func(path string) bool {
+		if path == "" {
+			return false
+		}
+		if _, dup := seen[path]; dup {
+			return false
+		}
+		seen[path] = struct{}{}
+		out = append(out, path)
+		return true
+	}
+
 	for _, root := range conventionBuildRoots(rootDir) {
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() {
 			continue
 		}
 		var registrations []PluginRegistration
-		implIndex := map[string]string{} // simple class name -> .kt source path
+		implIndex := map[string]string{}     // simple class name -> .kt source path
+		var helperFiles []string             // every .kt under src/main, eligible for the closure
+		helperFuncs := map[string][]string{} // helper file path -> top-level function names defined in it
 		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || d == nil || d.IsDir() {
 				return nil
@@ -52,19 +87,127 @@ func classConventionPluginFiles(rootDir string, pluginIDs []string) []string {
 				registrations = append(registrations, ParsePluginRegistrations(string(data))...)
 			case strings.HasSuffix(d.Name(), ".kt"):
 				implIndex[strings.TrimSuffix(d.Name(), ".kt")] = path
+				if strings.Contains(filepath.ToSlash(path), "/src/main/") {
+					helperFiles = append(helperFiles, path)
+					if names := parseHelperFunctionNames(path); len(names) > 0 {
+						helperFuncs[path] = names
+					}
+				}
 			}
 			return nil
 		})
+
+		// Seed the closure with the registered convention plugin sources
+		// matching pluginIDs, in their applied-bodies form.
+		var workQueue []string
 		for _, reg := range registrations {
 			if _, wanted := wantedIDs[reg.ID]; !wanted {
 				continue
 			}
 			if src, ok := implIndex[SimpleClassName(reg.ImplClass)]; ok {
-				out = append(out, src)
+				if addPath(src) {
+					workQueue = append(workQueue, src)
+				}
+			}
+		}
+		if len(workQueue) == 0 {
+			continue
+		}
+
+		// Iteratively pull helpers whose function names appear as calls
+		// inside any already-included source. Each newly-included helper
+		// extends the closure, so we keep looping until quiescence.
+		for len(workQueue) > 0 {
+			next := workQueue[len(workQueue)-1]
+			workQueue = workQueue[:len(workQueue)-1]
+			body, err := os.ReadFile(next) // #nosec G304 -- helper under build-logic
+			if err != nil {
+				continue
+			}
+			text := string(body)
+			for helperPath, funcs := range helperFuncs {
+				if _, already := seen[helperPath]; already {
+					continue
+				}
+				if helperCalled(text, funcs) {
+					if addPath(helperPath) {
+						workQueue = append(workQueue, helperPath)
+					}
+				}
 			}
 		}
 	}
 	return out
+}
+
+var helperFunctionRe = regexp.MustCompile(`(?m)^(?:\s*(?:internal|public|private|protected)\s+)?fun\s+(?:[A-Za-z_][A-Za-z0-9_<>?,\s\.]*\.)?([A-Za-z_][A-Za-z0-9_]*)\s*[(<]`)
+
+// parseHelperFunctionNames returns the distinct top-level function names
+// declared in path. Used to detect call sites in other .kt files via
+// simple string match — exact identifier followed by an open paren.
+func parseHelperFunctionNames(path string) []string {
+	data, err := os.ReadFile(path) // #nosec G304 -- build-logic source under project root
+	if err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []string
+	for _, match := range helperFunctionRe.FindAllStringSubmatch(string(data), -1) {
+		if len(match) < 2 {
+			continue
+		}
+		name := match[1]
+		if _, dup := seen[name]; dup {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+// helperCalled reports whether any of funcs appears called in body, i.e.
+// as an identifier followed (possibly through chaining or whitespace) by
+// an open paren or generic argument list.
+func helperCalled(body string, funcs []string) bool {
+	for _, name := range funcs {
+		if callsIdentifier(body, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func callsIdentifier(body, name string) bool {
+	if name == "" {
+		return false
+	}
+	i := 0
+	for i < len(body) {
+		idx := strings.Index(body[i:], name)
+		if idx < 0 {
+			return false
+		}
+		start := i + idx
+		if start > 0 && isIdentChar(rune(body[start-1])) {
+			i = start + 1
+			continue
+		}
+		end := start + len(name)
+		if end < len(body) && isIdentChar(rune(body[end])) {
+			i = end
+			continue
+		}
+		j := end
+		for j < len(body) && (body[j] == ' ' || body[j] == '\t' || body[j] == '\n' || body[j] == '\r') {
+			j++
+		}
+		if j < len(body) && (body[j] == '(' || body[j] == '<') {
+			return true
+		}
+		i = end
+	}
+	return false
 }
 
 // parseClassConventionDependencies scans the body of a class-based
