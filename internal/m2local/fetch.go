@@ -116,13 +116,19 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return "", err
 	}
+	transient := false
 	for _, baseURL := range r.remoteRepositoryURLs(coord) {
-		resp, err := http.Get(baseURL + relPath)
+		resp, status, err := fetchWithBackoff(baseURL+relPath, fetchRetryAttempts, fetchRetryBaseDelay)
 		if err != nil {
+			// Network-level error — treat as transient so we don't lock
+			// this coord into the negative cache for 24h on a flake.
+			transient = true
 			continue
 		}
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
+		if resp == nil {
+			if isTransientStatus(status) {
+				transient = true
+			}
 			continue
 		}
 		body, err := io.ReadAll(resp.Body)
@@ -151,8 +157,62 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 		})
 		return outPath, nil
 	}
-	_ = r.recordNegativeCache(coord, relPath, label)
+	// Only persist a negative-cache entry when *every* configured
+	// repository definitively returned a not-found-style status (404).
+	// Transient failures (429 rate-limit, 5xx server error, network
+	// flake) get retried on the next invocation; otherwise a single
+	// rate-limited fetch would lock the coord out for 24h.
+	if !transient {
+		_ = r.recordNegativeCache(coord, relPath, label)
+	}
 	return "", fmt.Errorf("%s not found for %s", label, coordinateID(coord))
+}
+
+const (
+	fetchRetryAttempts  = 3
+	fetchRetryBaseDelay = 250 * time.Millisecond
+)
+
+// fetchWithBackoff issues a GET with limited retries for transient
+// responses. On a network error or a transient HTTP status, it sleeps
+// (linearly-increasing) and retries up to attempts-1 more times. The
+// return shape is (resp, status, err):
+//   - (resp, 200, nil) when the request succeeded with an OK body the
+//     caller should read.
+//   - (nil, status, nil) when the request reached the server but
+//     returned a non-OK status; the body is drained and closed.
+//   - (nil, 0, err) when every attempt failed at the network layer.
+func fetchWithBackoff(url string, attempts int, baseDelay time.Duration) (*http.Response, int, error) {
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(baseDelay * time.Duration(attempt))
+		}
+		resp, err := http.Get(url)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			return resp, resp.StatusCode, nil
+		}
+		status := resp.StatusCode
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if isTransientStatus(status) && attempt+1 < attempts {
+			continue
+		}
+		return nil, status, nil
+	}
+	return nil, 0, lastErr
+}
+
+func isTransientStatus(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusRequestTimeout, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
+		return true
+	}
+	return false
 }
 
 func metadataKindForLabel(label string) string {
