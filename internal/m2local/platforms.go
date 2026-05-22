@@ -73,6 +73,9 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 				version = r.lookupVersion(platforms, lib.Group, lib.Name)
 			}
 			if version == "" {
+				version = r.inferAlignedVersion(lib.Group)
+			}
+			if version == "" {
 				return nil, fmt.Errorf("no version for %s:%s", lib.Group, lib.Name)
 			}
 			out = append(out, r.normalizeRootCoordinate(Coordinate{Group: lib.Group, Module: lib.Name, Version: version}))
@@ -103,6 +106,9 @@ func (r *Resolver) expandRefs(refs []modulebuild.Ref, platforms map[string]map[s
 				version := lib.Version
 				if version == "" {
 					version = r.lookupVersion(platforms, lib.Group, lib.Name)
+				}
+				if version == "" {
+					version = r.inferAlignedVersion(lib.Group)
 				}
 				if version == "" {
 					return nil, fmt.Errorf("no version for %s:%s", lib.Group, lib.Name)
@@ -233,6 +239,43 @@ func (r *Resolver) lookupVersion(platforms map[string]map[string]string, group, 
 	if r != nil && r.AllowCachedVersionFallback {
 		if version := r.findCachedVersion(group, module); version != "" {
 			return version
+		}
+	}
+	return ""
+}
+
+// inferAlignedVersion is the final fallback for catalog entries that
+// declare a coordinate without a version. The Kotlin Gradle plugin
+// implicitly aligns `org.jetbrains.kotlin:*` deps to the applied
+// Kotlin version; the kotlinx-coroutines, kotlinx-serialization, and
+// kotlinx-* alignments behave similarly when their BOM is in scope.
+// Mirror the Kotlin-plugin behavior so common catalog shorthands
+// (kotlin-test, kotlin-reflect, kotlin-stdlib-jdk8) resolve without
+// the user needing to repeat `version.ref = "kotlin"` on every entry.
+//
+// Returns "" when no alignment is known; the caller treats that as a
+// hard miss and surfaces the original "no version" error.
+func (r *Resolver) inferAlignedVersion(group string) string {
+	if r == nil || r.Catalog == nil {
+		return ""
+	}
+	switch group {
+	case "org.jetbrains.kotlin":
+		return alignedFromCatalog(r.Catalog.Versions, "kotlin", "build-kotlin", "kotlin-version")
+	}
+	return ""
+}
+
+// alignedFromCatalog returns the first non-empty Versions[k] value.
+// Catalog version keys vary across projects ("kotlin", "build-kotlin",
+// "kotlin-version", etc.), so the lookup is multi-key by design.
+func alignedFromCatalog(versions map[string]string, keys ...string) string {
+	if len(versions) == 0 {
+		return ""
+	}
+	for _, k := range keys {
+		if v := strings.TrimSpace(versions[k]); v != "" {
+			return v
 		}
 	}
 	return ""

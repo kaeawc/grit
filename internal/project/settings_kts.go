@@ -48,7 +48,9 @@ func parseSettingsKTSWithProperties(body string, gradleProperties map[string]str
 		case "call_expression":
 			switch callName(child, src) {
 			case "include":
-				model.Includes = append(model.Includes, parseStringArgs(child, src)...)
+				for _, path := range parseStringArgs(child, src) {
+					model.Includes = append(model.Includes, normalizeIncludePath(path))
+				}
 			case "pluginManagement":
 				model.Repositories = append(model.Repositories, parseRepositoryScope(child, src, "plugin", gradleProperties)...)
 			case "dependencyResolutionManagement":
@@ -66,6 +68,22 @@ func parseSettingsKTSWithProperties(body string, gradleProperties map[string]str
 	model.Includes = mergeStrings(nil, model.Includes)
 	model.ModuleDirs = parseProjectDirAssignments(body)
 	return model
+}
+
+// normalizeIncludePath canonicalises a settings include() argument to
+// Gradle's `:path` form. Gradle accepts include("foo") and
+// include(":foo") interchangeably, but every other layer of grit's
+// project model keys modules by the `:foo` form (e.g. project(":foo")
+// dependency references resolve against module Path).
+func normalizeIncludePath(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, ":") {
+		return trimmed
+	}
+	return ":" + trimmed
 }
 
 func parseRepositoryScope(node *sitter.Node, src []byte, scope string, gradleProperties map[string]string) []Repository {
