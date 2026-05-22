@@ -71,6 +71,7 @@ var verbTable = []verbDef{
 	{names: []string{"reuseDecision"}, runner: runReuseDecision},
 	{names: []string{"reuseDecisions"}, runner: runReuseDecisions},
 	{names: []string{"materializations"}, runner: runMaterializations},
+	{names: []string{"materializationCoverage"}, runner: runMaterializationCoverage},
 	{names: []string{"actionTrace"}, runner: runActionTrace},
 	{names: []string{"perfTiming"}, runner: runPerfTiming},
 	{names: []string{"classpathSnapshot"}, runner: runClasspathSnapshot},

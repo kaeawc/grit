@@ -1504,6 +1504,21 @@ func runMaterializations(ctx context.Context, args []string, stdout, stderr io.W
 	return cmd.success(resultJSON(result))
 }
 
+func runMaterializationCoverage(_ context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
+	cmd := newCommandState("materializationCoverage", stdout, stderr, tracker, start)
+	fs := flag.NewFlagSet("materializationCoverage", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	repo := fs.String("repo", ".", "Path to repository root")
+	if err := fs.Parse(args); err != nil {
+		return cmd.fail(2, err)
+	}
+	prj, err := cmd.loadProject(*repo)
+	if err != nil {
+		return cmd.fail(1, err)
+	}
+	return cmd.success(resultJSON(cmd.svc.MaterializationCoverage(prj)))
+}
+
 func runActionTrace(ctx context.Context, args []string, stdout, stderr io.Writer, tracker perf.Tracker, start time.Time) int {
 	cmd := newCommandState("actionTrace", stdout, stderr, tracker, start)
 	fs := flag.NewFlagSet("actionTrace", flag.ContinueOnError)
