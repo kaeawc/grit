@@ -539,15 +539,14 @@ func (m *stackMaterializer) Materialize(ctx context.Context, resolved *m2local.R
 // bounded while still hiding per-pin latency.
 const materializePinsConcurrency = 8
 
-// materializePins runs Stack.Fetch + Stack.Publish for every pin
-// concurrently, capped at materializePinsConcurrency. Publish steps
-// for pins sharing the same (group, artifact) serialize on a keyed
-// mutex so concurrent updates to maven-metadata-local.xml don't
-// stomp on each other.
+// materializePins runs Fetch + per-pin file publish concurrently for every
+// pin, then batches maven-metadata-local.xml updates: a single read+rewrite
+// per unique (group, artifact) regardless of how many versions land in this
+// pass. Per-pin file writes go to distinct version directories so they
+// don't contend on the filesystem.
 func (m *stackMaterializer) materializePins(ctx context.Context, pins []lockfile.Pin, progress *buildprogress.Reporter) (map[string]lockfile.Pin, error) {
 	pinsByCoordinate := make(map[string]lockfile.Pin, len(pins))
 	var mu sync.Mutex
-	var publishLocks sync.Map
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(materializePinsConcurrency)
@@ -558,13 +557,7 @@ func (m *stackMaterializer) materializePins(ctx context.Context, pins []lockfile
 			if err := m.stack.Fetch(gctx, pin); err != nil {
 				return err
 			}
-			key := pin.Coordinate.Group + ":" + pin.Coordinate.Artifact
-			lockIface, _ := publishLocks.LoadOrStore(key, &sync.Mutex{})
-			pubMu := lockIface.(*sync.Mutex)
-			pubMu.Lock()
-			err := m.stack.Publish(gctx, pin)
-			pubMu.Unlock()
-			if err != nil {
+			if err := m.stack.PublishFiles(gctx, pin); err != nil {
 				return err
 			}
 			mu.Lock()
@@ -576,7 +569,54 @@ func (m *stackMaterializer) materializePins(ctx context.Context, pins []lockfile
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
+	if err := m.publishBatchedArtifactMetadata(ctx, pins); err != nil {
+		return nil, err
+	}
+
 	return pinsByCoordinate, nil
+}
+
+// publishBatchedArtifactMetadata writes maven-metadata-local.xml once per
+// unique (group, artifact) across pins, listing every version from this
+// batch. Metadata writes for distinct (group, artifact) pairs touch
+// distinct files, so they run in parallel; the per-artifact update is
+// itself a single read+rewrite.
+func (m *stackMaterializer) publishBatchedArtifactMetadata(ctx context.Context, pins []lockfile.Pin) error {
+	type artifactKey struct {
+		group    string
+		artifact string
+	}
+	versionsByArtifact := map[artifactKey]map[string]struct{}{}
+	for _, pin := range pins {
+		if pin.Coordinate.Version == "" {
+			continue
+		}
+		key := artifactKey{group: pin.Coordinate.Group, artifact: pin.Coordinate.Artifact}
+		set, ok := versionsByArtifact[key]
+		if !ok {
+			set = map[string]struct{}{}
+			versionsByArtifact[key] = set
+		}
+		set[pin.Coordinate.Version] = struct{}{}
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(materializePinsConcurrency)
+	for key, set := range versionsByArtifact {
+		key := key
+		versions := make([]string, 0, len(set))
+		for version := range set {
+			versions = append(versions, version)
+		}
+		g.Go(func() error {
+			if err := gctx.Err(); err != nil {
+				return err
+			}
+			return m.stack.PublishArtifactMetadata(key.group, key.artifact, versions)
+		})
+	}
+	return g.Wait()
 }
 
 func (m *stackMaterializer) lockfilePins(resolved *m2local.Resolved) ([]lockfile.Pin, error) {
