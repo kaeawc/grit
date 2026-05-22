@@ -91,3 +91,21 @@ func parseKSPConfig(body string) modulebuild.KSPConfig {
 		Options:    parseKSPOptions(body),
 	}
 }
+
+// mergeKSPProcessorRefs appends extra processor refs that aren't already
+// present in existing, preserving the original ordering. Dedup keys on
+// (Kind, Value).
+func mergeKSPProcessorRefs(existing, extra []modulebuild.Ref) []modulebuild.Ref {
+	if len(extra) == 0 {
+		return existing
+	}
+	seen := map[string]struct{}{}
+	for _, ref := range existing {
+		seen[ref.Kind+"|"+ref.Value] = struct{}{}
+	}
+	out := existing
+	for _, ref := range extra {
+		out = modulebuild.AppendUniqueRef(out, ref, seen)
+	}
+	return out
+}

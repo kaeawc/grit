@@ -82,14 +82,26 @@ func classConventionPluginFiles(rootDir string, pluginIDs []string) []string {
 //     `pluginManager.withPlugin(...) { ... }` conditionals. The conditional
 //     gate is not honored yet — every contribution flows through
 //     unconditionally. PR B is the place to evaluate the gates.
-//   - "ksp" / "kapt" scopes land in deps.Scoped but not in mod.KSP.Processors.
-//     A follow-up needs to plumb them.
+//   - "ksp" / "kapt" scopes land in deps.Scoped only. Callers wiring KSP
+//     processor classpaths should additionally call
+//     ParseConventionKSPProcessors, which targets the same add(...) form
+//     but emits *just* the ksp-family scope contributions ready to merge
+//     into mod.KSP.Processors.
 func parseClassConventionDependencies(body string, deps *Dependencies) {
 	for _, block := range extractKotlinDependencyBlocks(body) {
 		clean := stripDependencyComments(block)
 		for _, call := range extractKotlinAddCalls(clean) {
 			ref := parseClassDependencyExpr(call.expr)
 			if ref.Kind == "" || (ref.Kind == "raw" && ref.Value == "") {
+				continue
+			}
+			// Raw bare identifiers (e.g. `add("implementation", platform(bom))`
+			// where `bom = libs.findLibrary("firebase-bom").get()` is a local
+			// val) are local Kotlin variable references, not Maven coordinates.
+			// Skip them rather than feeding garbage to the downstream resolver.
+			// Properly tracking local val bindings inside .kt convention bodies
+			// is a TODO for a follow-up.
+			if isLocalIdentifierRef(ref) {
 				continue
 			}
 			if deps.Scoped == nil {
@@ -100,6 +112,86 @@ func parseClassConventionDependencies(body string, deps *Dependencies) {
 			addRefByScope(deps, call.scope, ref)
 		}
 	}
+}
+
+// ParseConventionKSPProcessors returns the KSP processor Refs declared
+// via `add("ksp...", expr)` inside class-based convention plugin sources
+// applied by the given module (identified by its post-expansion plugin
+// id list). Used to plumb convention-plugin-contributed KSP processors
+// into mod.KSP.Processors so the processor classpath gets the right
+// jars even when the module itself never names a processor.
+//
+// Scope names are matched as "ksp" or "kspX" (e.g. "kspAndroidTest"),
+// matching the existing kspAddDepRE in internal/project/module_ksp.go.
+func ParseConventionKSPProcessors(rootDir string, pluginIDs []string) []Ref {
+	files := classConventionPluginFiles(rootDir, pluginIDs)
+	if len(files) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	var out []Ref
+	for _, path := range files {
+		data, err := os.ReadFile(path) // #nosec G304 -- build-logic source under project root
+		if err != nil {
+			continue
+		}
+		for _, block := range extractKotlinDependencyBlocks(string(data)) {
+			clean := stripDependencyComments(block)
+			for _, call := range extractKotlinAddCalls(clean) {
+				if !isKSPScope(call.scope) {
+					continue
+				}
+				ref := parseClassDependencyExpr(call.expr)
+				if ref.Kind == "" || ref.Value == "" || isLocalIdentifierRef(ref) {
+					continue
+				}
+				out = AppendUniqueRef(out, ref, seen)
+			}
+		}
+	}
+	return out
+}
+
+// AppendUniqueRef adds ref to out only if (Kind, Value) isn't already
+// present, tracking presence via seen so callers can interleave the
+// same dedup state across multiple appends. seen may be nil-initialized
+// from a fresh make; the function never returns the input map.
+func AppendUniqueRef(out []Ref, ref Ref, seen map[string]struct{}) []Ref {
+	key := ref.Kind + "|" + ref.Value
+	if _, dup := seen[key]; dup {
+		return out
+	}
+	seen[key] = struct{}{}
+	return append(out, ref)
+}
+
+// isLocalIdentifierRef reports whether ref refers to a local Kotlin
+// identifier (i.e. a `val name = ...` binding) rather than a Maven
+// coordinate. Such refs slip through when convention plugins bind a
+// catalog accessor to a val and then pass the val to add(...), e.g.
+// `val bom = libs.findLibrary("X").get(); add("implementation", platform(bom))`.
+// The downstream resolver rejects bare-identifier raw refs, so it's
+// safer to drop them here than to feed garbage forward. Properly
+// tracking local val bindings inside class-based convention bodies is
+// follow-up work.
+//
+// The HasSuffix check covers the three "raw" kinds parseClassDependencyExpr
+// can emit: "raw", "platform-raw", and "enforced-platform-raw".
+func isLocalIdentifierRef(ref Ref) bool {
+	return strings.HasSuffix(ref.Kind, "raw") && ref.Value != "" && isBareIdentifier(ref.Value)
+}
+
+// isKSPScope reports whether the configuration name is "ksp" or a
+// variant-specific KSP configuration (e.g. "kspAndroidTest", "kspDebug").
+func isKSPScope(scope string) bool {
+	if scope == "ksp" {
+		return true
+	}
+	if !strings.HasPrefix(scope, "ksp") || len(scope) == 3 {
+		return false
+	}
+	c := scope[3]
+	return c >= 'A' && c <= 'Z'
 }
 
 type kotlinAddCall struct {
