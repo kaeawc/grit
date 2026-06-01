@@ -161,6 +161,10 @@ var verbTable = []verbDef{
 	nativeBuildVerbDef("test-debug-unit"),
 
 	{names: []string{"gc"}, runner: runGC},
+
+	{names: []string{"daemonStart"}, runner: runDaemonStart},
+	{names: []string{"daemonStop"}, runner: runDaemonStop},
+	{names: []string{"daemonStatus"}, runner: runDaemonStatus},
 }
 
 // verbLookup maps every verb name (including aliases) to its runner.
