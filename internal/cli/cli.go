@@ -127,6 +127,9 @@ const usageText = `grit is a constrained Android/JVM build runner aimed at event
 	  - install --variant <name>
 	  - test-debug-unit
 	  - gc
+	  - daemonStart
+	  - daemonStop
+	  - daemonStatus
 
 Examples:
 	  grit inspect --repo ~/path/to/android-repo
@@ -231,6 +234,9 @@ Examples:
 	  grit test-debug-unit --repo ~/path/to/android-repo
 	  grit gc --cache-dir ~/.grit/cas --max-age 720h
 	  grit gc --cache-dir ~/.grit/cas --max-size 1073741824
+	  grit daemonStart --repo ~/path/to/android-repo
+	  grit daemonStatus --repo ~/path/to/android-repo
+	  grit daemonStop --repo ~/path/to/android-repo
 `
 
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
