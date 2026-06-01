@@ -436,17 +436,42 @@ func (r *Resolver) preferJVMSibling(coord Coordinate) (Coordinate, bool) {
 }
 
 func (r *Resolver) normalizeFallbackCoordinate(coord Coordinate) (Coordinate, bool) {
-	if _, err := os.Stat(r.moduleBasePath(coord)); err == nil {
+	if r.moduleBaseHasResolvableContent(r.moduleBasePath(coord)) {
 		return coord, true
 	}
 	if cached := r.findCachedVersion(coord.Group, coord.Module); cached != "" && cached != coord.Version {
 		alt := coord
 		alt.Version = cached
-		if _, err := os.Stat(r.moduleBasePath(alt)); err == nil {
+		if r.moduleBaseHasResolvableContent(r.moduleBasePath(alt)) {
 			return alt, true
 		}
 	}
 	return Coordinate{}, false
+}
+
+// moduleBaseHasResolvableContent reports whether base contains an actual
+// resolvable file (a Gradle .module, a Maven .pom, or a .jar/.aar
+// artifact) — not just an empty directory.
+//
+// A bare os.Stat on the module base is not enough: grit's own failed
+// fetch attempts call os.MkdirAll on the `downloaded/` output directory
+// before issuing the request, so a coordinate that never resolved still
+// leaves an empty directory behind. preferJVMSibling and the android
+// suffix fallback used to treat that empty directory as proof that a
+// `<module>-jvm` / `<module>-android` sibling exists, which silently
+// rerouted real artifacts (e.g. the Android-only `coil-compose` AAR) to
+// a non-existent KMP variant and dropped them from the closure.
+func (r *Resolver) moduleBaseHasResolvableContent(base string) bool {
+	if _, err := findFile(base, ".module"); err == nil {
+		return true
+	}
+	if _, err := findFile(base, ".pom"); err == nil {
+		return true
+	}
+	if _, err := findArtifactCandidate(base); err == nil {
+		return true
+	}
+	return false
 }
 
 func artifactContainsClassFiles(path string) bool {

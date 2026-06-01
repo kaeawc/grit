@@ -273,9 +273,12 @@ func TestExpandRefsSupportsComposeAccessors(t *testing.T) {
 	t.Parallel()
 
 	cacheRoot := t.TempDir()
-	jvmSibling := filepath.Join(cacheRoot, "org.jetbrains.compose.components", "components-resources-jvm", "1.10.0")
-	if err := os.MkdirAll(jvmSibling, 0o755); err != nil {
+	jvmHashDir := filepath.Join(cacheRoot, "org.jetbrains.compose.components", "components-resources-jvm", "1.10.0", "hash")
+	if err := os.MkdirAll(jvmHashDir, 0o755); err != nil {
 		t.Fatalf("seed jvm sibling: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(jvmHashDir, "components-resources-jvm-1.10.0.pom"), []byte("<project/>"), 0o644); err != nil {
+		t.Fatalf("seed jvm sibling pom: %v", err)
 	}
 	resolver := New(cacheRoot, t.TempDir(), nil, &catalog.Catalog{
 		Versions:  map[string]string{"compose-multiplatform": "1.10.0"},
@@ -401,8 +404,15 @@ kotlin {
 
 	cacheRoot := t.TempDir()
 	for _, m := range []string{"ui-tooling-preview-jvm", "ui-tooling-jvm"} {
-		if err := os.MkdirAll(filepath.Join(cacheRoot, "org.jetbrains.compose.ui", m, "1.10.0"), 0o755); err != nil {
+		// Seed each -jvm sibling with a real .pom so it counts as
+		// resolvable content (an empty directory must not trigger the
+		// redirect — see TestPreferJVMSiblingIgnoresEmptySiblingDir).
+		hashDir := filepath.Join(cacheRoot, "org.jetbrains.compose.ui", m, "1.10.0", "hash")
+		if err := os.MkdirAll(hashDir, 0o755); err != nil {
 			t.Fatalf("seed jvm sibling: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(hashDir, m+"-1.10.0.pom"), []byte("<project/>"), 0o644); err != nil {
+			t.Fatalf("seed jvm sibling pom: %v", err)
 		}
 	}
 	resolver := New(cacheRoot, t.TempDir(), nil, &catalog.Catalog{
@@ -430,9 +440,17 @@ func TestExpandRefsComposePreview(t *testing.T) {
 	t.Parallel()
 
 	cacheRoot := t.TempDir()
-	jvmSibling := filepath.Join(cacheRoot, "org.jetbrains.compose.ui", "ui-tooling-preview-jvm", "1.10.0")
-	if err := os.MkdirAll(jvmSibling, 0o755); err != nil {
+	// Seed the -jvm sibling with a real .pom so it counts as resolvable
+	// content. An empty directory must NOT trigger the redirect (that was
+	// the coil-compose misrouting bug): grit's own failed fetch attempts
+	// leave empty `downloaded/` dirs behind, and bare existence is not
+	// proof a platform sibling actually exists.
+	jvmHashDir := filepath.Join(cacheRoot, "org.jetbrains.compose.ui", "ui-tooling-preview-jvm", "1.10.0", "hash")
+	if err := os.MkdirAll(jvmHashDir, 0o755); err != nil {
 		t.Fatalf("seed jvm sibling: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(jvmHashDir, "ui-tooling-preview-jvm-1.10.0.pom"), []byte("<project/>"), 0o644); err != nil {
+		t.Fatalf("seed jvm sibling pom: %v", err)
 	}
 	resolver := New(cacheRoot, t.TempDir(), nil, &catalog.Catalog{
 		Versions:  map[string]string{"compose-multiplatform": "1.10.0"},

@@ -67,9 +67,7 @@ func TestPreferJVMSiblingForMetadataOnlyJar(t *testing.T) {
 		t.Fatal(err)
 	}
 	jvmBase := filepath.Join(root, "org.jetbrains.kotlinx", "kotlinx-datetime-jvm", "0.7.1")
-	if err := os.MkdirAll(filepath.Join(jvmBase, "downloaded"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	seedDownloadedJar(t, jvmBase, "kotlinx-datetime-jvm-0.7.1.jar")
 	resolver := New(root, t.TempDir(), nil, nil)
 	alt, ok := resolver.preferJVMSibling(Coordinate{Group: "org.jetbrains.kotlinx", Module: "kotlinx-datetime", Version: "0.7.1"})
 	if !ok {
@@ -77,6 +75,84 @@ func TestPreferJVMSiblingForMetadataOnlyJar(t *testing.T) {
 	}
 	if alt.Module != "kotlinx-datetime-jvm" {
 		t.Fatalf("unexpected sibling module: %#v", alt)
+	}
+}
+
+// TestPreferJVMSiblingIgnoresEmptySiblingDir is the coil-compose
+// regression: an Android AAR (no top-level class files) must NOT be
+// rerouted to a `<module>-jvm` sibling just because an empty directory
+// exists there. grit's own failed fetch attempts leave empty
+// `downloaded/` dirs behind; bare existence is not proof a platform
+// sibling actually resolves.
+func TestPreferJVMSiblingIgnoresEmptySiblingDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// Umbrella AAR present (an Android library): zip with classes.jar
+	// inside but no top-level .class entries, mirroring a real .aar.
+	base := filepath.Join(root, "io.coil-kt", "coil-compose", "2.7.0")
+	seedDownloadedAAR(t, base, "coil-compose-2.7.0.aar")
+	// Empty -jvm sibling dir, exactly the pollution a prior failed fetch
+	// leaves behind.
+	jvmBase := filepath.Join(root, "io.coil-kt", "coil-compose-jvm", "2.7.0")
+	if err := os.MkdirAll(filepath.Join(jvmBase, "downloaded"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver := New(root, t.TempDir(), nil, nil)
+	_, ok := resolver.preferJVMSibling(Coordinate{Group: "io.coil-kt", Module: "coil-compose", Version: "2.7.0"})
+	if ok {
+		t.Fatal("must NOT redirect to an empty -jvm sibling dir")
+	}
+}
+
+func seedDownloadedJar(t *testing.T, base, name string) {
+	t.Helper()
+	dir := filepath.Join(base, "downloaded")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	w, err := zw.Create("com/example/Real.class")
+	if err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("classfile"))
+	if err := zw.Close(); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func seedDownloadedAAR(t *testing.T, base, name string) {
+	t.Helper()
+	dir := filepath.Join(base, "downloaded")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	if _, err := zw.Create("classes.jar"); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -102,9 +178,7 @@ func TestExpandRefsNormalizesMetadataOnlyRootToJVMSibling(t *testing.T) {
 		t.Fatal(err)
 	}
 	jvmBase := filepath.Join(root, "org.jetbrains.kotlinx", "kotlinx-datetime-jvm", "0.7.1-0.6.x-compat")
-	if err := os.MkdirAll(filepath.Join(jvmBase, "downloaded"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	seedDownloadedJar(t, jvmBase, "kotlinx-datetime-jvm-0.7.1-0.6.x-compat.jar")
 	resolver := New(root, t.TempDir(), nil, &catalog.Catalog{
 		Libraries: map[string]catalog.Library{
 			"kotlinx-datetime": {
@@ -181,13 +255,9 @@ func TestPreferJVMSiblingKeepsRequestedVersionWhenPresent(t *testing.T) {
 		t.Fatal(err)
 	}
 	jvmRequested := filepath.Join(root, "ai.koog", "prompt-executor-anthropic-client-jvm", "0.6.4")
-	if err := os.MkdirAll(filepath.Join(jvmRequested, "downloaded"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	seedDownloadedJar(t, jvmRequested, "prompt-executor-anthropic-client-jvm-0.6.4.jar")
 	jvmLatest := filepath.Join(root, "ai.koog", "prompt-executor-anthropic-client-jvm", "0.7.3")
-	if err := os.MkdirAll(filepath.Join(jvmLatest, "downloaded"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	seedDownloadedJar(t, jvmLatest, "prompt-executor-anthropic-client-jvm-0.7.3.jar")
 
 	resolver := New(root, t.TempDir(), nil, nil)
 	alt, ok := resolver.preferJVMSibling(Coordinate{Group: "ai.koog", Module: "prompt-executor-anthropic-client", Version: "0.6.4"})
