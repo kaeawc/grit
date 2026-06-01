@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kaeawc/grit/internal/griterr"
@@ -68,7 +71,7 @@ func (r *Resolver) snapshotArtifactVersion(coord Coordinate, ext string) string 
 	}
 	relPath := strings.ReplaceAll(coord.Group, ".", "/") + "/" + coord.Module + "/" + coord.Version + "/maven-metadata.xml"
 	for _, baseURL := range r.remoteRepositoryURLs(coord) {
-		resp, err := http.Get(baseURL + relPath)
+		resp, err := fetchClient.Get(baseURL + relPath) // #nosec G107 -- repository base URLs come from project settings
 		if err != nil {
 			continue
 		}
@@ -118,23 +121,18 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 	}
 	transient := false
 	for _, baseURL := range r.remoteRepositoryURLs(coord) {
-		resp, status, err := fetchWithBackoff(baseURL+relPath, fetchRetryAttempts, fetchRetryBaseDelay)
+		body, status, err := fetchWithBackoff(baseURL+relPath, fetchRetryAttempts, fetchRetryBaseDelay)
 		if err != nil {
 			// Network-level error — treat as transient so we don't lock
 			// this coord into the negative cache for 24h on a flake.
 			transient = true
 			continue
 		}
-		if resp == nil {
+		if body == nil {
 			if isTransientStatus(status) {
 				transient = true
 			}
 			continue
-		}
-		body, err := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if err != nil {
-			return "", err
 		}
 		if err := verifyChecksumIfAvailable(baseURL+relPath, body); err != nil {
 			return "", err
@@ -169,42 +167,170 @@ func (r *Resolver) fetchRemoteFile(coord Coordinate, relPath, outPath, label str
 }
 
 const (
-	fetchRetryAttempts  = 3
-	fetchRetryBaseDelay = 250 * time.Millisecond
+	fetchRetryAttempts  = 6
+	fetchRetryBaseDelay = 500 * time.Millisecond
+	fetchRetryMaxDelay  = 8 * time.Second
+
+	// maxConcurrentPerHost bounds how many HTTP requests grit fires at a
+	// single repository host at once. The resolver fans out closures
+	// (main/test/runtime/desugar) each with an 8-worker pool, so without
+	// a cap a large project bursts dozens of parallel requests at Maven
+	// Central, which then rate-limits the whole burst with sustained 429
+	// responses (observed dropping io.coil-kt:coil-compose entirely). A
+	// small per-host cap keeps grit a polite client and makes the retry
+	// backoff actually effective.
+	maxConcurrentPerHost = 4
+
+	// fetchRequestTimeout bounds a single HTTP request (connect + headers
+	// + body). The default http.Get uses http.DefaultClient, which has NO
+	// timeout: under rate-limiting a Maven host can leave a connection
+	// open indefinitely, hanging the whole build on one stuck request. A
+	// bounded timeout turns that hang into a retriable network error.
+	fetchRequestTimeout = 30 * time.Second
 )
 
-// fetchWithBackoff issues a GET with limited retries for transient
-// responses. On a network error or a transient HTTP status, it sleeps
-// (linearly-increasing) and retries up to attempts-1 more times. The
-// return shape is (resp, status, err):
-//   - (resp, 200, nil) when the request succeeded with an OK body the
-//     caller should read.
-//   - (nil, status, nil) when the request reached the server but
-//     returned a non-OK status; the body is drained and closed.
+// fetchClient is the shared HTTP client for all remote repository
+// fetches. Unlike http.DefaultClient it has a request timeout so a
+// rate-limited or slow host can't stall the resolver forever.
+var fetchClient = &http.Client{Timeout: fetchRequestTimeout}
+
+// hostSems holds a per-host concurrency semaphore, shared process-wide so
+// every resolver and every closure share one budget against a given host.
+var (
+	hostSemMu sync.Mutex
+	hostSems  = map[string]chan struct{}{}
+)
+
+func hostSemaphore(host string) chan struct{} {
+	hostSemMu.Lock()
+	defer hostSemMu.Unlock()
+	sem, ok := hostSems[host]
+	if !ok {
+		sem = make(chan struct{}, maxConcurrentPerHost)
+		hostSems[host] = sem
+	}
+	return sem
+}
+
+// fetchWithBackoff GETs url, retrying transient failures (429, 408, 5xx,
+// or network errors) with exponential backoff that honors a server
+// Retry-After header. Concurrent requests to the same host are capped via
+// a per-host semaphore so a burst of parallel fetches doesn't provoke
+// sustained rate-limiting in the first place.
+//
+// Return shape (body, status, err):
+//   - (body, 200, nil) on success.
+//   - (nil, status, nil) when the server returned a terminal non-OK
+//     status (e.g. a definitive 404, or a transient status that survived
+//     every retry).
 //   - (nil, 0, err) when every attempt failed at the network layer.
-func fetchWithBackoff(url string, attempts int, baseDelay time.Duration) (*http.Response, int, error) {
+func fetchWithBackoff(url string, attempts int, baseDelay time.Duration) ([]byte, int, error) {
+	sem := hostSemaphore(hostKey(url))
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(baseDelay * time.Duration(attempt))
+		body, status, retryAfter, err := fetchOnce(url, sem)
+		if err == nil && status == http.StatusOK {
+			return body, status, nil
 		}
-		resp, err := http.Get(url)
+		retriable := err != nil || isTransientStatus(status)
+		if !retriable || attempt+1 >= attempts {
+			if err != nil {
+				return nil, 0, err
+			}
+			return nil, status, nil
+		}
 		if err != nil {
 			lastErr = err
-			continue
 		}
-		if resp.StatusCode == http.StatusOK {
-			return resp, resp.StatusCode, nil
+		delay := retryAfter
+		if delay <= 0 {
+			delay = backoffDelay(attempt, baseDelay, fetchRetryMaxDelay)
 		}
-		status := resp.StatusCode
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-		if isTransientStatus(status) && attempt+1 < attempts {
-			continue
-		}
-		return nil, status, nil
+		time.Sleep(delay)
 	}
 	return nil, 0, lastErr
+}
+
+// fetchOnce performs a single throttled GET. It holds the host semaphore
+// only for the duration of the request + body read, never across the
+// retry sleep, so a backing-off request doesn't waste a concurrency slot.
+func fetchOnce(url string, sem chan struct{}) (body []byte, status int, retryAfter time.Duration, err error) {
+	sem <- struct{}{}
+	defer func() { <-sem }()
+	resp, err := fetchClient.Get(url) // #nosec G107 -- repository base URLs come from project settings
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusOK {
+		b, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, 0, 0, readErr
+		}
+		return b, resp.StatusCode, 0, nil
+	}
+	ra := parseRetryAfter(resp.Header.Get("Retry-After"))
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil, resp.StatusCode, ra, nil
+}
+
+// backoffDelay returns an exponentially-increasing delay (base, 2·base,
+// 4·base, …) clamped to max. attempt is 0-based: the delay used after the
+// first failed attempt is base.
+func backoffDelay(attempt int, base, max time.Duration) time.Duration {
+	if attempt < 0 || base <= 0 {
+		return base
+	}
+	d := base
+	for i := 0; i < attempt; i++ {
+		d *= 2
+		if d >= max {
+			return max
+		}
+	}
+	if d > max {
+		return max
+	}
+	return d
+}
+
+// parseRetryAfter interprets an HTTP Retry-After header value, which is
+// either a number of seconds or an HTTP-date. Returns 0 when absent or
+// unparseable. The result is clamped to fetchRetryMaxDelay so a hostile
+// or buggy header can't stall a build indefinitely.
+func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(value); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		return clampDelay(time.Duration(secs) * time.Second)
+	}
+	if t, err := http.ParseTime(value); err == nil {
+		d := time.Until(t)
+		if d <= 0 {
+			return 0
+		}
+		return clampDelay(d)
+	}
+	return 0
+}
+
+func clampDelay(d time.Duration) time.Duration {
+	if d > fetchRetryMaxDelay {
+		return fetchRetryMaxDelay
+	}
+	return d
+}
+
+func hostKey(rawURL string) string {
+	if u, err := neturl.Parse(rawURL); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return rawURL
 }
 
 func isTransientStatus(status int) bool {
@@ -307,7 +433,7 @@ func verifyChecksumIfAvailable(url string, body []byte) error {
 		return nil
 	}
 	for _, suffix := range []string{".sha256", ".sha1"} {
-		resp, err := http.Get(url + suffix)
+		resp, err := fetchClient.Get(url + suffix) // #nosec G107 -- checksum sidecar of an already-validated repo URL
 		if err != nil {
 			continue
 		}
